@@ -12,22 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    // See: http://go/android-license-faq
-    // A large-scale-change added 'default_applicable_licenses' to import
-    // all of the 'license_kinds' from "frameworks_base_license"
-    // to get the below license kinds:
-    //   SPDX-license-identifier-Apache-2.0
-    default_applicable_licenses: ["frameworks_base_license"],
-}
-
 filegroup {
     name: "framework-appsearch-sources",
     srcs: [
         ":framework-appsearch-internal-sources",
         ":framework-appsearch-external-sources",
     ],
-    visibility: ["//frameworks/base"],
+    visibility: [
+        "//frameworks/base",
+        "//packages/modules/AppSearch:__subpackages__"
+    ],
 }
 
 filegroup {
@@ -62,7 +56,7 @@ java_sdk_library {
     jarjar_rules: "jarjar-rules.txt",
     apex_available: ["com.android.appsearch"],
     impl_library_visibility: [
-        "//frameworks/base/apex/appsearch/service",
+        "//packages/modules/AppSearch/service:__subpackages__"
     ],
     unsafe_ignore_missing_latest_api: true, // TODO(b/146218515) should be removed
 }
