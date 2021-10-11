@@ -23,7 +23,7 @@ package {
 
 java_library {
     name: "AppSearchTestUtils",
-    srcs: ["java/**/*.java"],
+    srcs: ["src/**/*.java"],
     libs: [
         "androidx.test.ext.junit",
         "framework",
@@ -33,9 +33,8 @@ java_library {
         "truth-prebuilt",
     ],
     visibility: [
-        "//frameworks/base/core/tests/coretests",
         "//cts/hostsidetests/appsearch",
         "//cts/tests:__subpackages__",
-        "//vendor:__subpackages__",
+        "//packages/modules/AppSearch/testing:__subpackages__",
     ],
 }
