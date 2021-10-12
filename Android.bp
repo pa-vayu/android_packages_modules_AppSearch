@@ -41,7 +41,6 @@ apex {
     certificate: ":com.android.appsearch.certificate",
     updatable: false,
     jni_libs: ["libicing"],
-    generate_hashtree: false,
 }
 
 apex_key {
