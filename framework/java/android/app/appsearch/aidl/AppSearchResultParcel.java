@@ -43,13 +43,25 @@ public final class AppSearchResultParcel<ValueType> implements Parcelable {
     }
 
     private AppSearchResultParcel(@NonNull Parcel in) {
-        int resultCode = in.readInt();
-        ValueType resultValue = (ValueType) in.readValue(/*loader=*/ null);
-        String errorMessage = in.readString();
+        byte[] dataBlob = in.readBlob();
+        Parcel data = Parcel.obtain();
+        try {
+            data.unmarshall(dataBlob, 0, dataBlob.length);
+            data.setDataPosition(0);
+            mResult = (AppSearchResult<ValueType>) directlyReadFromParcel(data);
+        } finally {
+            data.recycle();
+        }
+    }
+
+    static AppSearchResult directlyReadFromParcel(@NonNull Parcel data) {
+        int resultCode = data.readInt();
+        Object resultValue = data.readValue(/*loader=*/ null);
+        String errorMessage = data.readString();
         if (resultCode == AppSearchResult.RESULT_OK) {
-            mResult = AppSearchResult.newSuccessfulResult(resultValue);
+            return AppSearchResult.newSuccessfulResult(resultValue);
         } else {
-            mResult = AppSearchResult.newFailedResult(resultCode, errorMessage);
+            return AppSearchResult.newFailedResult(resultCode, errorMessage);
         }
     }
 
@@ -61,13 +73,28 @@ public final class AppSearchResultParcel<ValueType> implements Parcelable {
     /** @hide */
     @Override
     public void writeToParcel(@NonNull Parcel dest, int flags) {
-        dest.writeInt(mResult.getResultCode());
-        if (mResult.isSuccess()) {
-            dest.writeValue(mResult.getResultValue());
-        } else {
-            dest.writeValue(null);
+        // Serializes the whole object, So that we can use Parcel.writeBlob() to send data.
+        // WriteBlob() could take care of whether to pass data via binder directly or Android shared
+        // memory if the data is large.
+        byte[] bytes;
+        Parcel data = Parcel.obtain();
+        try {
+            directlyWriteToParcel(data, mResult);
+            bytes = data.marshall();
+        } finally {
+            data.recycle();
         }
-        dest.writeString(mResult.getErrorMessage());
+        dest.writeBlob(bytes);
+    }
+
+    static void directlyWriteToParcel(@NonNull Parcel data, @NonNull AppSearchResult result) {
+        data.writeInt(result.getResultCode());
+        if (result.isSuccess()) {
+            data.writeValue(result.getResultValue());
+        } else {
+            data.writeValue(null);
+        }
+        data.writeString(result.getErrorMessage());
     }
 
     /** @hide */
