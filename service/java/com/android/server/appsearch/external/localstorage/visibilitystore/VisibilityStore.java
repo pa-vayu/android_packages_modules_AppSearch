@@ -16,13 +16,12 @@
 package com.android.server.appsearch.external.localstorage.visibilitystore;
 
 import android.annotation.NonNull;
-import android.app.appsearch.PackageIdentifier;
 import android.app.appsearch.exceptions.AppSearchException;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.server.appsearch.visibilitystore.VisibilityDocument;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -40,33 +39,35 @@ public interface VisibilityStore {
     @VisibleForTesting String DATABASE_NAME = "VS#Db";
 
     /**
-     * Sets visibility settings for the given database. Any previous visibility settings will be
-     * overwritten.
+     * Sets visibility settings for the given {@link VisibilityDocument}s. Any previous
+     * {@link VisibilityDocument}s with same prefixed schema type will be overwritten.
      *
-     * @param packageName Package of app that owns the schemas.
-     * @param databaseName Database that owns the schemas.
-     * @param schemasNotDisplayedBySystem Set of prefixed schemas that should be hidden from
-     *     platform surfaces.
-     * @param schemasVisibleToPackages Map of prefixed schemas to a list of package identifiers that
-     *     have access to the schema.
+     * @param prefixedVisibilityDocuments List of prefixed {@link VisibilityDocument} which
+     *                                    contains schema type's visibility information.
      * @throws AppSearchException on AppSearchImpl error.
      */
     void setVisibility(
-            @NonNull String packageName,
-            @NonNull String databaseName,
-            @NonNull Set<String> schemasNotDisplayedBySystem,
-            @NonNull Map<String, List<PackageIdentifier>> schemasVisibleToPackages)
+            @NonNull List<VisibilityDocument> prefixedVisibilityDocuments)
             throws AppSearchException;
 
     /**
-     * Checks whether the given package has access to system-surfaceable schemas.
+     * Checks whether the given caller has access to system-surfaceable schemas.
      *
+     * @param packageName Package of app that owns the schemas.
+     * @param prefixedSchema The prefixed schema type that the caller want to access.
      * @param callerUid UID of the app that wants to see the data.
+     * @param callerHasSystemAccess whether the caller has system access.
      */
     boolean isSchemaSearchableByCaller(
             @NonNull String packageName,
-            @NonNull String databaseName,
             @NonNull String prefixedSchema,
             int callerUid,
             boolean callerHasSystemAccess);
+
+    /**
+     * Remove the visibility setting for the given prefixed schema type from both AppSearch and
+     * memory look up map.
+     */
+    void removeVisibility(@NonNull Set<String> deletedPrefixedSchemaTypes)
+            throws AppSearchException;
 }

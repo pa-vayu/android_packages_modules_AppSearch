@@ -31,7 +31,6 @@ import android.app.appsearch.AppSearchSchema;
 import android.app.appsearch.GenericDocument;
 import android.app.appsearch.GetByDocumentIdRequest;
 import android.app.appsearch.GetSchemaResponse;
-import android.app.appsearch.PackageIdentifier;
 import android.app.appsearch.SearchResultPage;
 import android.app.appsearch.SearchSpec;
 import android.app.appsearch.SetSchemaResponse;
@@ -63,6 +62,7 @@ import com.android.server.appsearch.external.localstorage.stats.SearchStats;
 import com.android.server.appsearch.external.localstorage.stats.SetSchemaStats;
 import com.android.server.appsearch.external.localstorage.util.PrefixUtil;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
+import com.android.server.appsearch.visibilitystore.VisibilityDocument;
 
 import com.google.android.icing.IcingSearchEngine;
 import com.google.android.icing.proto.DeleteByQueryResultProto;
@@ -410,9 +410,12 @@ public final class AppSearchImpl implements Closeable {
      * @param schemas Schemas to set for this app.
      * @param visibilityStore If set, {@code schemasNotDisplayedBySystem} and {@code
      *     schemasVisibleToPackages} will be saved here if the schema is successfully applied.
-     * @param schemasNotDisplayedBySystem Schema types that should not be surfaced on platform
-     *     surfaces.
-     * @param schemasVisibleToPackages Schema types that are visible to the specified packages.
+     * @param visibilityDocuments {@link VisibilityDocument}s that contain all visibility setting
+     *                            information for those schemas they that has user custom settings.
+     *                            Other schemas in the list that don't has a
+     *                            {@link VisibilityDocument} will be treated as having the default
+     *                            visibility, which is accessible to the system and no other
+     *                            packages.
      * @param forceOverride Whether to force-apply the schema even if it is incompatible. Documents
      *     which do not comply with the new schema will be deleted.
      * @param version The overall version number of the request.
@@ -429,8 +432,7 @@ public final class AppSearchImpl implements Closeable {
             @NonNull String databaseName,
             @NonNull List<AppSearchSchema> schemas,
             @Nullable VisibilityStore visibilityStore,
-            @NonNull List<String> schemasNotDisplayedBySystem,
-            @NonNull Map<String, List<PackageIdentifier>> schemasVisibleToPackages,
+            @NonNull List<VisibilityDocument> visibilityDocuments,
             boolean forceOverride,
             int version,
             @Nullable SetSchemaStats.Builder setSchemaStatsBuilder)
@@ -500,25 +502,29 @@ public final class AppSearchImpl implements Closeable {
             }
 
             if (visibilityStore != null) {
-                Set<String> prefixedSchemasNotDisplayedBySystem =
-                        new ArraySet<>(schemasNotDisplayedBySystem.size());
-                for (int i = 0; i < schemasNotDisplayedBySystem.size(); i++) {
-                    prefixedSchemasNotDisplayedBySystem.add(
-                            prefix + schemasNotDisplayedBySystem.get(i));
+                // Add prefix to all visibility documents.
+                List<VisibilityDocument> prefixedVisibilityDocuments =
+                        new ArrayList<>(visibilityDocuments.size());
+                // Find out which Visibility document is deleted or changed to all-default settings.
+                // We need to remove them from Visibility Store.
+                Set<String> deprecatedVisibilityDocuments =
+                        new ArraySet<>(rewrittenSchemaResults.mRewrittenPrefixedTypes.keySet());
+                for (int i = 0; i < visibilityDocuments.size(); i++) {
+                    VisibilityDocument unPrefixedDocument = visibilityDocuments.get(i);
+                    String prefixedSchemaType = prefix + unPrefixedDocument.getId();
+                    prefixedVisibilityDocuments.add(new VisibilityDocument(
+                            unPrefixedDocument.toBuilder()
+                                    .setId(prefixedSchemaType)
+                                    .build()));
+                    // This schema is not all-default settings. We should keep it.
+                    deprecatedVisibilityDocuments.remove(prefixedSchemaType);
                 }
-
-                Map<String, List<PackageIdentifier>> prefixedSchemasVisibleToPackages =
-                        new ArrayMap<>(schemasVisibleToPackages.size());
-                for (Map.Entry<String, List<PackageIdentifier>> entry :
-                        schemasVisibleToPackages.entrySet()) {
-                    prefixedSchemasVisibleToPackages.put(prefix + entry.getKey(), entry.getValue());
-                }
-
-                visibilityStore.setVisibility(
-                        packageName,
-                        databaseName,
-                        prefixedSchemasNotDisplayedBySystem,
-                        prefixedSchemasVisibleToPackages);
+                // Now deprecatedVisibilityDocuments contains those existing schemas that has
+                // all-default visibility settings, add deleted schemas. That's all we need to
+                // remove.
+                deprecatedVisibilityDocuments.addAll(rewrittenSchemaResults.mDeletedPrefixedTypes);
+                visibilityStore.removeVisibility(deprecatedVisibilityDocuments);
+                visibilityStore.setVisibility(prefixedVisibilityDocuments);
             }
 
             return SetSchemaResponseToProtoConverter.toSetSchemaResponse(
@@ -2204,6 +2210,25 @@ public final class AppSearchImpl implements Closeable {
         GetOptimizeInfoResultProto result = mIcingSearchEngineLocked.getOptimizeInfo();
         mLogUtil.piiTrace("getOptimizeInfo, response", result.getStatus(), result);
         return result;
+    }
+
+    /**
+     * Returns all prefixed schema types saved in AppSearch.
+     *
+     * <p>This method is inefficient to call repeatedly.
+     */
+    @NonNull
+    public List<String> getAllPrefixedSchemaTypes() {
+        mReadWriteLock.readLock().lock();
+        try {
+            List<String> cachedSchemaTypes = new ArrayList<>();
+            for (Map<String, SchemaTypeConfigProto> value : mSchemaMapLocked.values()) {
+                cachedSchemaTypes.addAll(value.keySet());
+            }
+            return cachedSchemaTypes;
+        } finally {
+            mReadWriteLock.readLock().unlock();
+        }
     }
 
     /**

@@ -71,6 +71,7 @@ import com.android.server.appsearch.external.localstorage.visibilitystore.Visibi
 import com.android.server.appsearch.observer.AppSearchObserverProxy;
 import com.android.server.appsearch.stats.StatsCollector;
 import com.android.server.appsearch.util.PackageUtil;
+import com.android.server.appsearch.visibilitystore.VisibilityDocument;
 import com.android.server.usage.StorageStatsManagerLocal;
 import com.android.server.usage.StorageStatsManagerLocal.StorageStatsAugmenter;
 
@@ -359,6 +360,8 @@ public class AppSearchManagerService extends SystemService {
                     for (int i = 0; i < schemaBundles.size(); i++) {
                         schemas.add(new AppSearchSchema(schemaBundles.get(i)));
                     }
+                    // TODO(b/202194495) move build VisibilityDocument to the SDK side and only pass
+                    //  it/s bundle via binder.
                     Map<String, List<PackageIdentifier>> schemasVisibleToPackages =
                             new ArrayMap<>(schemasVisibleToPackagesBundles.size());
                     for (Map.Entry<String, List<Bundle>> entry :
@@ -371,6 +374,9 @@ public class AppSearchManagerService extends SystemService {
                         }
                         schemasVisibleToPackages.put(entry.getKey(), packageIdentifiers);
                     }
+                    List<VisibilityDocument> visibilityDocuments = VisibilityDocument
+                            .toVisibilityDocuments(schemas, schemasNotDisplayedBySystem,
+                                    schemasVisibleToPackages);
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     // TODO(b/173532925): Implement logging for statsBuilder
                     SetSchemaResponse setSchemaResponse = instance.getAppSearchImpl().setSchema(
@@ -378,8 +384,7 @@ public class AppSearchManagerService extends SystemService {
                             databaseName,
                             schemas,
                             instance.getVisibilityStore(),
-                            schemasNotDisplayedBySystem,
-                            schemasVisibleToPackages,
+                            visibilityDocuments,
                             forceOverride,
                             schemaVersion,
                             /*setSchemaStatsBuilder=*/ null);

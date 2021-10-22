@@ -179,11 +179,9 @@ public final class SearchSpecToProtoConverter {
                 // If there's no visibility store, there's no extra access
                 allow = false;
             } else {
-                String databaseName = getDatabaseName(targetPrefixedSchemaFilter);
                 allow =
                         visibilityStore.isSchemaSearchableByCaller(
                                 packageName,
-                                databaseName,
                                 targetPrefixedSchemaFilter,
                                 callerUid,
                                 callerHasSystemAccess);
