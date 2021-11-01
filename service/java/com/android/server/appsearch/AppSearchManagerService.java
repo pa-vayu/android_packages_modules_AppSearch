@@ -1474,10 +1474,6 @@ public class AppSearchManagerService extends SystemService {
             @NonNull String claimedCallingPackage) {
         int claimedCallingUid = PackageUtil.getPackageUid(
                 actualCallingUserContext, claimedCallingPackage);
-        if (claimedCallingUid == INVALID_UID) {
-            throw new SecurityException(
-                    "Specified calling package [" + claimedCallingPackage + "] not found");
-        }
         if (claimedCallingUid != actualCallingUid) {
             throw new SecurityException(
                     "Specified calling package ["
