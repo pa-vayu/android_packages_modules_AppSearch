@@ -36,7 +36,7 @@ public interface VisibilityStore {
      */
     String PACKAGE_NAME = "VS#Pkg";
 
-    @VisibleForTesting String DATABASE_NAME = "VS#Db";
+    String DATABASE_NAME = "VS#Db";
 
     /**
      * Sets visibility settings for the given {@link VisibilityDocument}s. Any previous
