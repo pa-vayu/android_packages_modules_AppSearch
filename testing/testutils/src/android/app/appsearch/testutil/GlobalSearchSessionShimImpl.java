@@ -14,11 +14,12 @@
  * limitations under the License.
  */
 
-package com.android.server.appsearch.testing;
+package android.app.appsearch.testutil;
 
 import android.annotation.NonNull;
 import android.app.appsearch.AppSearchManager;
 import android.app.appsearch.AppSearchResult;
+import android.app.appsearch.Capabilities;
 import android.app.appsearch.GlobalSearchSession;
 import android.app.appsearch.GlobalSearchSessionShim;
 import android.app.appsearch.ReportSystemUsageRequest;
@@ -29,6 +30,8 @@ import android.app.appsearch.exceptions.AppSearchException;
 import android.content.Context;
 
 import androidx.test.core.app.ApplicationProvider;
+
+import com.android.server.appsearch.external.localstorage.AlwaysSupportedCapabilities;
 
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -87,6 +90,12 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
         SettableFuture<AppSearchResult<Void>> future = SettableFuture.create();
         mGlobalSearchSession.reportSystemUsage(request, mExecutor, future::set);
         return Futures.transformAsync(future, this::transformResult, mExecutor);
+    }
+
+    @NonNull
+    @Override
+    public Capabilities getCapabilities() {
+        return new AlwaysSupportedCapabilities();
     }
 
     @Override
