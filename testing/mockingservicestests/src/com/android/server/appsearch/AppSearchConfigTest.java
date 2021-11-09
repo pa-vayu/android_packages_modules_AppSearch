@@ -22,7 +22,7 @@ import static com.google.common.truth.Truth.assertThat;
 
 import android.provider.DeviceConfig;
 
-import com.android.server.testables.TestableDeviceConfig;
+import com.android.modules.utils.testing.TestableDeviceConfig;
 
 import org.junit.Assert;
 import org.junit.Rule;
