@@ -63,6 +63,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -82,16 +83,23 @@ public class AppSearchImplTest {
     private static final OptimizeStrategy ALWAYS_OPTIMIZE = optimizeInfo -> true;
 
     @Rule public TemporaryFolder mTemporaryFolder = new TemporaryFolder();
+    private File mAppSearchDir;
     private AppSearchImpl mAppSearchImpl;
 
     @Before
     public void setUp() throws Exception {
+        mAppSearchDir = mTemporaryFolder.newFolder();
         mAppSearchImpl =
                 AppSearchImpl.create(
-                        mTemporaryFolder.newFolder(),
+                        mAppSearchDir,
                         new UnlimitedLimitConfig(),
                         /*initStatsBuilder=*/ null,
                         ALWAYS_OPTIMIZE);
+    }
+
+    @After
+    public void tearDown() {
+        mAppSearchImpl.close();
     }
 
     /**
@@ -478,22 +486,13 @@ public class AppSearchImplTest {
 
     @Test
     public void testReset() throws Exception {
-        // Setup the index
-        Context context = ApplicationProvider.getApplicationContext();
-        File appsearchDir = mTemporaryFolder.newFolder();
-        AppSearchImpl appSearchImpl =
-                AppSearchImpl.create(
-                        appsearchDir,
-                        new UnlimitedLimitConfig(),
-                        /*initStatsBuilder=*/ null,
-                        ALWAYS_OPTIMIZE);
-
         // Insert schema
+        Context context = ApplicationProvider.getApplicationContext();
         List<AppSearchSchema> schemas =
                 ImmutableList.of(
                         new AppSearchSchema.Builder("Type1").build(),
                         new AppSearchSchema.Builder("Type2").build());
-        appSearchImpl.setSchema(
+        mAppSearchImpl.setSchema(
                 context.getPackageName(),
                 "database1",
                 schemas,
@@ -507,13 +506,13 @@ public class AppSearchImplTest {
         // Insert a valid doc
         GenericDocument validDoc =
                 new GenericDocument.Builder<>("namespace1", "id1", "Type1").build();
-        appSearchImpl.putDocument(
+        mAppSearchImpl.putDocument(
                 context.getPackageName(), "database1", validDoc, /*logger=*/ null);
 
         // Query it via global query. We use the same code again later so this is to make sure we
         // have our global query configured right.
         SearchResultPage results =
-                appSearchImpl.globalQuery(
+                mAppSearchImpl.globalQuery(
                         /*queryExpression=*/ "",
                         new SearchSpec.Builder().addFilterSchemas("Type1").build(),
                         context.getPackageName(),
@@ -542,15 +541,15 @@ public class AppSearchImplTest {
                             + " name");
 
         // Insert the invalid doc with an invalid namespace right into icing
-        PutResultProto putResultProto = appSearchImpl.mIcingSearchEngineLocked.put(invalidDoc);
+        PutResultProto putResultProto = mAppSearchImpl.mIcingSearchEngineLocked.put(invalidDoc);
         assertThat(putResultProto.getStatus().getCode()).isEqualTo(StatusProto.Code.OK);
 
         // Initialize AppSearchImpl. This should cause a reset.
         InitializeStats.Builder initStatsBuilder = new InitializeStats.Builder();
-        appSearchImpl.close();
-        appSearchImpl =
+        mAppSearchImpl.close();
+        mAppSearchImpl =
                 AppSearchImpl.create(
-                        appsearchDir,
+                        mAppSearchDir,
                         new UnlimitedLimitConfig(),
                         initStatsBuilder,
                         ALWAYS_OPTIMIZE);
@@ -572,10 +571,10 @@ public class AppSearchImplTest {
         assertThat(initStats.getResetStatusCode()).isEqualTo(AppSearchResult.RESULT_OK);
 
         // Make sure all our data is gone
-        assertThat(appSearchImpl.getSchema(context.getPackageName(), "database1").getSchemas())
+        assertThat(mAppSearchImpl.getSchema(context.getPackageName(), "database1").getSchemas())
                 .isEmpty();
         results =
-                appSearchImpl.globalQuery(
+                mAppSearchImpl.globalQuery(
                         /*queryExpression=*/ "",
                         new SearchSpec.Builder().addFilterSchemas("Type1").build(),
                         context.getPackageName(),
@@ -586,7 +585,7 @@ public class AppSearchImplTest {
         assertThat(results.getResults()).isEmpty();
 
         // Make sure the index can now be used successfully
-        appSearchImpl.setSchema(
+        mAppSearchImpl.setSchema(
                 context.getPackageName(),
                 "database1",
                 Collections.singletonList(new AppSearchSchema.Builder("Type1").build()),
@@ -598,12 +597,12 @@ public class AppSearchImplTest {
                 /* setSchemaStatsBuilder= */ null);
 
         // Insert a valid doc
-        appSearchImpl.putDocument(
+        mAppSearchImpl.putDocument(
                 context.getPackageName(), "database1", validDoc, /*logger=*/ null);
 
         // Query it via global query.
         results =
-                appSearchImpl.globalQuery(
+                mAppSearchImpl.globalQuery(
                         /*queryExpression=*/ "",
                         new SearchSpec.Builder().addFilterSchemas("Type1").build(),
                         context.getPackageName(),
@@ -2203,17 +2202,10 @@ public class AppSearchImplTest {
 
     @Test
     public void testThrowsExceptionIfClosed() throws Exception {
-        AppSearchImpl appSearchImpl =
-                AppSearchImpl.create(
-                        mTemporaryFolder.newFolder(),
-                        new UnlimitedLimitConfig(),
-                        /*initStatsBuilder=*/ null,
-                        ALWAYS_OPTIMIZE);
-
         // Initial check that we could do something at first.
         List<AppSearchSchema> schemas =
                 Collections.singletonList(new AppSearchSchema.Builder("type").build());
-        appSearchImpl.setSchema(
+        mAppSearchImpl.setSchema(
                 "package",
                 "database",
                 schemas,
@@ -2224,13 +2216,13 @@ public class AppSearchImplTest {
                 /*version=*/ 0,
                 /* setSchemaStatsBuilder= */ null);
 
-        appSearchImpl.close();
+        mAppSearchImpl.close();
 
         // Check all our public APIs
         assertThrows(
                 IllegalStateException.class,
                 () ->
-                        appSearchImpl.setSchema(
+                        mAppSearchImpl.setSchema(
                                 "package",
                                 "database",
                                 schemas,
@@ -2242,12 +2234,12 @@ public class AppSearchImplTest {
                                 /* setSchemaStatsBuilder= */ null));
 
         assertThrows(
-                IllegalStateException.class, () -> appSearchImpl.getSchema("package", "database"));
+                IllegalStateException.class, () -> mAppSearchImpl.getSchema("package", "database"));
 
         assertThrows(
                 IllegalStateException.class,
                 () ->
-                        appSearchImpl.putDocument(
+                        mAppSearchImpl.putDocument(
                                 "package",
                                 "database",
                                 new GenericDocument.Builder<>("namespace", "id", "type").build(),
@@ -2256,13 +2248,13 @@ public class AppSearchImplTest {
         assertThrows(
                 IllegalStateException.class,
                 () ->
-                        appSearchImpl.getDocument(
+                        mAppSearchImpl.getDocument(
                                 "package", "database", "namespace", "id", Collections.emptyMap()));
 
         assertThrows(
                 IllegalStateException.class,
                 () ->
-                        appSearchImpl.query(
+                        mAppSearchImpl.query(
                                 "package",
                                 "database",
                                 "query",
@@ -2272,7 +2264,7 @@ public class AppSearchImplTest {
         assertThrows(
                 IllegalStateException.class,
                 () ->
-                        appSearchImpl.globalQuery(
+                        mAppSearchImpl.globalQuery(
                                 "query",
                                 new SearchSpec.Builder().build(),
                                 "package",
@@ -2284,17 +2276,17 @@ public class AppSearchImplTest {
         assertThrows(
                 IllegalStateException.class,
                 () ->
-                        appSearchImpl.getNextPage(
+                        mAppSearchImpl.getNextPage(
                                 "package", /*nextPageToken=*/ 1L, /*statsBuilder=*/ null));
 
         assertThrows(
                 IllegalStateException.class,
-                () -> appSearchImpl.invalidateNextPageToken("package", /*nextPageToken=*/ 1L));
+                () -> mAppSearchImpl.invalidateNextPageToken("package", /*nextPageToken=*/ 1L));
 
         assertThrows(
                 IllegalStateException.class,
                 () ->
-                        appSearchImpl.reportUsage(
+                        mAppSearchImpl.reportUsage(
                                 "package",
                                 "database",
                                 "namespace",
@@ -2305,7 +2297,7 @@ public class AppSearchImplTest {
         assertThrows(
                 IllegalStateException.class,
                 () ->
-                        appSearchImpl.remove(
+                        mAppSearchImpl.remove(
                                 "package",
                                 "database",
                                 "namespace",
@@ -2315,7 +2307,7 @@ public class AppSearchImplTest {
         assertThrows(
                 IllegalStateException.class,
                 () ->
-                        appSearchImpl.removeByQuery(
+                        mAppSearchImpl.removeByQuery(
                                 "package",
                                 "database",
                                 "query",
@@ -2324,31 +2316,22 @@ public class AppSearchImplTest {
 
         assertThrows(
                 IllegalStateException.class,
-                () -> appSearchImpl.getStorageInfoForPackage("package"));
+                () -> mAppSearchImpl.getStorageInfoForPackage("package"));
 
         assertThrows(
                 IllegalStateException.class,
-                () -> appSearchImpl.getStorageInfoForDatabase("package", "database"));
+                () -> mAppSearchImpl.getStorageInfoForDatabase("package", "database"));
 
         assertThrows(
                 IllegalStateException.class,
-                () -> appSearchImpl.persistToDisk(PersistType.Code.FULL));
+                () -> mAppSearchImpl.persistToDisk(PersistType.Code.FULL));
     }
 
     @Test
     public void testPutPersistsWithLiteFlush() throws Exception {
-        // Setup the index
-        File appsearchDir = mTemporaryFolder.newFolder();
-        AppSearchImpl appSearchImpl =
-                AppSearchImpl.create(
-                        appsearchDir,
-                        new UnlimitedLimitConfig(),
-                        /*initStatsBuilder=*/ null,
-                        ALWAYS_OPTIMIZE);
-
         List<AppSearchSchema> schemas =
                 Collections.singletonList(new AppSearchSchema.Builder("type").build());
-        appSearchImpl.setSchema(
+        mAppSearchImpl.setSchema(
                 "package",
                 "database",
                 schemas,
@@ -2362,18 +2345,18 @@ public class AppSearchImplTest {
         // Add a document and persist it.
         GenericDocument document =
                 new GenericDocument.Builder<>("namespace1", "id1", "type").build();
-        appSearchImpl.putDocument("package", "database", document, /*logger=*/ null);
-        appSearchImpl.persistToDisk(PersistType.Code.LITE);
+        mAppSearchImpl.putDocument("package", "database", document, /*logger=*/ null);
+        mAppSearchImpl.persistToDisk(PersistType.Code.LITE);
 
         GenericDocument getResult =
-                appSearchImpl.getDocument(
+                mAppSearchImpl.getDocument(
                         "package", "database", "namespace1", "id1", Collections.emptyMap());
         assertThat(getResult).isEqualTo(document);
 
         // That document should be visible even from another instance.
         AppSearchImpl appSearchImpl2 =
                 AppSearchImpl.create(
-                        appsearchDir,
+                        mAppSearchDir,
                         new UnlimitedLimitConfig(),
                         /*initStatsBuilder=*/ null,
                         ALWAYS_OPTIMIZE);
@@ -2381,22 +2364,14 @@ public class AppSearchImplTest {
                 appSearchImpl2.getDocument(
                         "package", "database", "namespace1", "id1", Collections.emptyMap());
         assertThat(getResult).isEqualTo(document);
+        appSearchImpl2.close();
     }
 
     @Test
     public void testDeletePersistsWithLiteFlush() throws Exception {
-        // Setup the index
-        File appsearchDir = mTemporaryFolder.newFolder();
-        AppSearchImpl appSearchImpl =
-                AppSearchImpl.create(
-                        appsearchDir,
-                        new UnlimitedLimitConfig(),
-                        /*initStatsBuilder=*/ null,
-                        ALWAYS_OPTIMIZE);
-
         List<AppSearchSchema> schemas =
                 Collections.singletonList(new AppSearchSchema.Builder("type").build());
-        appSearchImpl.setSchema(
+        mAppSearchImpl.setSchema(
                 "package",
                 "database",
                 schemas,
@@ -2410,42 +2385,42 @@ public class AppSearchImplTest {
         // Add two documents and persist them.
         GenericDocument document1 =
                 new GenericDocument.Builder<>("namespace1", "id1", "type").build();
-        appSearchImpl.putDocument("package", "database", document1, /*logger=*/ null);
+        mAppSearchImpl.putDocument("package", "database", document1, /*logger=*/ null);
         GenericDocument document2 =
                 new GenericDocument.Builder<>("namespace1", "id2", "type").build();
-        appSearchImpl.putDocument("package", "database", document2, /*logger=*/ null);
-        appSearchImpl.persistToDisk(PersistType.Code.LITE);
+        mAppSearchImpl.putDocument("package", "database", document2, /*logger=*/ null);
+        mAppSearchImpl.persistToDisk(PersistType.Code.LITE);
 
         GenericDocument getResult =
-                appSearchImpl.getDocument(
+                mAppSearchImpl.getDocument(
                         "package", "database", "namespace1", "id1", Collections.emptyMap());
         assertThat(getResult).isEqualTo(document1);
         getResult =
-                appSearchImpl.getDocument(
+                mAppSearchImpl.getDocument(
                         "package", "database", "namespace1", "id2", Collections.emptyMap());
         assertThat(getResult).isEqualTo(document2);
 
         // Delete the first document
-        appSearchImpl.remove("package", "database", "namespace1", "id1", /*statsBuilder=*/ null);
-        appSearchImpl.persistToDisk(PersistType.Code.LITE);
+        mAppSearchImpl.remove("package", "database", "namespace1", "id1", /*statsBuilder=*/ null);
+        mAppSearchImpl.persistToDisk(PersistType.Code.LITE);
         assertThrows(
                 AppSearchException.class,
                 () ->
-                        appSearchImpl.getDocument(
+                        mAppSearchImpl.getDocument(
                                 "package",
                                 "database",
                                 "namespace1",
                                 "id1",
                                 Collections.emptyMap()));
         getResult =
-                appSearchImpl.getDocument(
+                mAppSearchImpl.getDocument(
                         "package", "database", "namespace1", "id2", Collections.emptyMap());
         assertThat(getResult).isEqualTo(document2);
 
         // Only the second document should be retrievable from another instance.
         AppSearchImpl appSearchImpl2 =
                 AppSearchImpl.create(
-                        appsearchDir,
+                        mAppSearchDir,
                         new UnlimitedLimitConfig(),
                         /*initStatsBuilder=*/ null,
                         ALWAYS_OPTIMIZE);
@@ -2462,22 +2437,14 @@ public class AppSearchImplTest {
                 appSearchImpl2.getDocument(
                         "package", "database", "namespace1", "id2", Collections.emptyMap());
         assertThat(getResult).isEqualTo(document2);
+        appSearchImpl2.close();
     }
 
     @Test
     public void testDeleteByQueryPersistsWithLiteFlush() throws Exception {
-        // Setup the index
-        File appsearchDir = mTemporaryFolder.newFolder();
-        AppSearchImpl appSearchImpl =
-                AppSearchImpl.create(
-                        appsearchDir,
-                        new UnlimitedLimitConfig(),
-                        /*initStatsBuilder=*/ null,
-                        ALWAYS_OPTIMIZE);
-
         List<AppSearchSchema> schemas =
                 Collections.singletonList(new AppSearchSchema.Builder("type").build());
-        appSearchImpl.setSchema(
+        mAppSearchImpl.setSchema(
                 "package",
                 "database",
                 schemas,
@@ -2491,23 +2458,23 @@ public class AppSearchImplTest {
         // Add two documents and persist them.
         GenericDocument document1 =
                 new GenericDocument.Builder<>("namespace1", "id1", "type").build();
-        appSearchImpl.putDocument("package", "database", document1, /*logger=*/ null);
+        mAppSearchImpl.putDocument("package", "database", document1, /*logger=*/ null);
         GenericDocument document2 =
                 new GenericDocument.Builder<>("namespace2", "id2", "type").build();
-        appSearchImpl.putDocument("package", "database", document2, /*logger=*/ null);
-        appSearchImpl.persistToDisk(PersistType.Code.LITE);
+        mAppSearchImpl.putDocument("package", "database", document2, /*logger=*/ null);
+        mAppSearchImpl.persistToDisk(PersistType.Code.LITE);
 
         GenericDocument getResult =
-                appSearchImpl.getDocument(
+                mAppSearchImpl.getDocument(
                         "package", "database", "namespace1", "id1", Collections.emptyMap());
         assertThat(getResult).isEqualTo(document1);
         getResult =
-                appSearchImpl.getDocument(
+                mAppSearchImpl.getDocument(
                         "package", "database", "namespace2", "id2", Collections.emptyMap());
         assertThat(getResult).isEqualTo(document2);
 
         // Delete the first document
-        appSearchImpl.removeByQuery(
+        mAppSearchImpl.removeByQuery(
                 "package",
                 "database",
                 "",
@@ -2516,25 +2483,25 @@ public class AppSearchImplTest {
                         .setTermMatch(SearchSpec.TERM_MATCH_EXACT_ONLY)
                         .build(),
                 /*statsBuilder=*/ null);
-        appSearchImpl.persistToDisk(PersistType.Code.LITE);
+        mAppSearchImpl.persistToDisk(PersistType.Code.LITE);
         assertThrows(
                 AppSearchException.class,
                 () ->
-                        appSearchImpl.getDocument(
+                        mAppSearchImpl.getDocument(
                                 "package",
                                 "database",
                                 "namespace1",
                                 "id1",
                                 Collections.emptyMap()));
         getResult =
-                appSearchImpl.getDocument(
+                mAppSearchImpl.getDocument(
                         "package", "database", "namespace2", "id2", Collections.emptyMap());
         assertThat(getResult).isEqualTo(document2);
 
         // Only the second document should be retrievable from another instance.
         AppSearchImpl appSearchImpl2 =
                 AppSearchImpl.create(
-                        appsearchDir,
+                        mAppSearchDir,
                         new UnlimitedLimitConfig(),
                         /*initStatsBuilder=*/ null,
                         ALWAYS_OPTIMIZE);
@@ -2551,22 +2518,14 @@ public class AppSearchImplTest {
                 appSearchImpl2.getDocument(
                         "package", "database", "namespace2", "id2", Collections.emptyMap());
         assertThat(getResult).isEqualTo(document2);
+        appSearchImpl2.close();
     }
 
     @Test
     public void testGetIcingSearchEngineStorageInfo() throws Exception {
-        // Setup the index
-        File appsearchDir = mTemporaryFolder.newFolder();
-        AppSearchImpl appSearchImpl =
-                AppSearchImpl.create(
-                        appsearchDir,
-                        new UnlimitedLimitConfig(),
-                        /*initStatsBuilder=*/ null,
-                        ALWAYS_OPTIMIZE);
-
         List<AppSearchSchema> schemas =
                 Collections.singletonList(new AppSearchSchema.Builder("type").build());
-        appSearchImpl.setSchema(
+        mAppSearchImpl.setSchema(
                 "package",
                 "database",
                 schemas,
@@ -2580,12 +2539,12 @@ public class AppSearchImplTest {
         // Add two documents
         GenericDocument document1 =
                 new GenericDocument.Builder<>("namespace1", "id1", "type").build();
-        appSearchImpl.putDocument("package", "database", document1, /*logger=*/ null);
+        mAppSearchImpl.putDocument("package", "database", document1, /*logger=*/ null);
         GenericDocument document2 =
                 new GenericDocument.Builder<>("namespace1", "id2", "type").build();
-        appSearchImpl.putDocument("package", "database", document2, /*logger=*/ null);
+        mAppSearchImpl.putDocument("package", "database", document2, /*logger=*/ null);
 
-        StorageInfoProto storageInfo = appSearchImpl.getRawStorageInfoProto();
+        StorageInfoProto storageInfo = mAppSearchImpl.getRawStorageInfoProto();
 
         // Simple checks to verify if we can get correct StorageInfoProto from IcingSearchEngine
         // No need to cover all the fields
@@ -3031,7 +2990,7 @@ public class AppSearchImplTest {
     }
 
     @Test
-    public void testLimitConfig_RemoveByQyery() throws Exception {
+    public void testLimitConfig_RemoveByQuery() throws Exception {
         // Create a new mAppSearchImpl with a lower limit
         mAppSearchImpl.close();
         mAppSearchImpl =
