@@ -14,13 +14,12 @@
  * limitations under the License.
  */
 
-package com.android.server.appsearch.testing;
+package android.app.appsearch.testutil;
 
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 
 import android.annotation.NonNull;
-import android.annotation.Nullable;
 import android.app.appsearch.AppSearchBatchResult;
 import android.app.appsearch.AppSearchSessionShim;
 import android.app.appsearch.GenericDocument;
@@ -28,69 +27,23 @@ import android.app.appsearch.GetByDocumentIdRequest;
 import android.app.appsearch.SearchResult;
 import android.app.appsearch.SearchResultsShim;
 
-import com.android.server.appsearch.external.localstorage.AppSearchLogger;
-import com.android.server.appsearch.external.localstorage.stats.CallStats;
-import com.android.server.appsearch.external.localstorage.stats.InitializeStats;
-import com.android.server.appsearch.external.localstorage.stats.OptimizeStats;
-import com.android.server.appsearch.external.localstorage.stats.PutDocumentStats;
-import com.android.server.appsearch.external.localstorage.stats.RemoveStats;
-import com.android.server.appsearch.external.localstorage.stats.SearchStats;
-import com.android.server.appsearch.external.localstorage.stats.SetSchemaStats;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Future;
 
+/**
+ * Class with helper functions for testing for AppSearch.
+ *
+ * @hide
+ */
 public class AppSearchTestUtils {
-    // Non-thread-safe logger implementation for testing
-    public static class TestLogger implements AppSearchLogger {
-        @Nullable public CallStats mCallStats;
-        @Nullable public PutDocumentStats mPutDocumentStats;
-        @Nullable public InitializeStats mInitializeStats;
-        @Nullable public SearchStats mSearchStats;
-        @Nullable public RemoveStats mRemoveStats;
-        @Nullable public OptimizeStats mOptimizeStats;
-        @Nullable public SetSchemaStats mSetSchemaStats;
+    private AppSearchTestUtils() {}
 
-        @Override
-        public void logStats(@NonNull CallStats stats) {
-            mCallStats = stats;
-        }
-
-        @Override
-        public void logStats(@NonNull PutDocumentStats stats) {
-            mPutDocumentStats = stats;
-        }
-
-        @Override
-        public void logStats(@NonNull InitializeStats stats) {
-            mInitializeStats = stats;
-        }
-
-        @Override
-        public void logStats(@NonNull SearchStats stats) {
-            mSearchStats = stats;
-        }
-
-        @Override
-        public void logStats(@NonNull RemoveStats stats) {
-            mRemoveStats = stats;
-        }
-
-        @Override
-        public void logStats(@NonNull OptimizeStats stats) {
-            mOptimizeStats = stats;
-        }
-
-        @Override
-        public void logStats(@NonNull SetSchemaStats stats) {
-            mSetSchemaStats = stats;
-        }
-    }
-
+    /** Checks batch result. */
+    @NonNull
     public static <K, V> AppSearchBatchResult<K, V> checkIsBatchResultSuccess(
-            Future<AppSearchBatchResult<K, V>> future) throws Exception {
+            @NonNull Future<AppSearchBatchResult<K, V>> future) throws Exception {
         AppSearchBatchResult<K, V> result = future.get();
         assertWithMessage("AppSearchBatchResult not successful: " + result)
                 .that(result.isSuccess())
@@ -98,8 +51,13 @@ public class AppSearchTestUtils {
         return result;
     }
 
+    /** Gets documents from ids. */
+    @NonNull
     public static List<GenericDocument> doGet(
-            AppSearchSessionShim session, String namespace, String... ids) throws Exception {
+            @NonNull AppSearchSessionShim session,
+            @NonNull String namespace,
+            @NonNull String... ids)
+            throws Exception {
         AppSearchBatchResult<String, GenericDocument> result =
                 checkIsBatchResultSuccess(
                         session.getByDocumentId(
@@ -113,8 +71,11 @@ public class AppSearchTestUtils {
         return list;
     }
 
+    /** Gets documents from {@link GetByDocumentIdRequest}. */
+    @NonNull
     public static List<GenericDocument> doGet(
-            AppSearchSessionShim session, GetByDocumentIdRequest request) throws Exception {
+            @NonNull AppSearchSessionShim session, @NonNull GetByDocumentIdRequest request)
+            throws Exception {
         AppSearchBatchResult<String, GenericDocument> result =
                 checkIsBatchResultSuccess(session.getByDocumentId(request));
         Set<String> ids = request.getIds();
@@ -127,8 +88,10 @@ public class AppSearchTestUtils {
         return list;
     }
 
+    /** Extracts documents from {@link SearchResultsShim}. */
+    @NonNull
     public static List<GenericDocument> convertSearchResultsToDocuments(
-            SearchResultsShim searchResults) throws Exception {
+            @NonNull SearchResultsShim searchResults) throws Exception {
         List<SearchResult> results = retrieveAllSearchResults(searchResults);
         List<GenericDocument> documents = new ArrayList<>(results.size());
         for (SearchResult result : results) {
@@ -137,8 +100,10 @@ public class AppSearchTestUtils {
         return documents;
     }
 
-    public static List<SearchResult> retrieveAllSearchResults(SearchResultsShim searchResults)
-            throws Exception {
+    /** Extracts all {@link SearchResult} from {@link SearchResultsShim}. */
+    @NonNull
+    public static List<SearchResult> retrieveAllSearchResults(
+            @NonNull SearchResultsShim searchResults) throws Exception {
         List<SearchResult> page = searchResults.getNextPage().get();
         List<SearchResult> results = new ArrayList<>();
         while (!page.isEmpty()) {

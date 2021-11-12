@@ -62,11 +62,6 @@ public final class PutDocumentStats {
     /** Number of tokens added to the index. */
     private final int mNativeNumTokensIndexed;
 
-    /**
-     * Whether the number of tokens to be indexed exceeded the max number of tokens per document.
-     */
-    private final boolean mNativeExceededMaxNumTokens;
-
     PutDocumentStats(@NonNull Builder builder) {
         Objects.requireNonNull(builder);
         mPackageName = builder.mPackageName;
@@ -81,7 +76,6 @@ public final class PutDocumentStats {
         mNativeIndexMergeLatencyMillis = builder.mNativeIndexMergeLatencyMillis;
         mNativeDocumentSizeBytes = builder.mNativeDocumentSizeBytes;
         mNativeNumTokensIndexed = builder.mNativeNumTokensIndexed;
-        mNativeExceededMaxNumTokens = builder.mNativeExceededMaxNumTokens;
     }
 
     /** Returns calling package name. */
@@ -147,14 +141,6 @@ public final class PutDocumentStats {
         return mNativeNumTokensIndexed;
     }
 
-    /**
-     * Returns whether the number of tokens to be indexed exceeded the max number of tokens per
-     * document.
-     */
-    public boolean getNativeExceededMaxNumTokens() {
-        return mNativeExceededMaxNumTokens;
-    }
-
     /** Builder for {@link PutDocumentStats}. */
     public static class Builder {
         @NonNull final String mPackageName;
@@ -169,7 +155,6 @@ public final class PutDocumentStats {
         int mNativeIndexMergeLatencyMillis;
         int mNativeDocumentSizeBytes;
         int mNativeNumTokensIndexed;
-        boolean mNativeExceededMaxNumTokens;
 
         /** Builder for {@link PutDocumentStats} */
         public Builder(@NonNull String packageName, @NonNull String database) {
@@ -248,16 +233,6 @@ public final class PutDocumentStats {
         @NonNull
         public Builder setNativeNumTokensIndexed(int nativeNumTokensIndexed) {
             mNativeNumTokensIndexed = nativeNumTokensIndexed;
-            return this;
-        }
-
-        /**
-         * Sets whether the number of tokens to be indexed exceeded the max number of tokens per
-         * document.
-         */
-        @NonNull
-        public Builder setNativeExceededMaxNumTokens(boolean nativeExceededMaxNumTokens) {
-            mNativeExceededMaxNumTokens = nativeExceededMaxNumTokens;
             return this;
         }
 

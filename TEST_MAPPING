@@ -11,6 +11,9 @@
     },
     {
       "name": "AppSearchServicesTests"
+    },
+    {
+      "name": "AppSearchMockingServicesTests"
     }
   ]
 }

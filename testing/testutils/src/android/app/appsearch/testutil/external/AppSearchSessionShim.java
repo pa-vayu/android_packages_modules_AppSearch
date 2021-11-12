@@ -253,6 +253,13 @@ public interface AppSearchSessionShim extends Closeable {
     ListenableFuture<Void> requestFlush();
 
     /**
+     * Returns the {@link Capabilities} to check for the availability of certain features for this
+     * session.
+     */
+    @NonNull
+    Capabilities getCapabilities();
+
+    /**
      * Closes the {@link AppSearchSessionShim} to persist all schema and document updates,
      * additions, and deletes to disk.
      */

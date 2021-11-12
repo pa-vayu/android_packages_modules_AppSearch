@@ -25,9 +25,9 @@ import android.provider.DeviceConfig;
 
 import androidx.test.core.app.ApplicationProvider;
 
+import com.android.modules.utils.testing.TestableDeviceConfig;
 import com.android.server.appsearch.AppSearchConfig;
 import com.android.server.appsearch.external.localstorage.stats.CallStats;
-import com.android.server.testables.TestableDeviceConfig;
 
 import org.junit.Before;
 import org.junit.Rule;
