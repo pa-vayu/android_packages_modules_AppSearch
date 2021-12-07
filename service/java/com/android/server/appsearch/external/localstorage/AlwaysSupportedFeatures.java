@@ -13,19 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package android.app.appsearch;
+package com.android.server.appsearch.external.localstorage;
+
+import android.annotation.NonNull;
+import android.app.appsearch.Features;
 
 /**
- * A class that encapsulates all features that are only supported with certain combinations of
- * backend and Android API Level.
+ * An implementation of {@link Features}. This implementation always returns true. This is
+ * sufficient for the use in the local backend because all features are always available on the
+ * local backend.
  *
  * @hide
  */
-public interface Capabilities {
+public class AlwaysSupportedFeatures implements Features {
 
-    /**
-     * Returns whether or not {@link SearchResult.MatchInfo#getSubmatchRange} and {@link
-     * SearchResult.MatchInfo#getSubmatch} are available.
-     */
-    boolean isSubmatchSupported();
+    @Override
+    public boolean isFeatureSupported(@NonNull String feature) {
+        if (Features.SEARCH_RESULT_MATCH_INFO_SUBMATCH.equals(feature)) {
+            return true;
+        }
+        return false;
+    }
 }

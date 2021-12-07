@@ -77,11 +77,11 @@ public interface GlobalSearchSessionShim extends Closeable {
     ListenableFuture<Void> reportSystemUsage(@NonNull ReportSystemUsageRequest request);
 
     /**
-     * Returns the {@link Capabilities} to check for the availability of certain features for this
+     * Returns the {@link Features} to check for the availability of certain features for this
      * session.
      */
     @NonNull
-    Capabilities getCapabilities();
+    Features getFeatures();
 
     /** Closes the {@link GlobalSearchSessionShim}. */
     @Override

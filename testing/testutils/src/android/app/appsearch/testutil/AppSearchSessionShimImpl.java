@@ -24,7 +24,7 @@ import android.app.appsearch.AppSearchResult;
 import android.app.appsearch.AppSearchSession;
 import android.app.appsearch.AppSearchSessionShim;
 import android.app.appsearch.BatchResultCallback;
-import android.app.appsearch.Capabilities;
+import android.app.appsearch.Features;
 import android.app.appsearch.GenericDocument;
 import android.app.appsearch.GetByDocumentIdRequest;
 import android.app.appsearch.GetSchemaResponse;
@@ -43,7 +43,7 @@ import android.os.UserHandle;
 
 import androidx.test.core.app.ApplicationProvider;
 
-import com.android.server.appsearch.external.localstorage.AlwaysSupportedCapabilities;
+import com.android.server.appsearch.external.localstorage.AlwaysSupportedFeatures;
 
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -200,8 +200,8 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
 
     @Override
     @NonNull
-    public Capabilities getCapabilities() {
-        return new AlwaysSupportedCapabilities();
+    public Features getFeatures() {
+        return new AlwaysSupportedFeatures();
     }
 
     @Override
