@@ -10,12 +10,7 @@
       "name": "AppSearchCoreTests"
     },
     {
-      "name": "FrameworksServicesTests",
-      "options": [
-        {
-          "include-filter": "com.android.server.appsearch"
-        }
-      ]
+      "name": "AppSearchServicesTests"
     }
   ]
 }
