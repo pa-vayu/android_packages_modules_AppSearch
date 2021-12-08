@@ -17,10 +17,14 @@
 package android.app.appsearch;
 
 import android.annotation.NonNull;
+import android.app.appsearch.exceptions.AppSearchException;
+import android.app.appsearch.observer.AppSearchObserverCallback;
+import android.app.appsearch.observer.ObserverSpec;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.Closeable;
+import java.util.concurrent.Executor;
 
 /**
  * Provides a connection to all AppSearch databases the querying application has been granted access
@@ -82,6 +86,45 @@ public interface GlobalSearchSessionShim extends Closeable {
      */
     @NonNull
     Features getFeatures();
+
+    /**
+     * Adds an {@link AppSearchObserverCallback} to monitor changes within the databases owned by
+     * {@code observedPackage} if they match the given {@link
+     * android.app.appsearch.observer.ObserverSpec}.
+     *
+     * <p>If the data owned by {@code observedPackage} is not visible to you, the registration call
+     * will succeed but no notifications will be dispatched. Notifications could start flowing later
+     * if {@code observedPackage} changes its schema visibility settings.
+     *
+     * <p>If no package matching {@code observedPackage} exists on the system, the registration call
+     * will succeed but no notifications will be dispatched. Notifications could start flowing later
+     * if {@code observedPackage} is installed and starts indexing data.
+     *
+     * @param observedPackage Package whose changes to monitor
+     * @param spec Specification of what types of changes to listen for
+     * @param executor Executor on which to call the {@code observer} callback methods.
+     * @param observer Callback to trigger when a schema or document changes
+     */
+    void addObserver(
+            @NonNull String observedPackage,
+            @NonNull ObserverSpec spec,
+            @NonNull Executor executor,
+            @NonNull AppSearchObserverCallback observer) throws AppSearchException;
+
+    /**
+     * Removes previously registered {@link AppSearchObserverCallback} instances from the system.
+     *
+     * <p>All instances of {@link AppSearchObserverCallback} which are equal to the provided
+     * callback using {@link AppSearchObserverCallback#equals} will be removed.
+     *
+     * <p>If no matching observers have been registered, this method has no effect. If multiple
+     * matching observers have been registered, all will be removed.
+     *
+     * @param observedPackage Package in which the observers to be removed are registered
+     * @param observer Callback to unregister
+     */
+    void removeObserver(
+            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer);
 
     /** Closes the {@link GlobalSearchSessionShim}. */
     @Override
