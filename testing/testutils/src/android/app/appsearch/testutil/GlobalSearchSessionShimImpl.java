@@ -19,7 +19,7 @@ package android.app.appsearch.testutil;
 import android.annotation.NonNull;
 import android.app.appsearch.AppSearchManager;
 import android.app.appsearch.AppSearchResult;
-import android.app.appsearch.Capabilities;
+import android.app.appsearch.Features;
 import android.app.appsearch.GlobalSearchSession;
 import android.app.appsearch.GlobalSearchSessionShim;
 import android.app.appsearch.ReportSystemUsageRequest;
@@ -31,7 +31,7 @@ import android.content.Context;
 
 import androidx.test.core.app.ApplicationProvider;
 
-import com.android.server.appsearch.external.localstorage.AlwaysSupportedCapabilities;
+import com.android.server.appsearch.external.localstorage.AlwaysSupportedFeatures;
 
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -94,8 +94,8 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
 
     @NonNull
     @Override
-    public Capabilities getCapabilities() {
-        return new AlwaysSupportedCapabilities();
+    public Features getFeatures() {
+        return new AlwaysSupportedFeatures();
     }
 
     @Override
