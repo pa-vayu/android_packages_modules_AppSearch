@@ -13,21 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.android.server.appsearch.visibilitystore;
+package android.app.appsearch;
 
 import android.annotation.NonNull;
-import android.app.appsearch.AppSearchSchema;
-import android.app.appsearch.GenericDocument;
-import android.app.appsearch.PackageIdentifier;
-import android.app.appsearch.SetSchemaRequest;
 import android.os.Bundle;
 import android.util.ArrayMap;
 import android.util.ArraySet;
 
-import com.android.server.appsearch.external.localstorage.util.PrefixUtil;
-
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -39,7 +32,7 @@ import java.util.Set;
  */
 public class VisibilityDocument extends GenericDocument {
     /**
-     * Prefixed Schema type for documents that hold AppSearch's metadata, e.g. visibility settings
+     * The Schema type for documents that hold AppSearch's metadata, e.g. visibility settings.
      */
     public static final String SCHEMA_TYPE = "VisibilityType";
     /** Namespace of documents that contain visibility settings */
@@ -56,11 +49,19 @@ public class VisibilityDocument extends GenericDocument {
     /** Property that holds the SHA 256 certificate of the app that can access a schema. */
     private static final String SHA_256_CERT_PROPERTY = "sha256Cert";
 
+    // The initial schema version, one VisibilityDocument contains all visibility information for
+    // whole package.
+    public static final int SCHEMA_VERSION_DOC_PER_PACKAGE = 0;
+
+    // One VisibilityDocument contains visibility information for a single schema.
+    public static final int SCHEMA_VERSION_DOC_PER_SCHEMA = 1;
+
+    public static final int SCHEMA_VERSION_LATEST = SCHEMA_VERSION_DOC_PER_SCHEMA;
+
     /**
      * Schema for the VisibilityStore's documents.
      *
-     * <p>NOTE: If you update this, also update
-     * {@link com.android.server.appsearch.visibilitystore.VisibilityStoreImpl#SCHEMA_VERSION}
+     * <p>NOTE: If you update this, also update {@link #SCHEMA_VERSION_LATEST}.
      */
     public static final AppSearchSchema SCHEMA = new AppSearchSchema.Builder(SCHEMA_TYPE)
             .addProperty(new AppSearchSchema.BooleanPropertyConfig.Builder(
@@ -133,8 +134,7 @@ public class VisibilityDocument extends GenericDocument {
 
         /** Add {@link PackageIdentifier} of packages which has access to this schema. */
         @NonNull
-        public Builder addVisibleToPackages(@NonNull Collection<PackageIdentifier>
-                packageIdentifiers) {
+        public Builder addVisibleToPackages(@NonNull Set<PackageIdentifier> packageIdentifiers) {
             Objects.requireNonNull(packageIdentifiers);
             mPackageIdentifiers.addAll(packageIdentifiers);
             return this;
@@ -164,59 +164,28 @@ public class VisibilityDocument extends GenericDocument {
         }
     }
 
-    /**
-     * Build the List of {@link VisibilityDocument} from visibility settings.
-     *
-     * @param schemas                     List of {@link AppSearchSchema}.
-     * @param schemasNotDisplayedBySystem Non-prefixed Schema types that should not be surfaced on
-     *                                    platform surfaces.
-     * @param schemasVisibleToPackages    Non-prefixed Schema types that are visible to the
-     *                                    specified packages. The value List contains
-     *                                    PackageIdentifier.
-     */
-    //TODO(b/202194495) move this class to the sdk side and convert from SetSchemaRequest.
+
+    /**  Build the List of {@link VisibilityDocument} from visibility settings. */
     @NonNull
     public static List<VisibilityDocument> toVisibilityDocuments(
-            @NonNull List<AppSearchSchema> schemas,
-            @NonNull List<String> schemasNotDisplayedBySystem,
-            @NonNull Map<String, List<PackageIdentifier>> schemasVisibleToPackages) {
-        Map<String, VisibilityDocument.Builder> documentBuilderMap = new ArrayMap<>(schemas.size());
+            @NonNull SetSchemaRequest setSchemaRequest) {
+        Set<AppSearchSchema> searchSchemas = setSchemaRequest.getSchemas();
+        Set<String> schemasNotDisplayedBySystem = setSchemaRequest.getSchemasNotDisplayedBySystem();
+        Map<String, Set<PackageIdentifier>> schemasVisibleToPackages =
+                setSchemaRequest.getSchemasVisibleToPackages();
 
-        // Set all visibility information into documentBuilderMap. All invoked schema types must
-        // present in schemas. This is checked in SetSchemaRequest.Builder.Build();
+        List<VisibilityDocument> visibilityDocuments = new ArrayList<>(searchSchemas.size());
 
-        // Save schemas not displayed by system into documentBuilderMap
-        for (int i = 0; i < schemasNotDisplayedBySystem.size(); i++) {
-            VisibilityDocument.Builder visibilityBuilder = getOrCreateBuilder(
-                    documentBuilderMap, schemasNotDisplayedBySystem.get(i));
-            visibilityBuilder.setNotDisplayedBySystem(true);
-        }
-
-        // Save schemas visible package identifier into documentBuilderMap
-        for (Map.Entry<String, List<PackageIdentifier>> entry :
-                schemasVisibleToPackages.entrySet()) {
-            VisibilityDocument.Builder visibilityBuilder = getOrCreateBuilder(
-                    documentBuilderMap, entry.getKey());
-            visibilityBuilder.addVisibleToPackages(entry.getValue());
-        }
-
-        // Convert Map<Schema, document.builder> into list of document.
-        List<VisibilityDocument> visibilityDocuments = new ArrayList<>(documentBuilderMap.size());
-        for (VisibilityDocument.Builder builder : documentBuilderMap.values()) {
-            visibilityDocuments.add(builder.build());
+        for (AppSearchSchema searchSchema : searchSchemas) {
+            String schemaType = searchSchema.getSchemaType();
+            visibilityDocuments.add(
+                    new VisibilityDocument.Builder(/*id=*/searchSchema.getSchemaType())
+                            .setNotDisplayedBySystem(
+                                    schemasNotDisplayedBySystem.contains(schemaType))
+                            .addVisibleToPackages(schemasVisibleToPackages
+                                    .getOrDefault(schemaType, new ArraySet<>()))
+                            .build());
         }
         return visibilityDocuments;
-    }
-
-    @NonNull
-    private static Builder getOrCreateBuilder(
-            @NonNull Map<String, VisibilityDocument.Builder> documentBuilderMap,
-            @NonNull String schemaType) {
-        Builder builder = documentBuilderMap.get(schemaType);
-        if (builder == null) {
-            builder = new VisibilityDocument.Builder(/*id=*/ schemaType);
-            documentBuilderMap.put(schemaType, builder);
-        }
-        return builder;
     }
 }

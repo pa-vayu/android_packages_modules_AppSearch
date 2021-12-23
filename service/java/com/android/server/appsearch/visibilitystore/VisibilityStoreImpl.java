@@ -23,6 +23,7 @@ import android.annotation.NonNull;
 import android.app.appsearch.AppSearchSchema;
 import android.app.appsearch.GenericDocument;
 import android.app.appsearch.GetSchemaResponse;
+import android.app.appsearch.VisibilityDocument;
 import android.app.appsearch.exceptions.AppSearchException;
 import android.content.Context;
 import android.content.pm.PackageManager;
@@ -47,8 +48,8 @@ import java.util.Set;
  * Manages any visibility settings for all the package's databases that AppSearchImpl knows about.
  * Persists the visibility settings and reloads them on initialization.
  *
- * <p>The VisibilityStore creates a document for each package's databases. This document holds the
- * visibility settings that apply to that package's database. The VisibilityStore also creates a
+ * <p>The VisibilityStore creates a {@link VisibilityDocument} for each schema. This document holds
+ * the visibility settings that apply to that schema. The VisibilityStore also creates a
  * schema for these documents and has its own package and database so that its data doesn't
  * interfere with any clients' data. It persists the document and schema through AppSearchImpl.
  *
@@ -62,17 +63,6 @@ import java.util.Set;
  */
 public class VisibilityStoreImpl implements VisibilityStore {
     private static final String TAG = "AppSearchVisibilityStor";
-    // The initial schema version, one VisibilityDocument contains all visibility information for
-    // whole package.
-    private static final int SCHEMA_VERSION_DOC_PER_PACKAGE = 0;
-
-    // One VisibilityDocument contains visibility information for a single schema.
-    private static final int SCHEMA_VERSION_DOC_PER_SCHEMA = 1;
-
-    private static final int SCHEMA_VERSION_LATEST = SCHEMA_VERSION_DOC_PER_SCHEMA;
-
-    /** Version for the visibility schema */
-    private static final int SCHEMA_VERSION = 1;
 
     private final AppSearchImpl mAppSearchImpl;
 
@@ -106,10 +96,10 @@ public class VisibilityStoreImpl implements VisibilityStore {
         GetSchemaResponse getSchemaResponse =
             mAppSearchImpl.getSchema(PACKAGE_NAME, PACKAGE_NAME, DATABASE_NAME);
         switch (getSchemaResponse.getVersion()) {
-            case SCHEMA_VERSION_DOC_PER_PACKAGE:
+            case VisibilityDocument.SCHEMA_VERSION_DOC_PER_PACKAGE:
                 maybeMigrateToLatest(getSchemaResponse);
                 break;
-            case SCHEMA_VERSION_LATEST:
+            case VisibilityDocument.SCHEMA_VERSION_LATEST:
                 // The latest Visibility schema is in AppSearch, we must find our schema type.
                 // Extract all stored Visibility Document into mVisibilityDocumentMap.
                 loadVisibilityDocumentMap();
@@ -326,7 +316,7 @@ public class VisibilityStoreImpl implements VisibilityStore {
                 /*visibilityStore=*/ null,  // Avoid recursive calls
                 /*visibilityDocuments=*/ Collections.emptyList(),
                 /*forceOverride=*/ true,
-                /*version=*/ SCHEMA_VERSION,
+                /*version=*/ VisibilityDocument.SCHEMA_VERSION_LATEST,
                 /*setSchemaStatsBuilder=*/ null);
         if (hasDeprecatedType) {
             Map<String, VisibilityDocument.Builder> documentBuilderMap =

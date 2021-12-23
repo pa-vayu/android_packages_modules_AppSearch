@@ -28,11 +28,11 @@ import android.app.appsearch.AppSearchResult;
 import android.app.appsearch.AppSearchSchema;
 import android.app.appsearch.GenericDocument;
 import android.app.appsearch.GetSchemaResponse;
-import android.app.appsearch.PackageIdentifier;
 import android.app.appsearch.SearchResultPage;
 import android.app.appsearch.SearchSpec;
 import android.app.appsearch.SetSchemaResponse;
 import android.app.appsearch.StorageInfo;
+import android.app.appsearch.VisibilityDocument;
 import android.app.appsearch.aidl.AppSearchBatchResultParcel;
 import android.app.appsearch.aidl.AppSearchResultParcel;
 import android.app.appsearch.aidl.IAppSearchBatchResultCallback;
@@ -58,7 +58,6 @@ import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.UserHandle;
 import android.os.UserManager;
-import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Log;
 
@@ -71,7 +70,6 @@ import com.android.server.appsearch.external.localstorage.visibilitystore.Visibi
 import com.android.server.appsearch.observer.AppSearchObserverProxy;
 import com.android.server.appsearch.stats.StatsCollector;
 import com.android.server.appsearch.util.PackageUtil;
-import com.android.server.appsearch.visibilitystore.VisibilityDocument;
 import com.android.server.usage.StorageStatsManagerLocal;
 import com.android.server.usage.StorageStatsManagerLocal.StorageStatsAugmenter;
 
@@ -324,8 +322,7 @@ public class AppSearchManagerService extends SystemService {
                 @NonNull String packageName,
                 @NonNull String databaseName,
                 @NonNull List<Bundle> schemaBundles,
-                @NonNull List<String> schemasNotDisplayedBySystem,
-                @NonNull Map<String, List<Bundle>> schemasVisibleToPackagesBundles,
+                @NonNull List<Bundle> visibilityBundles,
                 boolean forceOverride,
                 int schemaVersion,
                 @NonNull UserHandle userHandle,
@@ -334,8 +331,7 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(packageName);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(schemaBundles);
-            Objects.requireNonNull(schemasNotDisplayedBySystem);
-            Objects.requireNonNull(schemasVisibleToPackagesBundles);
+            Objects.requireNonNull(visibilityBundles);
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
 
@@ -360,23 +356,12 @@ public class AppSearchManagerService extends SystemService {
                     for (int i = 0; i < schemaBundles.size(); i++) {
                         schemas.add(new AppSearchSchema(schemaBundles.get(i)));
                     }
-                    // TODO(b/202194495) move build VisibilityDocument to the SDK side and only pass
-                    //  it/s bundle via binder.
-                    Map<String, List<PackageIdentifier>> schemasVisibleToPackages =
-                            new ArrayMap<>(schemasVisibleToPackagesBundles.size());
-                    for (Map.Entry<String, List<Bundle>> entry :
-                            schemasVisibleToPackagesBundles.entrySet()) {
-                        List<PackageIdentifier> packageIdentifiers =
-                                new ArrayList<>(entry.getValue().size());
-                        for (int i = 0; i < entry.getValue().size(); i++) {
-                            packageIdentifiers.add(
-                                    new PackageIdentifier(entry.getValue().get(i)));
-                        }
-                        schemasVisibleToPackages.put(entry.getKey(), packageIdentifiers);
+                    List<VisibilityDocument> visibilityDocuments =
+                            new ArrayList<>(visibilityBundles.size());
+                    for (int i = 0; i < visibilityBundles.size(); i++) {
+                        visibilityDocuments.add(
+                                new VisibilityDocument(visibilityBundles.get(i)));
                     }
-                    List<VisibilityDocument> visibilityDocuments = VisibilityDocument
-                            .toVisibilityDocuments(schemas, schemasNotDisplayedBySystem,
-                                    schemasVisibleToPackages);
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     // TODO(b/173532925): Implement logging for statsBuilder
                     SetSchemaResponse setSchemaResponse = instance.getAppSearchImpl().setSchema(

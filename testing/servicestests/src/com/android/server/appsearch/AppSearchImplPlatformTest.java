@@ -32,6 +32,7 @@ import static org.mockito.Mockito.when;
 import android.annotation.NonNull;
 import android.app.appsearch.AppSearchSchema;
 import android.app.appsearch.PackageIdentifier;
+import android.app.appsearch.VisibilityDocument;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.pm.PackageManager;
@@ -40,11 +41,8 @@ import android.util.ArrayMap;
 
 import androidx.test.core.app.ApplicationProvider;
 
-import com.android.compatibility.common.util.SystemUtil;
-
 import com.android.server.appsearch.external.localstorage.util.PrefixUtil;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
-import com.android.server.appsearch.visibilitystore.VisibilityDocument;
 import com.android.server.appsearch.visibilitystore.VisibilityStoreImpl;
 
 import com.google.common.collect.ImmutableList;
@@ -173,14 +171,12 @@ public class AppSearchImplPlatformTest {
                 /*setSchemaStatsBuilder=*/ null);
 
         // Check that "schema1" still has the same visibility settings
-        SystemUtil.runWithShellPermissionIdentity(() -> assertThat(
-                mVisibilityStore.isSchemaSearchableByCaller(
-                        "package",
-                        prefix + "Schema1",
-                        mGlobalQuerierUid,
-                        /*callerHasSystemAccess=*/ true))
-                        .isFalse(),
-                READ_GLOBAL_APP_SEARCH_DATA);
+        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
+                "package",
+                prefix + "Schema1",
+                mGlobalQuerierUid,
+                /*callerHasSystemAccess=*/ true))
+                .isFalse();
 
         assertThat(mVisibilityStore.isSchemaSearchableByCaller(
                 "package",
@@ -189,15 +185,13 @@ public class AppSearchImplPlatformTest {
                 /*callerHasSystemAccess=*/ false))
                 .isTrue();
 
-        // "Schema2" has default visibility settings
-        SystemUtil.runWithShellPermissionIdentity(() -> assertThat(
-                mVisibilityStore.isSchemaSearchableByCaller(
-                        "package",
-                        prefix + "Schema2",
-                        mGlobalQuerierUid,
-                        /*callerHasSystemAccess=*/ true))
-                        .isTrue(),
-                READ_GLOBAL_APP_SEARCH_DATA);
+        // "schema2" has default visibility settings
+        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
+                "package",
+                prefix + "Schema2",
+                mGlobalQuerierUid,
+                /*callerHasSystemAccess=*/ true))
+                .isTrue();
 
         assertThat(mVisibilityStore.isSchemaSearchableByCaller(
                 "package",

@@ -35,6 +35,7 @@ import android.app.appsearch.SearchResultPage;
 import android.app.appsearch.SearchSpec;
 import android.app.appsearch.SetSchemaResponse;
 import android.app.appsearch.StorageInfo;
+import android.app.appsearch.VisibilityDocument;
 import android.app.appsearch.exceptions.AppSearchException;
 import android.app.appsearch.observer.AppSearchObserverCallback;
 import android.app.appsearch.observer.ObserverSpec;
@@ -62,7 +63,6 @@ import com.android.server.appsearch.external.localstorage.stats.SearchStats;
 import com.android.server.appsearch.external.localstorage.stats.SetSchemaStats;
 import com.android.server.appsearch.external.localstorage.util.PrefixUtil;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
-import com.android.server.appsearch.visibilitystore.VisibilityDocument;
 
 import com.google.android.icing.IcingSearchEngine;
 import com.google.android.icing.proto.DeleteByQueryResultProto;
@@ -511,6 +511,11 @@ public final class AppSearchImpl implements Closeable {
                         new ArraySet<>(rewrittenSchemaResults.mRewrittenPrefixedTypes.keySet());
                 for (int i = 0; i < visibilityDocuments.size(); i++) {
                     VisibilityDocument unPrefixedDocument = visibilityDocuments.get(i);
+                    // The VisibilityDocument is controlled by the client and it's untrusted but we
+                    // make it safe by appending a prefix.
+                    // We must control the package-database prefix. Therefore even if the client
+                    // fake the id, they can only mess their own app. That's totally allowed and
+                    // they can do this via the public API too.
                     String prefixedSchemaType = prefix + unPrefixedDocument.getId();
                     prefixedVisibilityDocuments.add(new VisibilityDocument(
                             unPrefixedDocument.toBuilder()

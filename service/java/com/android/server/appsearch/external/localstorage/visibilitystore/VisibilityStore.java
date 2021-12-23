@@ -16,10 +16,10 @@
 package com.android.server.appsearch.external.localstorage.visibilitystore;
 
 import android.annotation.NonNull;
+import android.app.appsearch.VisibilityDocument;
 import android.app.appsearch.exceptions.AppSearchException;
 
 import com.android.internal.annotations.VisibleForTesting;
-import com.android.server.appsearch.visibilitystore.VisibilityDocument;
 
 import java.util.List;
 import java.util.Set;

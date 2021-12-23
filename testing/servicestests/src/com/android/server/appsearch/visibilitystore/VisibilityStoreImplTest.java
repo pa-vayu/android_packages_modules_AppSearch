@@ -28,6 +28,7 @@ import static org.mockito.Mockito.when;
 
 import android.annotation.NonNull;
 import android.app.appsearch.PackageIdentifier;
+import android.app.appsearch.VisibilityDocument;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.pm.PackageManager;
