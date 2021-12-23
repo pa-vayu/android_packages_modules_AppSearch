@@ -27,5 +27,8 @@ android_test {
         "service-appsearch",
         "truth-prebuilt",
     ],
-    test_suites: ["general-tests"],
+    test_suites: [
+        "general-tests",
+        "mts-appsearch",
+    ],
 }

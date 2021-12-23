@@ -33,5 +33,8 @@ android_test {
         "framework-res",
     ],
     sdk_version: "core_current",
-    test_suites: ["general-tests"],
+    test_suites: [
+        "general-tests",
+        "mts-appsearch",
+    ],
 }
