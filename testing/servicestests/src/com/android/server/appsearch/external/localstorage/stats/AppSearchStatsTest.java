@@ -93,8 +93,7 @@ public class AppSearchStatsTest {
                         .setNativeIndexLatencyMillis(nativeIndexLatencyMillis)
                         .setNativeIndexMergeLatencyMillis(nativeIndexMergeLatencyMillis)
                         .setNativeDocumentSizeBytes(nativeDocumentSize)
-                        .setNativeNumTokensIndexed(nativeNumTokensIndexed)
-                        .setNativeExceededMaxNumTokens(nativeExceededMaxNumTokens);
+                        .setNativeNumTokensIndexed(nativeNumTokensIndexed);
 
         final PutDocumentStats pStats = pStatsBuilder.build();
 
@@ -114,7 +113,6 @@ public class AppSearchStatsTest {
                 .isEqualTo(nativeIndexMergeLatencyMillis);
         assertThat(pStats.getNativeDocumentSizeBytes()).isEqualTo(nativeDocumentSize);
         assertThat(pStats.getNativeNumTokensIndexed()).isEqualTo(nativeNumTokensIndexed);
-        assertThat(pStats.getNativeExceededMaxNumTokens()).isEqualTo(nativeExceededMaxNumTokens);
     }
 
     @Test

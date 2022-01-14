@@ -14,11 +14,9 @@
  * limitations under the License.
  */
 
-package android.app.appsearch;
+package android.app.appsearch.testutil;
 
 import static com.google.common.truth.Truth.assertThat;
-
-import com.android.server.appsearch.testing.AppSearchEmail;
 
 import org.junit.Test;
 

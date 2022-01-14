@@ -255,7 +255,7 @@ public final class PlatformLogger implements AppSearchLogger {
                     stats.getNativeIndexMergeLatencyMillis(),
                     stats.getNativeDocumentSizeBytes(),
                     stats.getNativeNumTokensIndexed(),
-                    stats.getNativeExceededMaxNumTokens());
+                    /*nativeExceededMaxNumTokens=*/false /* Deprecated and removed */);
         } catch (NoSuchAlgorithmException | UnsupportedEncodingException e) {
             // TODO(b/184204720) report hashing error to statsd
             //  We need to set a special value(e.g. 0xFFFFFFFF) for the hashing of the database,

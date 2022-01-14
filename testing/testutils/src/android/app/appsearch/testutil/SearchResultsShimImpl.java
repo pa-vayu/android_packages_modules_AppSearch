@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.android.server.appsearch.testing;
+package android.app.appsearch.testutil;
 
 import android.annotation.NonNull;
 import android.app.appsearch.AppSearchResult;

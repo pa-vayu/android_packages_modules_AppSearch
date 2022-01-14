@@ -18,16 +18,14 @@ package com.android.server.appsearch.external.localstorage;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import android.annotation.NonNull;
-import android.annotation.Nullable;
 import android.app.appsearch.AppSearchResult;
 import android.app.appsearch.AppSearchSchema;
 import android.app.appsearch.GenericDocument;
 import android.app.appsearch.SearchResultPage;
 import android.app.appsearch.SearchSpec;
 import android.app.appsearch.exceptions.AppSearchException;
+import android.app.appsearch.testutil.SimpleTestLogger;
 
-import com.android.server.appsearch.external.localstorage.stats.CallStats;
 import com.android.server.appsearch.external.localstorage.stats.InitializeStats;
 import com.android.server.appsearch.external.localstorage.stats.OptimizeStats;
 import com.android.server.appsearch.external.localstorage.stats.PutDocumentStats;
@@ -48,6 +46,7 @@ import com.android.server.appsearch.icing.proto.TermMatchType;
 
 import com.google.common.collect.ImmutableList;
 
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -68,7 +67,7 @@ public class AppSearchLoggerTest {
 
     @Rule public TemporaryFolder mTemporaryFolder = new TemporaryFolder();
     private AppSearchImpl mAppSearchImpl;
-    private TestLogger mLogger;
+    private SimpleTestLogger mLogger;
 
     @Before
     public void setUp() throws Exception {
@@ -78,53 +77,12 @@ public class AppSearchLoggerTest {
                         new UnlimitedLimitConfig(),
                         /*initStatsBuilder=*/ null,
                         ALWAYS_OPTIMIZE);
-        mLogger = new TestLogger();
+        mLogger = new SimpleTestLogger();
     }
 
-    // Test only not thread safe.
-    public static class TestLogger implements AppSearchLogger {
-        @Nullable CallStats mCallStats;
-        @Nullable PutDocumentStats mPutDocumentStats;
-        @Nullable InitializeStats mInitializeStats;
-        @Nullable SearchStats mSearchStats;
-        @Nullable RemoveStats mRemoveStats;
-        @Nullable OptimizeStats mOptimizeStats;
-        @Nullable SetSchemaStats mSetSchemaStats;
-
-        @Override
-        public void logStats(@NonNull CallStats stats) {
-            mCallStats = stats;
-        }
-
-        @Override
-        public void logStats(@NonNull PutDocumentStats stats) {
-            mPutDocumentStats = stats;
-        }
-
-        @Override
-        public void logStats(@NonNull InitializeStats stats) {
-            mInitializeStats = stats;
-        }
-
-        @Override
-        public void logStats(@NonNull SearchStats stats) {
-            mSearchStats = stats;
-        }
-
-        @Override
-        public void logStats(@NonNull RemoveStats stats) {
-            mRemoveStats = stats;
-        }
-
-        @Override
-        public void logStats(@NonNull OptimizeStats stats) {
-            mOptimizeStats = stats;
-        }
-
-        @Override
-        public void logStats(@NonNull SetSchemaStats stats) {
-            mSetSchemaStats = stats;
-        }
+    @After
+    public void tearDown() {
+        mAppSearchImpl.close();
     }
 
     @Test
@@ -202,7 +160,6 @@ public class AppSearchLoggerTest {
                         .setTokenizationStats(
                                 PutDocumentStatsProto.TokenizationStats.newBuilder()
                                         .setNumTokensIndexed(nativeNumTokensIndexed)
-                                        .setExceededMaxTokenNum(nativeExceededMaxNumTokens)
                                         .build())
                         .build();
         PutDocumentStats.Builder pBuilder = new PutDocumentStats.Builder(PACKAGE_NAME, DATABASE);
@@ -218,7 +175,6 @@ public class AppSearchLoggerTest {
                 .isEqualTo(nativeIndexMergeLatencyMillis);
         assertThat(pStats.getNativeDocumentSizeBytes()).isEqualTo(nativeDocumentSize);
         assertThat(pStats.getNativeNumTokensIndexed()).isEqualTo(nativeNumTokensIndexed);
-        assertThat(pStats.getNativeExceededMaxNumTokens()).isEqualTo(nativeExceededMaxNumTokens);
     }
 
     @Test
@@ -383,12 +339,14 @@ public class AppSearchLoggerTest {
     public void testLoggingStats_initializeWithoutDocuments_success() throws Exception {
         // Create an unused AppSearchImpl to generated an InitializeStats.
         InitializeStats.Builder initStatsBuilder = new InitializeStats.Builder();
-        AppSearchImpl.create(
-                mTemporaryFolder.newFolder(),
-                new UnlimitedLimitConfig(),
-                initStatsBuilder,
-                ALWAYS_OPTIMIZE);
+        AppSearchImpl appSearchImpl =
+                AppSearchImpl.create(
+                        mTemporaryFolder.newFolder(),
+                        new UnlimitedLimitConfig(),
+                        initStatsBuilder,
+                        ALWAYS_OPTIMIZE);
         InitializeStats iStats = initStatsBuilder.build();
+        appSearchImpl.close();
 
         assertThat(iStats).isNotNull();
         assertThat(iStats.getStatusCode()).isEqualTo(AppSearchResult.RESULT_OK);
@@ -438,7 +396,9 @@ public class AppSearchLoggerTest {
 
         // Create another appsearchImpl on the same folder
         InitializeStats.Builder initStatsBuilder = new InitializeStats.Builder();
-        AppSearchImpl.create(folder, new UnlimitedLimitConfig(), initStatsBuilder, ALWAYS_OPTIMIZE);
+        appSearchImpl =
+                AppSearchImpl.create(
+                        folder, new UnlimitedLimitConfig(), initStatsBuilder, ALWAYS_OPTIMIZE);
         InitializeStats iStats = initStatsBuilder.build();
 
         assertThat(iStats).isNotNull();
@@ -453,6 +413,7 @@ public class AppSearchLoggerTest {
         assertThat(iStats.getSchemaTypeCount()).isEqualTo(2);
         assertThat(iStats.hasReset()).isEqualTo(false);
         assertThat(iStats.getResetStatusCode()).isEqualTo(AppSearchResult.RESULT_OK);
+        appSearchImpl.close();
     }
 
     @Test
@@ -500,13 +461,16 @@ public class AppSearchLoggerTest {
 
         // Create another appsearchImpl on the same folder
         InitializeStats.Builder initStatsBuilder = new InitializeStats.Builder();
-        AppSearchImpl.create(folder, new UnlimitedLimitConfig(), initStatsBuilder, ALWAYS_OPTIMIZE);
+        appSearchImpl =
+                AppSearchImpl.create(
+                        folder, new UnlimitedLimitConfig(), initStatsBuilder, ALWAYS_OPTIMIZE);
         InitializeStats iStats = initStatsBuilder.build();
 
         // Some of other fields are already covered by AppSearchImplTest#testReset()
         assertThat(iStats).isNotNull();
         assertThat(iStats.getStatusCode()).isEqualTo(AppSearchResult.RESULT_INTERNAL_ERROR);
         assertThat(iStats.hasReset()).isTrue();
+        appSearchImpl.close();
     }
 
     @Test
