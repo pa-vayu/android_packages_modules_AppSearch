@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.android.server.appsearch.testing;
+package android.app.appsearch.testutil;
 
 import android.annotation.NonNull;
 import android.annotation.UserIdInt;
@@ -24,6 +24,7 @@ import android.app.appsearch.AppSearchResult;
 import android.app.appsearch.AppSearchSession;
 import android.app.appsearch.AppSearchSessionShim;
 import android.app.appsearch.BatchResultCallback;
+import android.app.appsearch.Capabilities;
 import android.app.appsearch.GenericDocument;
 import android.app.appsearch.GetByDocumentIdRequest;
 import android.app.appsearch.GetSchemaResponse;
@@ -41,6 +42,8 @@ import android.content.Context;
 import android.os.UserHandle;
 
 import androidx.test.core.app.ApplicationProvider;
+
+import com.android.server.appsearch.external.localstorage.AlwaysSupportedCapabilities;
 
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -186,11 +189,6 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
     }
 
     @Override
-    public void close() {
-        mAppSearchSession.close();
-    }
-
-    @Override
     @NonNull
     public ListenableFuture<Void> requestFlush() {
         SettableFuture<AppSearchResult<Void>> future = SettableFuture.create();
@@ -198,6 +196,17 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
         // anything extra flush.
         future.set(AppSearchResult.newSuccessfulResult(null));
         return Futures.transformAsync(future, this::transformResult, mExecutor);
+    }
+
+    @Override
+    @NonNull
+    public Capabilities getCapabilities() {
+        return new AlwaysSupportedCapabilities();
+    }
+
+    @Override
+    public void close() {
+        mAppSearchSession.close();
     }
 
     private <T> ListenableFuture<T> transformResult(

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.android.server.appsearch.testing;
+package android.app.appsearch.testutil;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -27,6 +27,8 @@ import android.app.appsearch.GenericDocument;
  * Encapsulates a {@link GenericDocument} that represent an email.
  *
  * <p>This class is a higher level implement of {@link GenericDocument}.
+ *
+ * @hide
  */
 public class AppSearchEmail extends GenericDocument {
     /** The name of the schema type for {@link AppSearchEmail} documents. */
