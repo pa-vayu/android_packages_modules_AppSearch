@@ -44,7 +44,6 @@ import com.android.server.appsearch.external.localstorage.util.PrefixUtil;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
 
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 
 import org.junit.Before;
 import org.junit.Rule;
@@ -54,7 +53,7 @@ import org.mockito.Mockito;
 
 import java.util.Map;
 
-public class VisibilityStoreImplTest {
+public class VisibilityCheckerImplTest {
     /**
      * Always trigger optimize in this class. OptimizeStrategy will be tested in its own test class.
      */
@@ -63,7 +62,8 @@ public class VisibilityStoreImplTest {
     @Rule public TemporaryFolder mTemporaryFolder = new TemporaryFolder();
     private final Map<UserHandle, PackageManager> mMockPackageManagers = new ArrayMap<>();
     private Context mContext;
-    private VisibilityStoreImpl mVisibilityStore;
+    private VisibilityCheckerImpl mVisibilityChecker;
+    private VisibilityStore mVisibilityStore;
     private int mUid;
 
     @Before
@@ -86,36 +86,16 @@ public class VisibilityStoreImplTest {
             }
         };
 
+        mVisibilityChecker = new VisibilityCheckerImpl(mContext);
         // Give ourselves global query permissions
         AppSearchImpl appSearchImpl = AppSearchImpl.create(
                 mTemporaryFolder.newFolder(),
                 new UnlimitedLimitConfig(),
                 /*initStatsBuilder=*/ null,
-                ALWAYS_OPTIMIZE);
-        mVisibilityStore = VisibilityStoreImpl.create(appSearchImpl, mContext);
+                ALWAYS_OPTIMIZE,
+                mVisibilityChecker);
+        mVisibilityStore = new VisibilityStore(appSearchImpl);
         mUid = mContext.getPackageManager().getPackageUid(mContext.getPackageName(), /*flags=*/ 0);
-    }
-
-    /**
-     * Make sure that we don't conflict with any special characters that AppSearchImpl has reserved.
-     */
-    @Test
-    public void testValidPackageName() {
-        assertThat(VisibilityStore.PACKAGE_NAME)
-                .doesNotContain(String.valueOf(PrefixUtil.PACKAGE_DELIMITER));
-        assertThat(VisibilityStore.PACKAGE_NAME)
-                .doesNotContain(String.valueOf(PrefixUtil.DATABASE_DELIMITER));
-    }
-
-    /**
-     * Make sure that we don't conflict with any special characters that AppSearchImpl has reserved.
-     */
-    @Test
-    public void testValidDatabaseName() {
-        assertThat(VisibilityStore.DATABASE_NAME)
-                .doesNotContain(String.valueOf(PrefixUtil.PACKAGE_DELIMITER));
-        assertThat(VisibilityStore.DATABASE_NAME)
-                .doesNotContain(String.valueOf(PrefixUtil.DATABASE_DELIMITER));
     }
 
     @Test
@@ -124,12 +104,13 @@ public class VisibilityStoreImplTest {
         when(mockPackageManager
                 .checkPermission(READ_GLOBAL_APP_SEARCH_DATA, mContext.getPackageName()))
                 .thenReturn(PERMISSION_GRANTED);
-        assertThat(mVisibilityStore.doesCallerHaveSystemAccess(mContext.getPackageName())).isTrue();
+        assertThat(mVisibilityChecker.doesCallerHaveSystemAccess(mContext.getPackageName()))
+                .isTrue();
 
         when(mockPackageManager
                 .checkPermission(READ_GLOBAL_APP_SEARCH_DATA, mContext.getPackageName()))
                 .thenReturn(PERMISSION_DENIED);
-        assertThat(mVisibilityStore.doesCallerHaveSystemAccess(mContext.getPackageName()))
+        assertThat(mVisibilityChecker.doesCallerHaveSystemAccess(mContext.getPackageName()))
                 .isFalse();
     }
 
@@ -140,7 +121,6 @@ public class VisibilityStoreImplTest {
         when(mockPackageManager
                 .checkPermission(READ_GLOBAL_APP_SEARCH_DATA, mContext.getPackageName()))
                 .thenReturn(PERMISSION_GRANTED);
-        assertThat(mVisibilityStore.doesCallerHaveSystemAccess(mContext.getPackageName())).isTrue();
 
         // Create two VisibilityDocument that are not displayed by system.
         VisibilityDocument
@@ -152,38 +132,38 @@ public class VisibilityStoreImplTest {
         mVisibilityStore.setVisibility(
                 ImmutableList.of(visibilityDocument1, visibilityDocument2));
 
-        assertThat(
-                        mVisibilityStore.isSchemaSearchableByCaller(
-                                "package",
-                                "prefix/Schema1",
-                                mUid,
-                                /*callerHasSystemAccess=*/ true))
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                "package",
+                "prefix/Schema1",
+                mUid,
+                /*callerHasSystemAccess=*/ true,
+                mVisibilityStore))
                 .isFalse();
-        assertThat(
-                        mVisibilityStore.isSchemaSearchableByCaller(
-                                "package",
-                                "prefix/Schema2",
-                                mUid,
-                                /*callerHasSystemAccess=*/ true))
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                "package",
+                "prefix/Schema2",
+                mUid,
+                /*callerHasSystemAccess=*/ true,
+                mVisibilityStore))
                 .isFalse();
 
         // Rewrite Visibility Document 1 to let it accessible to the system.
         visibilityDocument1 = new VisibilityDocument.Builder(/*id=*/"prefix/Schema1").build();
         mVisibilityStore.setVisibility(
                 ImmutableList.of(visibilityDocument1, visibilityDocument2));
-        assertThat(
-                        mVisibilityStore.isSchemaSearchableByCaller(
-                                "package",
-                                "prefix/Schema1",
-                                mUid,
-                                /*callerHasSystemAccess=*/ true))
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                "package",
+                "prefix/Schema1",
+                mUid,
+                /*callerHasSystemAccess=*/ true,
+                mVisibilityStore))
                 .isTrue();
-        assertThat(
-                        mVisibilityStore.isSchemaSearchableByCaller(
-                                "package",
-                                "prefix/Schema2",
-                                mUid,
-                                /*callerHasSystemAccess=*/ true))
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                "package",
+                "prefix/Schema2",
+                mUid,
+                /*callerHasSystemAccess=*/ true,
+                mVisibilityStore))
                 .isFalse();
     }
 
@@ -227,11 +207,12 @@ public class VisibilityStoreImplTest {
         when(mockPackageManager.hasSigningCertificate(
                 packageNameFoo, sha256CertFoo, PackageManager.CERT_INPUT_SHA256))
                 .thenReturn(false);
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
                 "package",
                 "prefix/SchemaFoo",
                 uidFoo,
-                /*callerHasSystemAccess=*/ false))
+                /*callerHasSystemAccess=*/ false,
+                mVisibilityStore))
                 .isFalse();
 
         // Should fail if PackageManager doesn't think the package belongs to the uid
@@ -240,11 +221,12 @@ public class VisibilityStoreImplTest {
         when(mockPackageManager.hasSigningCertificate(
                 packageNameFoo, sha256CertFoo, PackageManager.CERT_INPUT_SHA256))
                 .thenReturn(true);
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
                 "package",
                 "prefix/SchemaFoo",
                 uidFoo,
-                /*callerHasSystemAccess=*/ false))
+                /*callerHasSystemAccess=*/ false,
+                mVisibilityStore))
                 .isFalse();
 
         // But if uid and certificate match, then we should have access
@@ -253,11 +235,12 @@ public class VisibilityStoreImplTest {
         when(mockPackageManager.hasSigningCertificate(
                 packageNameFoo, sha256CertFoo, PackageManager.CERT_INPUT_SHA256))
                 .thenReturn(true);
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
                 "package",
                 "prefix/SchemaFoo",
                 uidFoo,
-                /*callerHasSystemAccess=*/ false))
+                /*callerHasSystemAccess=*/ false,
+                mVisibilityStore))
                 .isTrue();
 
         when(mockPackageManager.getPackageUid(eq(packageNameBar), /*flags=*/ anyInt()))
@@ -265,137 +248,32 @@ public class VisibilityStoreImplTest {
         when(mockPackageManager.hasSigningCertificate(
                 packageNameBar, sha256CertBar, PackageManager.CERT_INPUT_SHA256))
                 .thenReturn(true);
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
                 "package",
                 "prefix/SchemaBar",
                 uidBar,
-                /*callerHasSystemAccess=*/ false))
+                /*callerHasSystemAccess=*/ false,
+                mVisibilityStore))
                 .isTrue();
 
         // Save default document and, then we shouldn't have access
         visibilityDocument1 = new VisibilityDocument.Builder(/*id=*/"prefix/SchemaFoo").build();
         visibilityDocument2 = new VisibilityDocument.Builder(/*id=*/"prefix/SchemaBar").build();
         mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument1, visibilityDocument2));
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
                 "package",
                 "prefix/SchemaFoo",
                 uidFoo,
-                /*callerHasSystemAccess=*/ false))
+                /*callerHasSystemAccess=*/ false,
+                mVisibilityStore))
                 .isFalse();
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
                 "package",
                 "prefix/SchemaBar",
                 uidBar,
-                /*callerHasSystemAccess=*/ false))
+                /*callerHasSystemAccess=*/ false,
+                mVisibilityStore))
                 .isFalse();
-    }
-
-    @Test
-    public void testRemoveVisibility() throws Exception {
-        // Make sure we have global query privileges
-        PackageManager mockPackageManager = getMockPackageManager(mContext.getUser());
-        when(mockPackageManager
-                .checkPermission(READ_GLOBAL_APP_SEARCH_DATA, mContext.getPackageName()))
-                .thenReturn(PERMISSION_GRANTED);
-        assertThat(mVisibilityStore.doesCallerHaveSystemAccess(mContext.getPackageName())).isTrue();
-
-        // Values for a "foo" client
-        String packageNameFoo = "packageFoo";
-        byte[] sha256CertFoo = new byte[32];
-        int uidFoo = 1;
-
-        // Values for a "bar" client
-        String packageNameBar = "packageBar";
-        byte[] sha256CertBar = new byte[32];
-        int uidBar = 2;
-
-        // Make sure none of them have global query privileges
-        when(mockPackageManager
-                .checkPermission(READ_GLOBAL_APP_SEARCH_DATA, packageNameFoo))
-                .thenReturn(PERMISSION_DENIED);
-        when(mockPackageManager
-                .checkPermission(READ_GLOBAL_APP_SEARCH_DATA, packageNameBar))
-                .thenReturn(PERMISSION_DENIED);
-
-        when(mockPackageManager.getPackageUid(eq(packageNameFoo), /*flags=*/ anyInt()))
-                .thenReturn(uidFoo);
-        when(mockPackageManager.hasSigningCertificate(
-                packageNameFoo, sha256CertFoo, PackageManager.CERT_INPUT_SHA256))
-                .thenReturn(true);
-        when(mockPackageManager.getPackageUid(eq(packageNameBar), /*flags=*/ anyInt()))
-                .thenReturn(uidBar);
-        when(mockPackageManager.hasSigningCertificate(
-                packageNameBar, sha256CertBar, PackageManager.CERT_INPUT_SHA256))
-                .thenReturn(true);
-
-        // Grant package access
-        VisibilityDocument visibilityDocument1 =
-                new VisibilityDocument.Builder(/*id=*/"prefix/SchemaFoo")
-                        .addVisibleToPackage(new PackageIdentifier(packageNameFoo, sha256CertFoo))
-                        .setNotDisplayedBySystem(true)
-                        .build();
-        VisibilityDocument visibilityDocument2 =
-                new VisibilityDocument.Builder(/*id=*/"prefix/SchemaBar")
-                        .addVisibleToPackage(new PackageIdentifier(packageNameBar, sha256CertBar))
-                        .setNotDisplayedBySystem(true)
-                        .build();
-
-        mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument1, visibilityDocument2));
-
-        // Check both setting are system hidden and accessible by package
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
-                "package",
-                "prefix/SchemaFoo",
-                mUid,
-                /*callerHasSystemAccess=*/ true))
-                .isFalse();
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
-                "package",
-                "prefix/SchemaFoo",
-                uidFoo,
-                /*callerHasSystemAccess=*/ false))
-                .isTrue();
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
-                "package",
-                "prefix/SchemaBar",
-                mUid,
-                /*callerHasSystemAccess=*/ true))
-                .isFalse();
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
-                "package",
-                "prefix/SchemaBar",
-                uidBar,
-                /*callerHasSystemAccess=*/ false))
-                .isTrue();
-
-        //remove SchemaFoo
-        mVisibilityStore.removeVisibility(ImmutableSet.of("prefix/SchemaFoo"));
-
-        // Check SchemaFoo become default setting byt schemaBar doesn't.
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
-                "package",
-                "prefix/SchemaFoo",
-                mUid,
-                /*callerHasSystemAccess=*/ true))
-                .isTrue();
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
-                "package",
-                "prefix/SchemaFoo",
-                uidFoo,
-                /*callerHasSystemAccess=*/ false))
-                .isFalse();
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
-                "package",
-                "prefix/SchemaBar",
-                mUid,
-                /*callerHasSystemAccess=*/ true))
-                .isFalse();
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
-                "package",
-                "prefix/SchemaBar",
-                uidBar,
-                /*callerHasSystemAccess=*/ false))
-                .isTrue();
     }
 
     @Test
@@ -422,11 +300,12 @@ public class VisibilityStoreImplTest {
         mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument1));
 
         // If we can't verify the Foo package that has access, assume it doesn't have access.
-        assertThat(mVisibilityStore.isSchemaSearchableByCaller(
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
                 "package",
                 "prefix/SchemaFoo",
                 uidFoo,
-                /*callerHasSystemAccess=*/ false))
+                /*callerHasSystemAccess=*/ false,
+                mVisibilityStore))
                 .isFalse();
     }
 
@@ -450,25 +329,126 @@ public class VisibilityStoreImplTest {
                 .addVisibleToPackage(new PackageIdentifier(packageNameFoo, sha256CertFoo)).build();
         mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
 
-        assertThat(
-                        mVisibilityStore.isSchemaSearchableByCaller(
-                                /*packageName=*/ "",
-                                "$/Schema",
-                                mUid,
-                                /*callerHasSystemAccess=*/ true))
-                .isTrue();
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                /*packageName=*/ "",
+                "$/Schema",
+                mUid,
+                /*callerHasSystemAccess=*/ true,
+                mVisibilityStore)).isTrue();
 
         when(mockPackageManager.getPackageUid(eq(packageNameFoo), /*flags=*/ anyInt()))
                 .thenReturn(uidFoo);
         when(mockPackageManager.hasSigningCertificate(
                 packageNameFoo, sha256CertFoo, PackageManager.CERT_INPUT_SHA256))
                 .thenReturn(true);
-        assertThat(
-                        mVisibilityStore.isSchemaSearchableByCaller(
-                                /*packageName=*/ "",
-                                "$/Schema",
-                                uidFoo,
-                                /*callerHasSystemAccess=*/ false))
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                /*packageName=*/ "",
+                "$/Schema",
+                uidFoo,
+                /*callerHasSystemAccess=*/ false,
+                mVisibilityStore)).isTrue();
+    }
+
+    @Test
+    public void testSetSchema_defaultPlatformVisible() throws Exception {
+        // Make sure we have global query privileges
+        PackageManager mockPackageManager = getMockPackageManager(mContext.getUser());
+        when(mockPackageManager.checkPermission(
+                READ_GLOBAL_APP_SEARCH_DATA, mContext.getPackageName()))
+                .thenReturn(PERMISSION_GRANTED);
+
+        String prefix = PrefixUtil.createPrefix("package", "database");
+        VisibilityDocument visibilityDocument = new VisibilityDocument.Builder(
+                /*id=*/prefix + "Schema").build();
+        mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                "package",
+                prefix + "Schema",
+                mUid,
+                /*callerHasSystemAccess=*/ true,
+                mVisibilityStore))
+                .isTrue();
+    }
+
+    @Test
+    public void testSetSchema_platformHidden() throws Exception {
+        // Make sure we have global query privileges
+        PackageManager mockPackageManager = getMockPackageManager(mContext.getUser());
+        when(mockPackageManager.checkPermission(
+                READ_GLOBAL_APP_SEARCH_DATA, mContext.getPackageName()))
+                .thenReturn(PERMISSION_GRANTED);
+
+        String prefix = PrefixUtil.createPrefix("package", "database");
+        VisibilityDocument visibilityDocument = new VisibilityDocument.Builder(
+                /*id=*/prefix + "Schema")
+                .setNotDisplayedBySystem(true).build();
+        mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
+
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                "package",
+                prefix + "Schema",
+                mUid,
+                /*callerHasSystemAccess=*/ true,
+                mVisibilityStore))
+                .isFalse();
+    }
+
+    @Test
+    public void testSetSchema_defaultNotVisibleToPackages() throws Exception {
+        String packageName = "com.package";
+
+        // Make sure package doesn't global query privileges
+        PackageManager mockPackageManager = getMockPackageManager(mContext.getUser());
+        when(mockPackageManager.checkPermission(
+                READ_GLOBAL_APP_SEARCH_DATA, packageName)).thenReturn(PERMISSION_DENIED);
+
+        String prefix = PrefixUtil.createPrefix("package", "database");
+        VisibilityDocument visibilityDocument = new VisibilityDocument.Builder(
+                /*id=*/prefix + "Schema").build();
+        mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
+
+        assertThat(mVisibilityChecker
+                .isSchemaSearchableByCaller(
+                        "package",
+                        prefix + "Schema",
+                        /*callerUid=*/ 42,
+                        /*callerHasSystemAccess=*/ false,
+                        mVisibilityStore))
+                .isFalse();
+    }
+
+    @Test
+    public void testSetSchema_visibleToPackages() throws Exception {
+        // Values for a "foo" client
+        String packageNameFoo = "packageFoo";
+        byte[] sha256CertFoo = new byte[] {10};
+        int uidFoo = 1;
+
+        // Make sure foo package will pass package manager checks.
+        PackageManager mockPackageManager = getMockPackageManager(mContext.getUser());
+        when(mockPackageManager.getPackageUid(eq(packageNameFoo), /*flags=*/ anyInt()))
+                .thenReturn(uidFoo);
+        when(mockPackageManager.hasSigningCertificate(
+                packageNameFoo, sha256CertFoo, PackageManager.CERT_INPUT_SHA256))
+                .thenReturn(true);
+
+        // Make sure foo doesn't have global query privileges
+        when(mockPackageManager.checkPermission(READ_GLOBAL_APP_SEARCH_DATA, packageNameFoo))
+                .thenReturn(PERMISSION_DENIED);
+
+        String prefix = PrefixUtil.createPrefix("package", "database");
+
+        VisibilityDocument visibilityDocument = new VisibilityDocument.Builder(
+                /*id=*/prefix + "Schema")
+                .addVisibleToPackage(new PackageIdentifier(packageNameFoo, sha256CertFoo)).build();
+        mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
+
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                "package",
+                prefix + "Schema",
+                uidFoo,
+                /*callerHasSystemAccess=*/ false,
+                mVisibilityStore))
                 .isTrue();
     }
 

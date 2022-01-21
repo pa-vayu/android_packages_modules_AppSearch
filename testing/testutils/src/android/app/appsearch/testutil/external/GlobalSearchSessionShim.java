@@ -142,9 +142,8 @@ public interface GlobalSearchSessionShim extends Closeable {
     /**
      * Removes previously registered {@link AppSearchObserverCallback} instances from the system.
      *
-     * <p>All instances of {@link AppSearchObserverCallback} which are registered to observe {@code
-     * observedPackage} and compare equal to the provided callback using {@link
-     * AppSearchObserverCallback#equals} will be removed.
+     * <p>All instances of {@link AppSearchObserverCallback} which are equal to the provided
+     * callback using {@link AppSearchObserverCallback#equals} will be removed.
      *
      * <p>If no matching observers have been registered, this method has no effect. If multiple
      * matching observers have been registered, all will be removed.
@@ -158,7 +157,8 @@ public interface GlobalSearchSessionShim extends Closeable {
      *     implementation.
      */
     void removeObserver(
-            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer);
+            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer)
+            throws AppSearchException;
 
     /** Closes the {@link GlobalSearchSessionShim}. */
     @Override

@@ -30,7 +30,7 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.server.appsearch.external.localstorage.AppSearchImpl;
 import com.android.server.appsearch.external.localstorage.stats.InitializeStats;
 import com.android.server.appsearch.stats.PlatformLogger;
-import com.android.server.appsearch.visibilitystore.VisibilityStoreImpl;
+import com.android.server.appsearch.visibilitystore.VisibilityCheckerImpl;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -225,16 +225,13 @@ public final class AppSearchUserInstanceManager {
         File appSearchDir = getAppSearchDir(userHandle);
         File icingDir = new File(appSearchDir, "icing");
         Log.i(TAG, "Creating new AppSearch instance at: " + icingDir);
+        VisibilityCheckerImpl visibilityCheckerImpl = new VisibilityCheckerImpl(userContext);
         AppSearchImpl appSearchImpl = AppSearchImpl.create(
                 icingDir,
                 new FrameworkLimitConfig(config),
                 initStatsBuilder,
-                new FrameworkOptimizeStrategy(config));
-
-        long prepareVisibilityStoreLatencyStartMillis = SystemClock.elapsedRealtime();
-        VisibilityStoreImpl visibilityStore =
-                VisibilityStoreImpl.create(appSearchImpl, userContext);
-        long prepareVisibilityStoreLatencyEndMillis = SystemClock.elapsedRealtime();
+                new FrameworkOptimizeStrategy(config),
+                visibilityCheckerImpl);
 
         // Update storage info file
         UserStorageInfo userStorageInfo = getOrCreateUserStorageInfoInstance(userHandle);
@@ -242,13 +239,9 @@ public final class AppSearchUserInstanceManager {
 
         initStatsBuilder
                 .setTotalLatencyMillis(
-                        (int) (SystemClock.elapsedRealtime() - totalLatencyStartMillis))
-                .setPrepareVisibilityStoreLatencyMillis(
-                        (int)
-                                (prepareVisibilityStoreLatencyEndMillis
-                                        - prepareVisibilityStoreLatencyStartMillis));
+                        (int) (SystemClock.elapsedRealtime() - totalLatencyStartMillis));
         logger.logStats(initStatsBuilder.build());
 
-        return new AppSearchUserInstance(logger, appSearchImpl, visibilityStore);
+        return new AppSearchUserInstance(logger, appSearchImpl, visibilityCheckerImpl);
     }
 }

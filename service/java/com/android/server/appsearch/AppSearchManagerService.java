@@ -40,10 +40,7 @@ import android.app.appsearch.aidl.IAppSearchManager;
 import android.app.appsearch.aidl.IAppSearchObserverProxy;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
 import android.app.appsearch.exceptions.AppSearchException;
-import android.app.appsearch.observer.AppSearchObserverCallback;
-import android.app.appsearch.observer.DocumentChangeInfo;
 import android.app.appsearch.observer.ObserverSpec;
-import android.app.appsearch.observer.SchemaChangeInfo;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -273,7 +270,7 @@ public class AppSearchManagerService extends SystemService {
                     for (int i = 0; i < installedPackageInfos.size(); i++) {
                         packagesToKeep.add(installedPackageInfos.get(i).packageName);
                     }
-                    packagesToKeep.add(VisibilityStore.PACKAGE_NAME);
+                    packagesToKeep.add(VisibilityStore.VISIBILITY_PACKAGE_NAME);
                     //TODO(b/145759910) clear visibility setting for package.
                     instance.getAppSearchImpl().prunePackageData(packagesToKeep);
                 }
@@ -368,7 +365,6 @@ public class AppSearchManagerService extends SystemService {
                             packageName,
                             databaseName,
                             schemas,
-                            instance.getVisibilityStore(),
                             visibilityDocuments,
                             forceOverride,
                             schemaVersion,
@@ -766,13 +762,12 @@ public class AppSearchManagerService extends SystemService {
 
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
 
-                    boolean callerHasSystemAccess =
-                            instance.getVisibilityStore().doesCallerHaveSystemAccess(packageName);
+                    boolean callerHasSystemAccess = instance.getVisibilityCheckImpl()
+                            .doesCallerHaveSystemAccess(packageName);
                     SearchResultPage searchResultPage = instance.getAppSearchImpl().globalQuery(
                             queryExpression,
                             new SearchSpec(searchSpecBundle),
                             packageName,
-                            instance.getVisibilityStore(),
                             callingUid,
                             callerHasSystemAccess,
                             instance.getLogger());
@@ -1025,9 +1020,8 @@ public class AppSearchManagerService extends SystemService {
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
 
-                    if (systemUsage
-                            && !instance.getVisibilityStore()
-                            .doesCallerHaveSystemAccess(packageName)) {
+                    if (systemUsage && !instance.getVisibilityCheckImpl().
+                            doesCallerHaveSystemAccess(packageName)) {
                         throw new AppSearchException(
                                 AppSearchResult.RESULT_SECURITY_ERROR,
                                 packageName + " does not have access to report system usage");
