@@ -126,7 +126,8 @@ interface IAppSearchManager {
     /**
      * Retrieves documents from the index.
      *
-     * @param packageName The name of the package that owns this document.
+     * @param callingPackageName The name of the package that is getting this document.
+     * @param targetPackageName The name of the package that owns this document.
      * @param databaseName  The databaseName this document resides in.
      * @param namespace    The namespace this document resides in.
      * @param ids The IDs of the documents to retrieve
@@ -134,6 +135,7 @@ interface IAppSearchManager {
      *     result.
      * @param userHandle Handle of the calling user
      * @param binderCallStartTimeMillis start timestamp of binder call in Millis
+     * @param global signifies whether this is a global get or not
      * @param callback
      *     If the call fails to start, {@link IAppSearchBatchResultCallback#onSystemError}
      *     will be called with the cause throwable. Otherwise,
@@ -142,13 +144,15 @@ interface IAppSearchManager {
      *     where the keys are document IDs, and the values are Document bundles.
      */
     void getDocuments(
-        in String packageName,
+        in String callingPackageName,
+        in String targetPackageName,
         in String databaseName,
         in String namespace,
         in List<String> ids,
         in Map<String, List<String>> typePropertyPaths,
         in UserHandle userHandle,
         in long binderCallStartTimeMillis,
+        in boolean global,
         in IAppSearchBatchResultCallback callback);
 
     /**
