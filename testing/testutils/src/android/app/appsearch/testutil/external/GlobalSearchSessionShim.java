@@ -128,6 +128,7 @@ public interface GlobalSearchSessionShim extends Closeable {
      * @param spec Specification of what types of changes to listen for
      * @param executor Executor on which to call the {@code observer} callback methods.
      * @param observer Callback to trigger when a schema or document changes
+     * @throws AppSearchException if an error occurs trying to register the observer
      * @throws UnsupportedOperationException if this feature is not available on this AppSearch
      *     implementation.
      */
@@ -135,13 +136,15 @@ public interface GlobalSearchSessionShim extends Closeable {
             @NonNull String observedPackage,
             @NonNull ObserverSpec spec,
             @NonNull Executor executor,
-            @NonNull AppSearchObserverCallback observer) throws AppSearchException;
+            @NonNull AppSearchObserverCallback observer)
+            throws AppSearchException;
 
     /**
      * Removes previously registered {@link AppSearchObserverCallback} instances from the system.
      *
-     * <p>All instances of {@link AppSearchObserverCallback} which are equal to the provided
-     * callback using {@link AppSearchObserverCallback#equals} will be removed.
+     * <p>All instances of {@link AppSearchObserverCallback} which are registered to observe {@code
+     * observedPackage} and compare equal to the provided callback using {@link
+     * AppSearchObserverCallback#equals} will be removed.
      *
      * <p>If no matching observers have been registered, this method has no effect. If multiple
      * matching observers have been registered, all will be removed.
@@ -155,8 +158,7 @@ public interface GlobalSearchSessionShim extends Closeable {
      *     implementation.
      */
     void removeObserver(
-            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer)
-            throws AppSearchException;
+            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer);
 
     /** Closes the {@link GlobalSearchSessionShim}. */
     @Override

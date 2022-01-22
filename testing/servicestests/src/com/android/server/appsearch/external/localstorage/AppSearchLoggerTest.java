@@ -76,7 +76,8 @@ public class AppSearchLoggerTest {
                         mTemporaryFolder.newFolder(),
                         new UnlimitedLimitConfig(),
                         /*initStatsBuilder=*/ null,
-                        ALWAYS_OPTIMIZE);
+                        ALWAYS_OPTIMIZE,
+                        /*visibilityChecker=*/ null);
         mLogger = new SimpleTestLogger();
     }
 
@@ -344,7 +345,8 @@ public class AppSearchLoggerTest {
                         mTemporaryFolder.newFolder(),
                         new UnlimitedLimitConfig(),
                         initStatsBuilder,
-                        ALWAYS_OPTIMIZE);
+                        ALWAYS_OPTIMIZE,
+                        /*visibilityChecker=*/ null);
         InitializeStats iStats = initStatsBuilder.build();
         appSearchImpl.close();
 
@@ -373,7 +375,8 @@ public class AppSearchLoggerTest {
                         folder,
                         new UnlimitedLimitConfig(),
                         /*initStatsBuilder=*/ null,
-                        ALWAYS_OPTIMIZE);
+                        ALWAYS_OPTIMIZE,
+                        /*visibilityChecker=*/ null);
         List<AppSearchSchema> schemas =
                 ImmutableList.of(
                         new AppSearchSchema.Builder("Type1").build(),
@@ -382,7 +385,6 @@ public class AppSearchLoggerTest {
                 testPackageName,
                 testDatabase,
                 schemas,
-                /*visibilityStore=*/ null,
                 /*visibilityDocuments=*/ Collections.emptyList(),
                 /*forceOverride=*/ false,
                 /*version=*/ 0,
@@ -397,7 +399,11 @@ public class AppSearchLoggerTest {
         InitializeStats.Builder initStatsBuilder = new InitializeStats.Builder();
         appSearchImpl =
                 AppSearchImpl.create(
-                        folder, new UnlimitedLimitConfig(), initStatsBuilder, ALWAYS_OPTIMIZE);
+                        folder,
+                        new UnlimitedLimitConfig(),
+                        initStatsBuilder,
+                        ALWAYS_OPTIMIZE,
+                        /*visibilityChecker=*/ null);
         InitializeStats iStats = initStatsBuilder.build();
 
         assertThat(iStats).isNotNull();
@@ -409,7 +415,7 @@ public class AppSearchLoggerTest {
         assertThat(iStats.getDocumentStoreDataStatus())
                 .isEqualTo(InitializeStatsProto.DocumentStoreDataStatus.NO_DATA_LOSS_VALUE);
         assertThat(iStats.getDocumentCount()).isEqualTo(2);
-        assertThat(iStats.getSchemaTypeCount()).isEqualTo(2);
+        assertThat(iStats.getSchemaTypeCount()).isEqualTo(3); // +1 for VisibilitySchema
         assertThat(iStats.hasReset()).isEqualTo(false);
         assertThat(iStats.getResetStatusCode()).isEqualTo(AppSearchResult.RESULT_OK);
         appSearchImpl.close();
@@ -426,7 +432,8 @@ public class AppSearchLoggerTest {
                         folder,
                         new UnlimitedLimitConfig(),
                         /*initStatsBuilder=*/ null,
-                        ALWAYS_OPTIMIZE);
+                        ALWAYS_OPTIMIZE,
+                        /*visibilityChecker=*/ null);
 
         List<AppSearchSchema> schemas =
                 ImmutableList.of(
@@ -436,7 +443,6 @@ public class AppSearchLoggerTest {
                 testPackageName,
                 testDatabase,
                 schemas,
-                /*visibilityStore=*/ null,
                 /*visibilityDocuments=*/ Collections.emptyList(),
                 /*forceOverride=*/ false,
                 /*version=*/ 0,
@@ -461,7 +467,11 @@ public class AppSearchLoggerTest {
         InitializeStats.Builder initStatsBuilder = new InitializeStats.Builder();
         appSearchImpl =
                 AppSearchImpl.create(
-                        folder, new UnlimitedLimitConfig(), initStatsBuilder, ALWAYS_OPTIMIZE);
+                        folder,
+                        new UnlimitedLimitConfig(),
+                        initStatsBuilder,
+                        ALWAYS_OPTIMIZE,
+                        /*visibilityChecker=*/ null);
         InitializeStats iStats = initStatsBuilder.build();
 
         // Some of other fields are already covered by AppSearchImplTest#testReset()
@@ -495,7 +505,6 @@ public class AppSearchLoggerTest {
                 testPackageName,
                 testDatabase,
                 schemas,
-                /*visibilityStore=*/ null,
                 /*visibilityDocuments=*/ Collections.emptyList(),
                 /*forceOverride=*/ false,
                 /*version=*/ 0,
@@ -542,7 +551,6 @@ public class AppSearchLoggerTest {
                 testPackageName,
                 testDatabase,
                 schemas,
-                /*visibilityStore=*/ null,
                 /*visibilityDocuments=*/ Collections.emptyList(),
                 /*forceOverride=*/ false,
                 /*version=*/ 0,
@@ -592,7 +600,6 @@ public class AppSearchLoggerTest {
                 testPackageName,
                 testDatabase,
                 schemas,
-                /*visibilityStore=*/ null,
                 /*visibilityDocuments=*/ Collections.emptyList(),
                 /*forceOverride=*/ false,
                 /*version=*/ 0,
@@ -661,7 +668,6 @@ public class AppSearchLoggerTest {
                 testPackageName,
                 testDatabase,
                 schemas,
-                /*visibilityStore=*/ null,
                 /*visibilityDocuments=*/ Collections.emptyList(),
                 /*forceOverride=*/ false,
                 /*version=*/ 0,
@@ -701,7 +707,6 @@ public class AppSearchLoggerTest {
                 testPackageName,
                 testDatabase,
                 schemas,
-                /*visibilityStore=*/ null,
                 /*visibilityDocuments=*/ Collections.emptyList(),
                 /*forceOverride=*/ false,
                 /*version=*/ 0,
@@ -735,7 +740,6 @@ public class AppSearchLoggerTest {
                 testPackageName,
                 testDatabase,
                 schemas,
-                /*visibilityStore=*/ null,
                 /*visibilityDocuments=*/ Collections.emptyList(),
                 /*forceOverride=*/ false,
                 /*version=*/ 0,
@@ -780,7 +784,6 @@ public class AppSearchLoggerTest {
                 testPackageName,
                 testDatabase,
                 schemas,
-                /*visibilityStore=*/ null,
                 /*visibilityDocuments=*/ Collections.emptyList(),
                 /*forceOverride=*/ false,
                 /*version=*/ 0,
@@ -829,7 +832,6 @@ public class AppSearchLoggerTest {
                 PACKAGE_NAME,
                 DATABASE,
                 Collections.singletonList(schema1),
-                /*visibilityStore=*/ null,
                 /*visibilityDocuments=*/ Collections.emptyList(),
                 /*forceOverride=*/ false,
                 /*version=*/ 0,
@@ -842,7 +844,6 @@ public class AppSearchLoggerTest {
                 PACKAGE_NAME,
                 DATABASE,
                 Collections.singletonList(schema2),
-                /*visibilityStore=*/ null,
                 /*visibilityDocuments=*/ Collections.emptyList(),
                 /*forceOverride=*/ false,
                 /*version=*/ 0,

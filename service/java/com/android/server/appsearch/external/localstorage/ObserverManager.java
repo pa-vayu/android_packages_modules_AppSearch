@@ -133,7 +133,7 @@ public class ObserverManager {
     }
 
     /**
-     * Removes all observers that match via {@code AppSearchObserverCallback#equals} to the given
+     * Removes all observers that match via {@link AppSearchObserverCallback#equals} to the given
      * observer from watching the observedPackage.
      *
      * <p>Pending notifications queued for this observer, if any, are discarded.

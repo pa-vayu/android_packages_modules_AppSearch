@@ -17,7 +17,6 @@ package android.app.appsearch;
 
 import android.annotation.NonNull;
 import android.os.Bundle;
-import android.util.ArrayMap;
 import android.util.ArraySet;
 
 import java.util.ArrayList;
@@ -28,12 +27,11 @@ import java.util.Set;
 
 /**
  * Holds the visibility settings that apply to a schema type.
+ *
  * @hide
  */
 public class VisibilityDocument extends GenericDocument {
-    /**
-     * The Schema type for documents that hold AppSearch's metadata, e.g. visibility settings.
-     */
+    /** The Schema type for documents that hold AppSearch's metadata, e.g. visibility settings. */
     public static final String SCHEMA_TYPE = "VisibilityType";
     /** Namespace of documents that contain visibility settings */
     public static final String NAMESPACE = "";
@@ -63,18 +61,25 @@ public class VisibilityDocument extends GenericDocument {
      *
      * <p>NOTE: If you update this, also update {@link #SCHEMA_VERSION_LATEST}.
      */
-    public static final AppSearchSchema SCHEMA = new AppSearchSchema.Builder(SCHEMA_TYPE)
-            .addProperty(new AppSearchSchema.BooleanPropertyConfig.Builder(
-                    NOT_DISPLAYED_BY_SYSTEM_PROPERTY)
-                    .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_OPTIONAL)
-                    .build())
-            .addProperty(new AppSearchSchema.StringPropertyConfig.Builder(PACKAGE_NAME_PROPERTY)
-                    .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
-                    .build())
-            .addProperty(new AppSearchSchema.BytesPropertyConfig.Builder(SHA_256_CERT_PROPERTY)
-                    .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
-                    .build())
-            .build();
+    public static final AppSearchSchema SCHEMA =
+            new AppSearchSchema.Builder(SCHEMA_TYPE)
+                    .addProperty(
+                            new AppSearchSchema.BooleanPropertyConfig.Builder(
+                                            NOT_DISPLAYED_BY_SYSTEM_PROPERTY)
+                                    .setCardinality(
+                                            AppSearchSchema.PropertyConfig.CARDINALITY_OPTIONAL)
+                                    .build())
+                    .addProperty(
+                            new AppSearchSchema.StringPropertyConfig.Builder(PACKAGE_NAME_PROPERTY)
+                                    .setCardinality(
+                                            AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
+                                    .build())
+                    .addProperty(
+                            new AppSearchSchema.BytesPropertyConfig.Builder(SHA_256_CERT_PROPERTY)
+                                    .setCardinality(
+                                            AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
+                                    .build())
+                    .build();
 
     public VisibilityDocument(@NonNull GenericDocument genericDocument) {
         super(genericDocument);
@@ -90,8 +95,8 @@ public class VisibilityDocument extends GenericDocument {
     }
 
     /**
-     * Returns a package name array which could access this schema. Use {@link #getSha256Certs()}
-     * to get package's sha 256 certs. The same index of package names array and sha256Certs array
+     * Returns a package name array which could access this schema. Use {@link #getSha256Certs()} to
+     * get package's sha 256 certs. The same index of package names array and sha256Certs array
      * represents same package.
      */
     @NonNull
@@ -100,9 +105,9 @@ public class VisibilityDocument extends GenericDocument {
     }
 
     /**
-     * Returns a package sha256Certs array which could access this schema. Use
-     * {@link #getPackageNames()} to get package's name. The same index of package names array
-     * and sha256Certs array represents same package.
+     * Returns a package sha256Certs array which could access this schema. Use {@link
+     * #getPackageNames()} to get package's name. The same index of package names array and
+     * sha256Certs array represents same package.
      */
     @NonNull
     public byte[][] getSha256Certs() {
@@ -110,16 +115,16 @@ public class VisibilityDocument extends GenericDocument {
     }
 
     /** Builder for {@link VisibilityDocument}. */
-    public static class Builder extends GenericDocument.Builder<VisibilityDocument.Builder> {
+    public static class Builder extends GenericDocument.Builder<Builder> {
         private final Set<PackageIdentifier> mPackageIdentifiers = new ArraySet<>();
 
         /**
          * Creates a {@link Builder} for a {@link VisibilityDocument}.
          *
-         * @param id The SchemaType of the {@link AppSearchSchema} that this
-         *           {@link VisibilityDocument} represents. The package and database prefix will be
-         *           added in server side. We are using prefixed schema type to be the final id of
-         *           this {@link VisibilityDocument}.
+         * @param id The SchemaType of the {@link AppSearchSchema} that this {@link
+         *     VisibilityDocument} represents. The package and database prefix will be added in
+         *     server side. We are using prefixed schema type to be the final id of this {@link
+         *     VisibilityDocument}.
          */
         public Builder(@NonNull String id) {
             super(NAMESPACE, id, SCHEMA_TYPE);
@@ -128,8 +133,7 @@ public class VisibilityDocument extends GenericDocument {
         /** Sets whether this schema has opted out of platform surfacing. */
         @NonNull
         public Builder setNotDisplayedBySystem(boolean notDisplayedBySystem) {
-            return setPropertyBoolean(NOT_DISPLAYED_BY_SYSTEM_PROPERTY,
-                    notDisplayedBySystem);
+            return setPropertyBoolean(NOT_DISPLAYED_BY_SYSTEM_PROPERTY, notDisplayedBySystem);
         }
 
         /** Add {@link PackageIdentifier} of packages which has access to this schema. */
@@ -148,6 +152,8 @@ public class VisibilityDocument extends GenericDocument {
             return this;
         }
 
+        /** Build a {@link VisibilityDocument} */
+        @Override
         @NonNull
         public VisibilityDocument build() {
             String[] packageNames = new String[mPackageIdentifiers.size()];
@@ -164,8 +170,7 @@ public class VisibilityDocument extends GenericDocument {
         }
     }
 
-
-    /**  Build the List of {@link VisibilityDocument} from visibility settings. */
+    /** Build the List of {@link VisibilityDocument} from visibility settings. */
     @NonNull
     public static List<VisibilityDocument> toVisibilityDocuments(
             @NonNull SetSchemaRequest setSchemaRequest) {
@@ -178,13 +183,14 @@ public class VisibilityDocument extends GenericDocument {
 
         for (AppSearchSchema searchSchema : searchSchemas) {
             String schemaType = searchSchema.getSchemaType();
-            visibilityDocuments.add(
-                    new VisibilityDocument.Builder(/*id=*/searchSchema.getSchemaType())
-                            .setNotDisplayedBySystem(
-                                    schemasNotDisplayedBySystem.contains(schemaType))
-                            .addVisibleToPackages(schemasVisibleToPackages
-                                    .getOrDefault(schemaType, new ArraySet<>()))
-                            .build());
+            VisibilityDocument.Builder documentBuilder =
+                    new VisibilityDocument.Builder(/*id=*/ searchSchema.getSchemaType());
+            documentBuilder.setNotDisplayedBySystem(
+                    schemasNotDisplayedBySystem.contains(schemaType));
+            if (schemasVisibleToPackages.containsKey(schemaType)) {
+                documentBuilder.addVisibleToPackages(schemasVisibleToPackages.get(schemaType));
+            }
+            visibilityDocuments.add(documentBuilder.build());
         }
         return visibilityDocuments;
     }

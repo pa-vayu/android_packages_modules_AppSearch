@@ -207,6 +207,8 @@ package android.app.appsearch {
   }
 
   public final class GetSchemaResponse {
+    method @NonNull public java.util.Set<java.lang.String> getSchemaTypesNotDisplayedBySystem();
+    method @NonNull public java.util.Map<java.lang.String,java.util.Set<android.app.appsearch.PackageIdentifier>> getSchemaTypesVisibleToPackages();
     method @NonNull public java.util.Set<android.app.appsearch.AppSearchSchema> getSchemas();
     method @IntRange(from=0) public int getVersion();
   }
@@ -215,6 +217,8 @@ package android.app.appsearch {
     ctor public GetSchemaResponse.Builder();
     method @NonNull public android.app.appsearch.GetSchemaResponse.Builder addSchema(@NonNull android.app.appsearch.AppSearchSchema);
     method @NonNull public android.app.appsearch.GetSchemaResponse build();
+    method @NonNull public android.app.appsearch.GetSchemaResponse.Builder setSchemaTypeNotDisplayedBySystem(@NonNull String);
+    method @NonNull public android.app.appsearch.GetSchemaResponse.Builder setSchemaTypeVisibleToPackages(@NonNull String, @NonNull java.util.Set<android.app.appsearch.PackageIdentifier>);
     method @NonNull public android.app.appsearch.GetSchemaResponse.Builder setVersion(@IntRange(from=0) int);
   }
 
