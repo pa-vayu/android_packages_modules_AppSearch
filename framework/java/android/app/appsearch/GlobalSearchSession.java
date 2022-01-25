@@ -27,6 +27,7 @@ import android.app.appsearch.observer.AppSearchObserverCallback;
 import android.app.appsearch.observer.DocumentChangeInfo;
 import android.app.appsearch.observer.ObserverSpec;
 import android.app.appsearch.observer.SchemaChangeInfo;
+import android.os.Bundle;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.UserHandle;
@@ -188,6 +189,57 @@ public class GlobalSearchSession implements Closeable {
                         }
                     });
             mIsMutated = true;
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Retrieves the collection of schemas most recently successfully provided to {@link
+     * AppSearchSession#setSchema} for any types belonging to the requested package and database
+     * that the caller has been granted access to.
+     *
+     * <p>If the requested package/database combination does not exist or the caller has not been
+     * granted access to it, then an empty GetSchemaResponse will be returned.
+     *
+     * @param packageName the package that owns the requested {@link AppSearchSchema} instances.
+     * @param databaseName the database that owns the requested {@link AppSearchSchema} instances.
+     * @return The pending {@link GetSchemaResponse} containing the schemas that the caller has
+     *     access to or an empty GetSchemaResponse if the request package and database does not
+     *     exist, has not set a schema or contains no schemas that are accessible to the caller.
+     */
+    // This call hits disk; async API prevents us from treating these calls as properties.
+    public void getSchema(
+            @NonNull String packageName,
+            @NonNull String databaseName,
+            @NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<AppSearchResult<GetSchemaResponse>> callback) {
+        Objects.requireNonNull(packageName);
+        Objects.requireNonNull(databaseName);
+        Objects.requireNonNull(executor);
+        Objects.requireNonNull(callback);
+        Preconditions.checkState(!mIsClosed, "GlobalSearchSession has already been closed");
+        try {
+            mService.getSchema(
+                mPackageName,
+                packageName,
+                databaseName,
+                mUserHandle,
+                new IAppSearchResultCallback.Stub() {
+                    @Override
+                    public void onResult(AppSearchResultParcel resultParcel) {
+                        executor.execute(() -> {
+                            AppSearchResult<Bundle> result = resultParcel.getResult();
+                            if (result.isSuccess()) {
+                                GetSchemaResponse response =
+                                        new GetSchemaResponse(result.getResultValue());
+                                callback.accept(AppSearchResult.newSuccessfulResult(response));
+                            } else {
+                                callback.accept(AppSearchResult.newFailedResult(result));
+                            }
+                        });
+                    }
+                });
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }

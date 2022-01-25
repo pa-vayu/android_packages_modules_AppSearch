@@ -75,6 +75,7 @@ interface IAppSearchManager {
     /**
      * Retrieves the AppSearch schema for this database.
      *
+     * @param callingackageName The name of the package making this call.
      * @param packageName The name of the package that owns the schema.
      * @param databaseName  The name of the database to retrieve.
      * @param userHandle Handle of the calling user
@@ -82,6 +83,7 @@ interface IAppSearchManager {
      *     {@link AppSearchResult}&lt;{@link Bundle}&gt; where the bundle is a GetSchemaResponse.
      */
     void getSchema(
+        in String callingPackageName,
         in String packageName,
         in String databaseName,
         in UserHandle userHandle,

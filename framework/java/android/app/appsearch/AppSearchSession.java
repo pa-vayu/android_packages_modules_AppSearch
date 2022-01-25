@@ -195,7 +195,8 @@ public final class AppSearchSession implements Closeable {
         Preconditions.checkState(!mIsClosed, "AppSearchSession has already been closed");
         try {
             mService.getSchema(
-                    mPackageName,
+                    /*callingPackageName=*/mPackageName,
+                    /*packageName=*/mPackageName,
                     mDatabaseName,
                     mUserHandle,
                     new IAppSearchResultCallback.Stub() {

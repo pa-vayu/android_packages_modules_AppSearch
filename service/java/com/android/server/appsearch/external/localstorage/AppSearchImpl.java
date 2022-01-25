@@ -533,12 +533,16 @@ public final class AppSearchImpl implements Closeable {
      *
      * <p>This method belongs to query group.
      *
-     * @param packageName Package name that owns this schema
-     * @param databaseName The name of the database where this schema lives.
+     * @param callerPackageName Package name of the calling app
+     * @param packageName Package that owns the requested {@link AppSearchSchema} instances.
+     * @param databaseName Database that owns the requested {@link AppSearchSchema} instances.
      * @throws AppSearchException on IcingSearchEngine error.
      */
     @NonNull
-    public GetSchemaResponse getSchema(@NonNull String packageName, @NonNull String databaseName)
+    public GetSchemaResponse getSchema(
+            @NonNull String callerPackageName,
+            @NonNull String packageName,
+            @NonNull String databaseName)
             throws AppSearchException {
         mReadWriteLock.readLock().lock();
         try {
@@ -549,36 +553,26 @@ public final class AppSearchImpl implements Closeable {
             String prefix = createPrefix(packageName, databaseName);
             GetSchemaResponse.Builder responseBuilder = new GetSchemaResponse.Builder();
             for (int i = 0; i < fullSchema.getTypesCount(); i++) {
-                String typePrefix = getPrefix(fullSchema.getTypes(i).getSchemaType());
-                if (!prefix.equals(typePrefix)) {
+                // Check that this type belongs to the requested app and that the caller has
+                // access to it.
+                SchemaTypeConfigProto typeConfig = fullSchema.getTypes(i);
+                String typePrefix = getPrefix(typeConfig.getSchemaType());
+                String typeName = typeConfig.getSchemaType().substring(typePrefix.length());
+                if (!prefix.equals(typePrefix)
+                        || !hasAccessToType(
+                                callerPackageName, packageName, databaseName, typeName)) {
                     continue;
                 }
+
                 // Rewrite SchemaProto.types.schema_type
-                SchemaTypeConfigProto.Builder typeConfigBuilder =
-                        fullSchema.getTypes(i).toBuilder();
-                String newSchemaType = typeConfigBuilder.getSchemaType().substring(prefix.length());
-                typeConfigBuilder.setSchemaType(newSchemaType);
-
-                // Rewrite SchemaProto.types.properties.schema_type
-                for (int propertyIdx = 0;
-                        propertyIdx < typeConfigBuilder.getPropertiesCount();
-                        propertyIdx++) {
-                    PropertyConfigProto.Builder propertyConfigBuilder =
-                            typeConfigBuilder.getProperties(propertyIdx).toBuilder();
-                    if (!propertyConfigBuilder.getSchemaType().isEmpty()) {
-                        String newPropertySchemaType =
-                                propertyConfigBuilder.getSchemaType().substring(prefix.length());
-                        propertyConfigBuilder.setSchemaType(newPropertySchemaType);
-                        typeConfigBuilder.setProperties(propertyIdx, propertyConfigBuilder);
-                    }
-                }
-
+                SchemaTypeConfigProto.Builder typeConfigBuilder = typeConfig.toBuilder();
+                PrefixUtil.removePrefixesFromSchemaType(typeConfigBuilder);
                 AppSearchSchema schema =
                         SchemaToProtoConverter.toAppSearchSchema(typeConfigBuilder);
 
                 // TODO(b/183050495) find a place to store the version for the database, rather
                 // than read from a schema.
-                responseBuilder.setVersion(fullSchema.getTypes(i).getVersion());
+                responseBuilder.setVersion(typeConfig.getVersion());
                 responseBuilder.addSchema(schema);
             }
             return responseBuilder.build();
@@ -2072,6 +2066,25 @@ public final class AppSearchImpl implements Closeable {
         if (schemaTypeMap != null) {
             schemaTypeMap.remove(schemaType);
         }
+    }
+
+    /**
+     * Checks whether the caller package has been granted access to the typeName type created by
+     * packageName package for the databaseName database.
+     *
+     * @param unusedCallerPackageName the package name of the caller
+     * @param unusedPackageName the name of the package that owns the database
+     * @param unusedDatabaseName the name of the database that owns the type
+     * @param unusedTypeName the (non-prefixed) type
+     */
+    private boolean hasAccessToType(
+            String unusedCallerPackageName,
+            String unusedPackageName,
+            String unusedDatabaseName,
+            String unusedTypeName) {
+        // TODO(b/215624105): Update this after permission's refactoring is complete to allow
+        //  access beyond the callerPackage.
+        return true;
     }
 
     /**

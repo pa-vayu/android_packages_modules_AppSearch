@@ -422,10 +422,12 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void getSchema(
+                @NonNull String callingPackageName,
                 @NonNull String packageName,
                 @NonNull String databaseName,
                 @NonNull UserHandle userHandle,
                 @NonNull IAppSearchResultCallback callback) {
+            Objects.requireNonNull(callingPackageName);
             Objects.requireNonNull(packageName);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(userHandle);
@@ -435,7 +437,7 @@ public class AppSearchManagerService extends SystemService {
             int callingUid = Binder.getCallingUid();
             EXECUTOR.execute(() -> {
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callingPackageName);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -446,7 +448,8 @@ public class AppSearchManagerService extends SystemService {
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     GetSchemaResponse response =
-                            instance.getAppSearchImpl().getSchema(packageName, databaseName);
+                            instance.getAppSearchImpl().getSchema(
+                                callingPackageName, packageName, databaseName);
                     invokeCallbackOnResult(
                             callback,
                             AppSearchResult.newSuccessfulResult(response.getBundle()));

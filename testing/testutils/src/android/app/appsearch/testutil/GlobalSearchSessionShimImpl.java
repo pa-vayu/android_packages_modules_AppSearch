@@ -20,6 +20,7 @@ import android.annotation.NonNull;
 import android.app.appsearch.AppSearchManager;
 import android.app.appsearch.AppSearchResult;
 import android.app.appsearch.Features;
+import android.app.appsearch.GetSchemaResponse;
 import android.app.appsearch.GlobalSearchSession;
 import android.app.appsearch.GlobalSearchSessionShim;
 import android.app.appsearch.ReportSystemUsageRequest;
@@ -93,6 +94,15 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
         SettableFuture<AppSearchResult<Void>> future = SettableFuture.create();
         mGlobalSearchSession.reportSystemUsage(request, mExecutor, future::set);
         return Futures.transformAsync(future, this::transformResult, mExecutor);
+    }
+
+    @NonNull
+    @Override
+    public ListenableFuture<GetSchemaResponse> getSchema(
+        @NonNull String packageName, @NonNull String databaseName) {
+      SettableFuture<AppSearchResult<GetSchemaResponse>> future = SettableFuture.create();
+      mGlobalSearchSession.getSchema(packageName, databaseName, mExecutor, future::set);
+      return Futures.transformAsync(future, this::transformResult, mExecutor);
     }
 
     @Override
