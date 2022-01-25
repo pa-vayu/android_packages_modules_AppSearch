@@ -100,10 +100,15 @@ public interface GlobalSearchSessionShim extends Closeable {
      * will succeed but no notifications will be dispatched. Notifications could start flowing later
      * if {@code observedPackage} is installed and starts indexing data.
      *
+     * <p>This feature may not be available in all implementations. Check {@link
+     * Features#GLOBAL_SEARCH_SESSION_ADD_REMOVE_OBSERVER} before calling this method.
+     *
      * @param observedPackage Package whose changes to monitor
      * @param spec Specification of what types of changes to listen for
      * @param executor Executor on which to call the {@code observer} callback methods.
      * @param observer Callback to trigger when a schema or document changes
+     * @throws UnsupportedOperationException if this feature is not available on this AppSearch
+     *     implementation.
      */
     void addObserver(
             @NonNull String observedPackage,
@@ -120,11 +125,17 @@ public interface GlobalSearchSessionShim extends Closeable {
      * <p>If no matching observers have been registered, this method has no effect. If multiple
      * matching observers have been registered, all will be removed.
      *
+     * <p>This feature may not be available in all implementations. Check {@link
+     * Features#GLOBAL_SEARCH_SESSION_ADD_REMOVE_OBSERVER} before calling this method.
+     *
      * @param observedPackage Package in which the observers to be removed are registered
      * @param observer Callback to unregister
+     * @throws UnsupportedOperationException if this feature is not available on this AppSearch
+     *     implementation.
      */
     void removeObserver(
-            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer);
+            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer)
+            throws AppSearchException;
 
     /** Closes the {@link GlobalSearchSessionShim}. */
     @Override

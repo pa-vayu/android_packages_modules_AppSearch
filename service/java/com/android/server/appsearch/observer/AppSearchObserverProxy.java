@@ -24,6 +24,8 @@ import android.app.appsearch.observer.SchemaChangeInfo;
 import android.os.RemoteException;
 import android.util.Log;
 
+import java.util.Objects;
+
 /**
  * A wrapper that adapts {@link android.app.appsearch.aidl.IAppSearchObserverProxy} to the
  * {@link android.app.appsearch.observer.AppSearchObserverCallback} interface.
@@ -36,7 +38,7 @@ public class AppSearchObserverProxy implements AppSearchObserverCallback {
     private final IAppSearchObserverProxy mStub;
 
     public AppSearchObserverProxy(@NonNull IAppSearchObserverProxy stub) {
-        mStub = stub;
+        mStub = Objects.requireNonNull(stub);
     }
 
     @Override
@@ -65,5 +67,18 @@ public class AppSearchObserverProxy implements AppSearchObserverCallback {
         Log.w(TAG, "AppSearchObserver failed to fire; stub disconnected", e);
         // TODO(b/193494000): Since the originating app has disconnected, unregister this observer
         //  from AppSearch.
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof AppSearchObserverProxy)) return false;
+        AppSearchObserverProxy that = (AppSearchObserverProxy) o;
+        return Objects.equals(mStub.asBinder(), that.mStub.asBinder());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(mStub.asBinder());
     }
 }

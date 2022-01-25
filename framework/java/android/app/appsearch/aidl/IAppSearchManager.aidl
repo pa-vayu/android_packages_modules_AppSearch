@@ -388,4 +388,19 @@ interface IAppSearchManager {
         in Bundle observerSpecBundle,
         in UserHandle userHandle,
         in IAppSearchObserverProxy observerProxy);
+
+    /**
+     * Removes previously registered {@link AppSearchObserverCallback} instances from the system.
+     *
+     * @param callingPackage The name of the package that owns the observer.
+     * @param observedPackage Package whose changes are being monitored
+     * @param userHandle Handle of the calling user
+     * @param observerProxy Observer callback to remove
+     * @return the success or failure of this operation
+     */
+    AppSearchResultParcel removeObserver(
+        in String callingPackage,
+        in String observedPackage,
+        in UserHandle userHandle,
+        in IAppSearchObserverProxy observerProxy);
 }

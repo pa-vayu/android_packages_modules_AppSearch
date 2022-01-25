@@ -1352,6 +1352,40 @@ public class AppSearchManagerService extends SystemService {
         }
 
         @Override
+        public AppSearchResultParcel<Void> removeObserver(
+                @NonNull String callingPackage,
+                @NonNull String observedPackage,
+                @NonNull UserHandle userHandle,
+                @NonNull IAppSearchObserverProxy observerProxyStub) {
+            Objects.requireNonNull(callingPackage);
+            Objects.requireNonNull(observedPackage);
+            Objects.requireNonNull(userHandle);
+            Objects.requireNonNull(observerProxyStub);
+
+            int callingPid = Binder.getCallingPid();
+            int callingUid = Binder.getCallingUid();
+            long callingIdentity = Binder.clearCallingIdentity();
+
+            // Note: removeObserver is performed on the binder thread, unlike most AppSearch APIs
+            try {
+                verifyCaller(callingUid, callingPackage);
+                UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
+                verifyUserUnlocked(targetUser);
+
+                AppSearchUserInstance instance =
+                        mAppSearchUserInstanceManager.getUserInstance(targetUser);
+                instance.getAppSearchImpl().removeObserver(
+                        observedPackage,
+                        new AppSearchObserverProxy(observerProxyStub));
+                return new AppSearchResultParcel<>(AppSearchResult.newSuccessfulResult(null));
+            } catch (Throwable t) {
+                return new AppSearchResultParcel<>(throwableToFailedResult(t));
+            } finally {
+                Binder.restoreCallingIdentity(callingIdentity);
+            }
+        }
+
+        @Override
         public void initialize(
                 @NonNull String packageName,
                 @NonNull UserHandle userHandle,

@@ -35,17 +35,17 @@ public final class TypePropertyPathToProtoConverter {
 
     /** Extracts {@link TypePropertyMask} information from a {@link Map}. */
     @NonNull
-    public static List<TypePropertyMask> toTypePropertyMaskList(
+    public static List<TypePropertyMask.Builder> toTypePropertyMaskBuilderList(
             @NonNull Map<String, List<String>> typePropertyPaths) {
         Objects.requireNonNull(typePropertyPaths);
-        List<TypePropertyMask> typePropertyMasks = new ArrayList<>(typePropertyPaths.size());
+        List<TypePropertyMask.Builder> typePropertyMaskBuilders =
+                new ArrayList<>(typePropertyPaths.size());
         for (Map.Entry<String, List<String>> e : typePropertyPaths.entrySet()) {
-            typePropertyMasks.add(
+            typePropertyMaskBuilders.add(
                     TypePropertyMask.newBuilder()
                             .setSchemaType(e.getKey())
-                            .addAllPaths(e.getValue())
-                            .build());
+                            .addAllPaths(e.getValue()));
         }
-        return typePropertyMasks;
+        return typePropertyMaskBuilders;
     }
 }

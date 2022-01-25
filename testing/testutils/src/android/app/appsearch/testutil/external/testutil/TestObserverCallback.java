@@ -110,6 +110,15 @@ public class TestObserverCallback implements AppSearchObserverCallback {
         return mDocumentChanges;
     }
 
+    public void clear() {
+        synchronized (mLock) {
+            mSchemaChanges.clear();
+            mDocumentChanges.clear();
+            mNotificationCountLocked = 0;
+            mLock.notifyAll();
+        }
+    }
+
     private void incrementNotificationCountLocked() {
         synchronized (mLock) {
             mNotificationCountLocked++;
