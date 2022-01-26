@@ -1,0 +1,19 @@
+{
+  "presubmit": [
+    {
+      "name": "CtsAppSearchTestCases"
+    },
+    {
+      "name": "CtsAppSearchHostTestCases"
+    },
+    {
+      "name": "AppSearchCoreTests"
+    },
+    {
+      "name": "AppSearchServicesTests"
+    },
+    {
+      "name": "AppSearchMockingServicesTests"
+    }
+  ]
+}

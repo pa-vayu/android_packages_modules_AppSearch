@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The Android Open Source Project
+ * Copyright 2021 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,8 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package android.app.appsearch;
 
 /**
+ * A class that encapsulates all features that are only supported with certain combinations of
+ * backend and Android API Level.
+ *
  * @hide
  */
-package com.android.server.appsearch.testing;
+public interface Capabilities {
+
+    /**
+     * Returns whether or not {@link SearchResult.MatchInfo#getSubmatchRange} and {@link
+     * SearchResult.MatchInfo#getSubmatch} are available.
+     */
+    boolean isSubmatchSupported();
+}
