@@ -101,7 +101,8 @@ public class VisibilityStoreImpl implements VisibilityStore {
         mAppSearchImpl = Objects.requireNonNull(appSearchImpl);
         mUserContext = Objects.requireNonNull(userContext);
 
-        GetSchemaResponse getSchemaResponse = mAppSearchImpl.getSchema(PACKAGE_NAME, DATABASE_NAME);
+        GetSchemaResponse getSchemaResponse =
+            mAppSearchImpl.getSchema(PACKAGE_NAME, PACKAGE_NAME, DATABASE_NAME);
         boolean hasVisibilityType = false;
         boolean hasVisibleToPackagesType = false;
         for (AppSearchSchema schema : getSchemaResponse.getSchemas()) {

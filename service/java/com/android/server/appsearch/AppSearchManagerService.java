@@ -422,10 +422,12 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void getSchema(
+                @NonNull String callingPackageName,
                 @NonNull String packageName,
                 @NonNull String databaseName,
                 @NonNull UserHandle userHandle,
                 @NonNull IAppSearchResultCallback callback) {
+            Objects.requireNonNull(callingPackageName);
             Objects.requireNonNull(packageName);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(userHandle);
@@ -435,7 +437,7 @@ public class AppSearchManagerService extends SystemService {
             int callingUid = Binder.getCallingUid();
             EXECUTOR.execute(() -> {
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callingPackageName);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -446,7 +448,8 @@ public class AppSearchManagerService extends SystemService {
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     GetSchemaResponse response =
-                            instance.getAppSearchImpl().getSchema(packageName, databaseName);
+                            instance.getAppSearchImpl().getSchema(
+                                callingPackageName, packageName, databaseName);
                     invokeCallbackOnResult(
                             callback,
                             AppSearchResult.newSuccessfulResult(response.getBundle()));
@@ -1342,6 +1345,40 @@ public class AppSearchManagerService extends SystemService {
                         observedPackage,
                         new ObserverSpec(observerSpecBundle),
                         EXECUTOR,
+                        new AppSearchObserverProxy(observerProxyStub));
+                return new AppSearchResultParcel<>(AppSearchResult.newSuccessfulResult(null));
+            } catch (Throwable t) {
+                return new AppSearchResultParcel<>(throwableToFailedResult(t));
+            } finally {
+                Binder.restoreCallingIdentity(callingIdentity);
+            }
+        }
+
+        @Override
+        public AppSearchResultParcel<Void> removeObserver(
+                @NonNull String callingPackage,
+                @NonNull String observedPackage,
+                @NonNull UserHandle userHandle,
+                @NonNull IAppSearchObserverProxy observerProxyStub) {
+            Objects.requireNonNull(callingPackage);
+            Objects.requireNonNull(observedPackage);
+            Objects.requireNonNull(userHandle);
+            Objects.requireNonNull(observerProxyStub);
+
+            int callingPid = Binder.getCallingPid();
+            int callingUid = Binder.getCallingUid();
+            long callingIdentity = Binder.clearCallingIdentity();
+
+            // Note: removeObserver is performed on the binder thread, unlike most AppSearch APIs
+            try {
+                verifyCaller(callingUid, callingPackage);
+                UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
+                verifyUserUnlocked(targetUser);
+
+                AppSearchUserInstance instance =
+                        mAppSearchUserInstanceManager.getUserInstance(targetUser);
+                instance.getAppSearchImpl().removeObserver(
+                        observedPackage,
                         new AppSearchObserverProxy(observerProxyStub));
                 return new AppSearchResultParcel<>(AppSearchResult.newSuccessfulResult(null));
             } catch (Throwable t) {

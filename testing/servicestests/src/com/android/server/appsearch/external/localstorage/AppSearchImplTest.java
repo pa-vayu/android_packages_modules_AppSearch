@@ -40,7 +40,6 @@ import android.util.ArraySet;
 
 import androidx.test.core.app.ApplicationProvider;
 
-import com.android.server.appsearch.external.localstorage.converter.GenericDocumentToProtoConverter;
 import com.android.server.appsearch.external.localstorage.stats.InitializeStats;
 import com.android.server.appsearch.external.localstorage.stats.OptimizeStats;
 import com.android.server.appsearch.external.localstorage.util.PrefixUtil;
@@ -52,15 +51,12 @@ import com.android.server.appsearch.icing.proto.PropertyProto;
 import com.android.server.appsearch.icing.proto.PutResultProto;
 import com.android.server.appsearch.icing.proto.SchemaProto;
 import com.android.server.appsearch.icing.proto.SchemaTypeConfigProto;
-import com.android.server.appsearch.icing.proto.SearchResultProto;
-import com.android.server.appsearch.icing.proto.SearchSpecProto;
 import com.android.server.appsearch.icing.proto.StatusProto;
 import com.android.server.appsearch.icing.proto.StorageInfoProto;
 import com.android.server.appsearch.icing.proto.StringIndexingConfig;
 import com.android.server.appsearch.icing.proto.TermMatchType;
 
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 
 import org.junit.After;
@@ -571,7 +567,13 @@ public class AppSearchImplTest {
         assertThat(initStats.getResetStatusCode()).isEqualTo(AppSearchResult.RESULT_OK);
 
         // Make sure all our data is gone
-        assertThat(mAppSearchImpl.getSchema(context.getPackageName(), "database1").getSchemas())
+        assertThat(
+                        mAppSearchImpl
+                                .getSchema(
+                                        /*callerPackageName=*/ context.getPackageName(),
+                                        /*packageName=*/ context.getPackageName(),
+                                        /*databaseName=*/ "database1")
+                                .getSchemas())
                 .isEmpty();
         results =
                 mAppSearchImpl.globalQuery(
@@ -612,129 +614,6 @@ public class AppSearchImplTest {
                         /*logger=*/ null);
         assertThat(results.getResults()).hasSize(1);
         assertThat(results.getResults().get(0).getGenericDocument()).isEqualTo(validDoc);
-    }
-
-    @Test
-    public void testRewriteSearchSpec_oneInstance() throws Exception {
-        SearchSpecProto.Builder searchSpecProto = SearchSpecProto.newBuilder().setQuery("");
-
-        // Insert schema
-        List<AppSearchSchema> schemas =
-                Collections.singletonList(new AppSearchSchema.Builder("type").build());
-        mAppSearchImpl.setSchema(
-                "package",
-                "database",
-                schemas,
-                /*visibilityStore=*/ null,
-                /*schemasNotDisplayedBySystem=*/ Collections.emptyList(),
-                /*schemasVisibleToPackages=*/ Collections.emptyMap(),
-                /*forceOverride=*/ false,
-                /*version=*/ 0,
-                /* setSchemaStatsBuilder= */ null);
-
-        // Insert document
-        GenericDocument document = new GenericDocument.Builder<>("namespace", "id", "type").build();
-        mAppSearchImpl.putDocument("package", "database", document, /*logger=*/ null);
-
-        // Rewrite SearchSpec
-        mAppSearchImpl.rewriteSearchSpecForPrefixesLocked(
-                searchSpecProto,
-                Collections.singleton(createPrefix("package", "database")),
-                ImmutableSet.of("package$database/type"));
-        assertThat(searchSpecProto.getSchemaTypeFiltersList())
-                .containsExactly("package$database/type");
-        assertThat(searchSpecProto.getNamespaceFiltersList())
-                .containsExactly("package$database/namespace");
-    }
-
-    @Test
-    public void testRewriteSearchSpec_twoInstances() throws Exception {
-        SearchSpecProto.Builder searchSpecProto = SearchSpecProto.newBuilder().setQuery("");
-
-        // Insert schema
-        List<AppSearchSchema> schemas =
-                ImmutableList.of(
-                        new AppSearchSchema.Builder("typeA").build(),
-                        new AppSearchSchema.Builder("typeB").build());
-        mAppSearchImpl.setSchema(
-                "package",
-                "database1",
-                schemas,
-                /*visibilityStore=*/ null,
-                /*schemasNotDisplayedBySystem=*/ Collections.emptyList(),
-                /*schemasVisibleToPackages=*/ Collections.emptyMap(),
-                /*forceOverride=*/ false,
-                /*version=*/ 0,
-                /* setSchemaStatsBuilder= */ null);
-        mAppSearchImpl.setSchema(
-                "package",
-                "database2",
-                schemas,
-                /*visibilityStore=*/ null,
-                /*schemasNotDisplayedBySystem=*/ Collections.emptyList(),
-                /*schemasVisibleToPackages=*/ Collections.emptyMap(),
-                /*forceOverride=*/ false,
-                /*version=*/ 0,
-                /* setSchemaStatsBuilder= */ null);
-
-        // Insert documents
-        GenericDocument document1 =
-                new GenericDocument.Builder<>("namespace", "id", "typeA").build();
-        mAppSearchImpl.putDocument("package", "database1", document1, /*logger=*/ null);
-
-        GenericDocument document2 =
-                new GenericDocument.Builder<>("namespace", "id", "typeB").build();
-        mAppSearchImpl.putDocument("package", "database2", document2, /*logger=*/ null);
-
-        // Rewrite SearchSpec
-        mAppSearchImpl.rewriteSearchSpecForPrefixesLocked(
-                searchSpecProto,
-                ImmutableSet.of(
-                        createPrefix("package", "database1"), createPrefix("package", "database2")),
-                ImmutableSet.of(
-                        "package$database1/typeA", "package$database1/typeB",
-                        "package$database2/typeA", "package$database2/typeB"));
-        assertThat(searchSpecProto.getSchemaTypeFiltersList())
-                .containsExactly(
-                        "package$database1/typeA",
-                        "package$database1/typeB",
-                        "package$database2/typeA",
-                        "package$database2/typeB");
-        assertThat(searchSpecProto.getNamespaceFiltersList())
-                .containsExactly("package$database1/namespace", "package$database2/namespace");
-    }
-
-    @Test
-    public void testRewriteSearchSpec_ignoresSearchSpecSchemaFilters() throws Exception {
-        SearchSpecProto.Builder searchSpecProto =
-                SearchSpecProto.newBuilder().setQuery("").addSchemaTypeFilters("type");
-
-        // Insert schema
-        List<AppSearchSchema> schemas =
-                Collections.singletonList(new AppSearchSchema.Builder("type").build());
-        mAppSearchImpl.setSchema(
-                "package",
-                "database",
-                schemas,
-                /*visibilityStore=*/ null,
-                /*schemasNotDisplayedBySystem=*/ Collections.emptyList(),
-                /*schemasVisibleToPackages=*/ Collections.emptyMap(),
-                /*forceOverride=*/ false,
-                /*version=*/ 0,
-                /* setSchemaStatsBuilder= */ null);
-
-        // Insert document
-        GenericDocument document = new GenericDocument.Builder<>("namespace", "id", "type").build();
-        mAppSearchImpl.putDocument("package", "database", document, /*logger=*/ null);
-
-        // If 'allowedPrefixedSchemas' is empty, this returns false since there's nothing to
-        // search over. Despite the searchSpecProto having schema type filters.
-        assertThat(
-                        mAppSearchImpl.rewriteSearchSpecForPrefixesLocked(
-                                searchSpecProto,
-                                Collections.singleton(createPrefix("package", "database")),
-                                /*allowedPrefixedSchemas=*/ Collections.emptySet()))
-                .isFalse();
     }
 
     @Test
@@ -1816,47 +1695,6 @@ public class AppSearchImplTest {
     }
 
     @Test
-    public void testRewriteSearchResultProto() throws Exception {
-        final String prefix =
-                "com.package.foo"
-                        + PrefixUtil.PACKAGE_DELIMITER
-                        + "databaseName"
-                        + PrefixUtil.DATABASE_DELIMITER;
-        final String id = "id";
-        final String namespace = prefix + "namespace";
-        final String schemaType = prefix + "schema";
-
-        // Building the SearchResult received from query.
-        DocumentProto documentProto =
-                DocumentProto.newBuilder()
-                        .setUri(id)
-                        .setNamespace(namespace)
-                        .setSchema(schemaType)
-                        .build();
-        SearchResultProto.ResultProto resultProto =
-                SearchResultProto.ResultProto.newBuilder().setDocument(documentProto).build();
-        SearchResultProto searchResultProto =
-                SearchResultProto.newBuilder().addResults(resultProto).build();
-        SchemaTypeConfigProto schemaTypeConfigProto =
-                SchemaTypeConfigProto.newBuilder().setSchemaType(schemaType).build();
-        Map<String, Map<String, SchemaTypeConfigProto>> schemaMap =
-                ImmutableMap.of(prefix, ImmutableMap.of(schemaType, schemaTypeConfigProto));
-
-        DocumentProto.Builder strippedDocumentProto = documentProto.toBuilder();
-        removePrefixesFromDocument(strippedDocumentProto);
-        SearchResultPage searchResultPage =
-                AppSearchImpl.rewriteSearchResultProto(searchResultProto, schemaMap);
-        for (SearchResult result : searchResultPage.getResults()) {
-            assertThat(result.getPackageName()).isEqualTo("com.package.foo");
-            assertThat(result.getDatabaseName()).isEqualTo("databaseName");
-            assertThat(result.getGenericDocument())
-                    .isEqualTo(
-                            GenericDocumentToProtoConverter.toGenericDocument(
-                                    strippedDocumentProto.build(), prefix, schemaMap.get(prefix)));
-        }
-    }
-
-    @Test
     public void testReportUsage() throws Exception {
         // Insert schema
         List<AppSearchSchema> schemas =
@@ -2234,7 +2072,12 @@ public class AppSearchImplTest {
                                 /* setSchemaStatsBuilder= */ null));
 
         assertThrows(
-                IllegalStateException.class, () -> mAppSearchImpl.getSchema("package", "database"));
+                IllegalStateException.class,
+                () ->
+                        mAppSearchImpl.getSchema(
+                                /*callerPackageName=*/ "package",
+                                /*packageName=*/ "package",
+                                /*databaseName=*/ "database"));
 
         assertThrows(
                 IllegalStateException.class,

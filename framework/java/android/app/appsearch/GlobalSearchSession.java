@@ -27,14 +27,18 @@ import android.app.appsearch.observer.AppSearchObserverCallback;
 import android.app.appsearch.observer.DocumentChangeInfo;
 import android.app.appsearch.observer.ObserverSpec;
 import android.app.appsearch.observer.SchemaChangeInfo;
+import android.os.Bundle;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.UserHandle;
+import android.util.ArrayMap;
 import android.util.Log;
 
+import com.android.internal.annotations.GuardedBy;
 import com.android.internal.util.Preconditions;
 
 import java.io.Closeable;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
@@ -53,6 +57,11 @@ public class GlobalSearchSession implements Closeable {
     private final String mPackageName;
     private final UserHandle mUserHandle;
     private final IAppSearchManager mService;
+
+    // Management of observer callbacks. Key is observed package.
+    @GuardedBy("mObserverCallbacksLocked")
+    private final Map<String, Map<AppSearchObserverCallback, IAppSearchObserverProxy>>
+            mObserverCallbacksLocked = new ArrayMap<>();
 
     private boolean mIsMutated = false;
     private boolean mIsClosed = false;
@@ -186,6 +195,57 @@ public class GlobalSearchSession implements Closeable {
     }
 
     /**
+     * Retrieves the collection of schemas most recently successfully provided to {@link
+     * AppSearchSession#setSchema} for any types belonging to the requested package and database
+     * that the caller has been granted access to.
+     *
+     * <p>If the requested package/database combination does not exist or the caller has not been
+     * granted access to it, then an empty GetSchemaResponse will be returned.
+     *
+     * @param packageName the package that owns the requested {@link AppSearchSchema} instances.
+     * @param databaseName the database that owns the requested {@link AppSearchSchema} instances.
+     * @return The pending {@link GetSchemaResponse} containing the schemas that the caller has
+     *     access to or an empty GetSchemaResponse if the request package and database does not
+     *     exist, has not set a schema or contains no schemas that are accessible to the caller.
+     */
+    // This call hits disk; async API prevents us from treating these calls as properties.
+    public void getSchema(
+            @NonNull String packageName,
+            @NonNull String databaseName,
+            @NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<AppSearchResult<GetSchemaResponse>> callback) {
+        Objects.requireNonNull(packageName);
+        Objects.requireNonNull(databaseName);
+        Objects.requireNonNull(executor);
+        Objects.requireNonNull(callback);
+        Preconditions.checkState(!mIsClosed, "GlobalSearchSession has already been closed");
+        try {
+            mService.getSchema(
+                mPackageName,
+                packageName,
+                databaseName,
+                mUserHandle,
+                new IAppSearchResultCallback.Stub() {
+                    @Override
+                    public void onResult(AppSearchResultParcel resultParcel) {
+                        executor.execute(() -> {
+                            AppSearchResult<Bundle> result = resultParcel.getResult();
+                            if (result.isSuccess()) {
+                                GetSchemaResponse response =
+                                        new GetSchemaResponse(result.getResultValue());
+                                callback.accept(AppSearchResult.newSuccessfulResult(response));
+                            } else {
+                                callback.accept(AppSearchResult.newFailedResult(result));
+                            }
+                        });
+                    }
+                });
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
      * Adds an {@link AppSearchObserverCallback} to monitor changes within the
      * databases owned by {@code observedPackage} if they match the given
      * {@link android.app.appsearch.observer.ObserverSpec}.
@@ -214,44 +274,119 @@ public class GlobalSearchSession implements Closeable {
         Objects.requireNonNull(executor);
         Objects.requireNonNull(observer);
         Preconditions.checkState(!mIsClosed, "GlobalSearchSession has already been closed");
-        AppSearchResultParcel<Void> resultParcel;
-        try {
-             resultParcel = mService.addObserver(
-                    mPackageName,
-                    observedPackage,
-                    spec.getBundle(),
-                    mUserHandle,
-                    new IAppSearchObserverProxy.Stub() {
-                        @Override
-                        public void onSchemaChanged(
-                                @NonNull String packageName, @NonNull String databaseName) {
-                            executor.execute(() -> {
-                                SchemaChangeInfo changeInfo =
-                                        new SchemaChangeInfo(packageName, databaseName);
-                                observer.onSchemaChanged(changeInfo);
-                            });
-                        }
 
-                        @Override
-                        public void onDocumentChanged(
-                                @NonNull String packageName,
-                                @NonNull String databaseName,
-                                @NonNull String namespace,
-                                @NonNull String schemaName) {
-                            executor.execute(() -> {
-                                DocumentChangeInfo changeInfo = new DocumentChangeInfo(
-                                        packageName, databaseName, namespace, schemaName);
-                                observer.onDocumentChanged(changeInfo);
-                            });
-                        }
-                    });
-        } catch (RemoteException e) {
-            throw e.rethrowFromSystemServer();
+        synchronized (mObserverCallbacksLocked) {
+            IAppSearchObserverProxy stub = null;
+            Map<AppSearchObserverCallback, IAppSearchObserverProxy> observersForPackage =
+                    mObserverCallbacksLocked.get(observedPackage);
+            if (observersForPackage != null) {
+                stub = observersForPackage.get(observer);
+            }
+            if (stub == null) {
+                // No stub is associated with this package and observer, so we must create one.
+                stub = new IAppSearchObserverProxy.Stub() {
+                    @Override
+                    public void onSchemaChanged(
+                            @NonNull String packageName, @NonNull String databaseName) {
+                        executor.execute(() -> {
+                            SchemaChangeInfo changeInfo = new SchemaChangeInfo(packageName,
+                                    databaseName);
+                            observer.onSchemaChanged(changeInfo);
+                        });
+                    }
+
+                    @Override
+                    public void onDocumentChanged(
+                            @NonNull String packageName,
+                            @NonNull String databaseName,
+                            @NonNull String namespace,
+                            @NonNull String schemaName) {
+                        executor.execute(() -> {
+                            DocumentChangeInfo changeInfo = new DocumentChangeInfo(
+                                    packageName, databaseName, namespace, schemaName);
+                            observer.onDocumentChanged(changeInfo);
+                        });
+                    }
+                };
+            }
+
+            // Regardless of whether this stub was fresh or not, we have to register it again
+            // because the user might be supplying a different spec.
+            AppSearchResultParcel<Void> resultParcel;
+            try {
+                resultParcel = mService.addObserver(
+                        mPackageName, observedPackage, spec.getBundle(), mUserHandle, stub);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+
+            // See whether registration was successful
+            AppSearchResult<Void> result = resultParcel.getResult();
+            if (!result.isSuccess()) {
+                throw new AppSearchException(result.getResultCode(), result.getErrorMessage());
+            }
+
+            // Now that registration has succeeded, save this stub into our in-memory cache. This
+            // isn't done when errors occur because the user may not call removeObserver if
+            // addObserver threw.
+            if (observersForPackage == null) {
+                observersForPackage = new ArrayMap<>();
+                mObserverCallbacksLocked.put(observedPackage, observersForPackage);
+            }
+            observersForPackage.put(observer, stub);
         }
+    }
 
-        AppSearchResult<Void> result = resultParcel.getResult();
-        if (!result.isSuccess()) {
-            throw new AppSearchException(result.getResultCode(), result.getErrorMessage());
+    /**
+     * Removes previously registered {@link AppSearchObserverCallback} instances from the system.
+     *
+     * <p>All instances of {@link AppSearchObserverCallback} which are registered to observe
+     * {@code observedPackage} and compare equal to the provided callback using
+     * {@code AppSearchObserverCallback#equals} will be removed.
+     *
+     * <p>If no matching observers have been registered, this method has no effect. If multiple
+     * matching observers have been registered, all will be removed.
+     *
+     * @param observedPackage Package in which the observers to be removed are registered
+     * @param observer        Callback to unregister
+     */
+    public void removeObserver(
+            @NonNull String observedPackage,
+            @NonNull AppSearchObserverCallback observer) throws AppSearchException {
+        Objects.requireNonNull(observedPackage);
+        Objects.requireNonNull(observer);
+        Preconditions.checkState(!mIsClosed, "GlobalSearchSession has already been closed");
+
+        IAppSearchObserverProxy stub;
+        synchronized (mObserverCallbacksLocked) {
+            Map<AppSearchObserverCallback, IAppSearchObserverProxy> observersForPackage =
+                    mObserverCallbacksLocked.get(observedPackage);
+            if (observersForPackage == null) {
+                return;  // No observers registered for this package. Nothing to do.
+            }
+            stub = observersForPackage.get(observer);
+            if (stub == null) {
+                return;  // No such observer registered. Nothing to do.
+            }
+
+            AppSearchResultParcel<Void> resultParcel;
+            try {
+                resultParcel = mService.removeObserver(
+                        mPackageName, observedPackage, mUserHandle, stub);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+
+            AppSearchResult<Void> result = resultParcel.getResult();
+            if (!result.isSuccess()) {
+                throw new AppSearchException(result.getResultCode(), result.getErrorMessage());
+            }
+
+            // Only remove from the in-memory map once removal from the service side succeeds
+            observersForPackage.remove(observer);
+            if (observersForPackage.isEmpty()) {
+                mObserverCallbacksLocked.remove(observedPackage);
+            }
         }
     }
 

@@ -75,6 +75,7 @@ interface IAppSearchManager {
     /**
      * Retrieves the AppSearch schema for this database.
      *
+     * @param callingackageName The name of the package making this call.
      * @param packageName The name of the package that owns the schema.
      * @param databaseName  The name of the database to retrieve.
      * @param userHandle Handle of the calling user
@@ -82,6 +83,7 @@ interface IAppSearchManager {
      *     {@link AppSearchResult}&lt;{@link Bundle}&gt; where the bundle is a GetSchemaResponse.
      */
     void getSchema(
+        in String callingPackageName,
         in String packageName,
         in String databaseName,
         in UserHandle userHandle,
@@ -386,6 +388,21 @@ interface IAppSearchManager {
         in String callingPackage,
         in String observedPackage,
         in Bundle observerSpecBundle,
+        in UserHandle userHandle,
+        in IAppSearchObserverProxy observerProxy);
+
+    /**
+     * Removes previously registered {@link AppSearchObserverCallback} instances from the system.
+     *
+     * @param callingPackage The name of the package that owns the observer.
+     * @param observedPackage Package whose changes are being monitored
+     * @param userHandle Handle of the calling user
+     * @param observerProxy Observer callback to remove
+     * @return the success or failure of this operation
+     */
+    AppSearchResultParcel removeObserver(
+        in String callingPackage,
+        in String observedPackage,
         in UserHandle userHandle,
         in IAppSearchObserverProxy observerProxy);
 }
