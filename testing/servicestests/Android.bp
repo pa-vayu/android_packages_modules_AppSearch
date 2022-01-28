@@ -29,6 +29,7 @@ android_test {
     ],
     libs: [
         "android.test.runner",
+        "framework-appsearch.impl",
     ],
     // jni libs are not normally accessible from apps so they must be explicitly included.
     jni_libs: ["libicing"],
