@@ -28,11 +28,11 @@ import android.app.appsearch.AppSearchResult;
 import android.app.appsearch.AppSearchSchema;
 import android.app.appsearch.GenericDocument;
 import android.app.appsearch.GetSchemaResponse;
-import android.app.appsearch.PackageIdentifier;
 import android.app.appsearch.SearchResultPage;
 import android.app.appsearch.SearchSpec;
 import android.app.appsearch.SetSchemaResponse;
 import android.app.appsearch.StorageInfo;
+import android.app.appsearch.VisibilityDocument;
 import android.app.appsearch.aidl.AppSearchBatchResultParcel;
 import android.app.appsearch.aidl.AppSearchResultParcel;
 import android.app.appsearch.aidl.IAppSearchBatchResultCallback;
@@ -40,10 +40,7 @@ import android.app.appsearch.aidl.IAppSearchManager;
 import android.app.appsearch.aidl.IAppSearchObserverProxy;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
 import android.app.appsearch.exceptions.AppSearchException;
-import android.app.appsearch.observer.AppSearchObserverCallback;
-import android.app.appsearch.observer.DocumentChangeInfo;
 import android.app.appsearch.observer.ObserverSpec;
-import android.app.appsearch.observer.SchemaChangeInfo;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -58,7 +55,6 @@ import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.UserHandle;
 import android.os.UserManager;
-import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Log;
 
@@ -274,7 +270,7 @@ public class AppSearchManagerService extends SystemService {
                     for (int i = 0; i < installedPackageInfos.size(); i++) {
                         packagesToKeep.add(installedPackageInfos.get(i).packageName);
                     }
-                    packagesToKeep.add(VisibilityStore.PACKAGE_NAME);
+                    packagesToKeep.add(VisibilityStore.VISIBILITY_PACKAGE_NAME);
                     //TODO(b/145759910) clear visibility setting for package.
                     instance.getAppSearchImpl().prunePackageData(packagesToKeep);
                 }
@@ -323,8 +319,7 @@ public class AppSearchManagerService extends SystemService {
                 @NonNull String packageName,
                 @NonNull String databaseName,
                 @NonNull List<Bundle> schemaBundles,
-                @NonNull List<String> schemasNotDisplayedBySystem,
-                @NonNull Map<String, List<Bundle>> schemasVisibleToPackagesBundles,
+                @NonNull List<Bundle> visibilityBundles,
                 boolean forceOverride,
                 int schemaVersion,
                 @NonNull UserHandle userHandle,
@@ -333,8 +328,7 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(packageName);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(schemaBundles);
-            Objects.requireNonNull(schemasNotDisplayedBySystem);
-            Objects.requireNonNull(schemasVisibleToPackagesBundles);
+            Objects.requireNonNull(visibilityBundles);
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
 
@@ -359,17 +353,11 @@ public class AppSearchManagerService extends SystemService {
                     for (int i = 0; i < schemaBundles.size(); i++) {
                         schemas.add(new AppSearchSchema(schemaBundles.get(i)));
                     }
-                    Map<String, List<PackageIdentifier>> schemasVisibleToPackages =
-                            new ArrayMap<>(schemasVisibleToPackagesBundles.size());
-                    for (Map.Entry<String, List<Bundle>> entry :
-                            schemasVisibleToPackagesBundles.entrySet()) {
-                        List<PackageIdentifier> packageIdentifiers =
-                                new ArrayList<>(entry.getValue().size());
-                        for (int i = 0; i < entry.getValue().size(); i++) {
-                            packageIdentifiers.add(
-                                    new PackageIdentifier(entry.getValue().get(i)));
-                        }
-                        schemasVisibleToPackages.put(entry.getKey(), packageIdentifiers);
+                    List<VisibilityDocument> visibilityDocuments =
+                            new ArrayList<>(visibilityBundles.size());
+                    for (int i = 0; i < visibilityBundles.size(); i++) {
+                        visibilityDocuments.add(
+                                new VisibilityDocument(visibilityBundles.get(i)));
                     }
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     // TODO(b/173532925): Implement logging for statsBuilder
@@ -377,9 +365,7 @@ public class AppSearchManagerService extends SystemService {
                             packageName,
                             databaseName,
                             schemas,
-                            instance.getVisibilityStore(),
-                            schemasNotDisplayedBySystem,
-                            schemasVisibleToPackages,
+                            visibilityDocuments,
                             forceOverride,
                             schemaVersion,
                             /*setSchemaStatsBuilder=*/ null);
@@ -776,13 +762,12 @@ public class AppSearchManagerService extends SystemService {
 
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
 
-                    boolean callerHasSystemAccess =
-                            instance.getVisibilityStore().doesCallerHaveSystemAccess(packageName);
+                    boolean callerHasSystemAccess = instance.getVisibilityCheckImpl()
+                            .doesCallerHaveSystemAccess(packageName);
                     SearchResultPage searchResultPage = instance.getAppSearchImpl().globalQuery(
                             queryExpression,
                             new SearchSpec(searchSpecBundle),
                             packageName,
-                            instance.getVisibilityStore(),
                             callingUid,
                             callerHasSystemAccess,
                             instance.getLogger());
@@ -1035,9 +1020,8 @@ public class AppSearchManagerService extends SystemService {
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
 
-                    if (systemUsage
-                            && !instance.getVisibilityStore()
-                            .doesCallerHaveSystemAccess(packageName)) {
+                    if (systemUsage && !instance.getVisibilityCheckImpl().
+                            doesCallerHaveSystemAccess(packageName)) {
                         throw new AppSearchException(
                                 AppSearchResult.RESULT_SECURITY_ERROR,
                                 packageName + " does not have access to report system usage");

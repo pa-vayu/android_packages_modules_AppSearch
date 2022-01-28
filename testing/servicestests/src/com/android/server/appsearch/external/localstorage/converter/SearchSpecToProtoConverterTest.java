@@ -24,13 +24,10 @@ import static com.android.server.appsearch.external.localstorage.util.PrefixUtil
 
 import static com.google.common.truth.Truth.assertThat;
 
-import android.annotation.NonNull;
-import android.app.appsearch.PackageIdentifier;
 import android.app.appsearch.SearchSpec;
-import android.app.appsearch.exceptions.AppSearchException;
+import android.app.appsearch.testutil.AppSearchTestUtils;
 
 import com.android.server.appsearch.external.localstorage.util.PrefixUtil;
-import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
 import com.android.server.appsearch.icing.proto.ResultSpecProto;
 import com.android.server.appsearch.icing.proto.SchemaTypeConfigProto;
 import com.android.server.appsearch.icing.proto.ScoringSpecProto;
@@ -41,7 +38,6 @@ import com.google.common.collect.ImmutableSet;
 
 import org.junit.Test;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -486,28 +482,12 @@ public class SearchSpecToProtoConverterTest {
 
         converter.removeInaccessibleSchemaFilter(
                 /*callerPackageName=*/ "otherPackageName",
-                new VisibilityStore() {
-                    @Override
-                    public void setVisibility(
-                            @NonNull String packageName,
-                            @NonNull String databaseName,
-                            @NonNull Set<String> schemasNotDisplayedBySystem,
-                            @NonNull Map<String, List<PackageIdentifier>> schemasVisibleToPackages)
-                            throws AppSearchException {}
-
-                    @Override
-                    public boolean isSchemaSearchableByCaller(
-                            @NonNull String packageName,
-                            @NonNull String databaseName,
-                            @NonNull String prefixedSchema,
-                            int callerUid,
-                            boolean callerHasSystemAccess) {
-                        // filter out schema 2 which is not searchable for user.
-                        return !prefixedSchema.equals(prefix + "schema2");
-                    }
-                },
                 /*callerUid=*/ -1,
-                /*callerHasSystemAccess=*/ true);
+                /*callerHasSystemAccess=*/ true,
+                /*visibilityStore=*/ null, // VS doesn't mater in this test
+                AppSearchTestUtils.createMockVisibilityChecker(
+                        /*visiblePrefixedSchemas=*/ ImmutableSet.of(
+                                prefix + "schema1", prefix + "schema3")));
 
         SearchSpecProto searchSpecProto = converter.toSearchSpecProto(/*queryExpression=*/ "");
         // schema 2 is filtered out since it is not searchable for user.
@@ -557,28 +537,11 @@ public class SearchSpecToProtoConverterTest {
         // remove all target schema filter, and the query becomes nothing to search.
         nonEmptyConverter.removeInaccessibleSchemaFilter(
                 /*callerPackageName=*/ "otherPackageName",
-                new VisibilityStore() {
-                    @Override
-                    public void setVisibility(
-                            @NonNull String packageName,
-                            @NonNull String databaseName,
-                            @NonNull Set<String> schemasNotDisplayedBySystem,
-                            @NonNull Map<String, List<PackageIdentifier>> schemasVisibleToPackages)
-                            throws AppSearchException {}
-
-                    @Override
-                    public boolean isSchemaSearchableByCaller(
-                            @NonNull String packageName,
-                            @NonNull String databaseName,
-                            @NonNull String prefixedSchema,
-                            int callerUid,
-                            boolean callerHasSystemAccess) {
-                        // filter out all schema.
-                        return false;
-                    }
-                },
                 /*callerUid=*/ -1,
-                /*callerHasSystemAccess=*/ true);
+                /*callerHasSystemAccess=*/ true,
+                /*visibilityStore=*/ null, // VS doesn't mater in this test
+                AppSearchTestUtils.createMockVisibilityChecker(
+                        /*visiblePrefixedSchemas=*/ ImmutableSet.of()));
         assertThat(nonEmptyConverter.isNothingToSearch()).isTrue();
     }
 }

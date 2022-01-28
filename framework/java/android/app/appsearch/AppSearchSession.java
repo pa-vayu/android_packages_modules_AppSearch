@@ -29,7 +29,6 @@ import android.os.Bundle;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.UserHandle;
-import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Log;
 
@@ -150,15 +149,14 @@ public final class AppSearchSession implements Closeable {
         for (AppSearchSchema schema : request.getSchemas()) {
             schemaBundles.add(schema.getBundle());
         }
-        Map<String, List<Bundle>> schemasVisibleToPackagesBundles =
-                new ArrayMap<>(request.getSchemasVisibleToPackagesInternal().size());
-        for (Map.Entry<String, Set<PackageIdentifier>> entry :
-                request.getSchemasVisibleToPackagesInternal().entrySet()) {
-            List<Bundle> packageIdentifierBundles = new ArrayList<>(entry.getValue().size());
-            for (PackageIdentifier packageIdentifier : entry.getValue()) {
-                packageIdentifierBundles.add(packageIdentifier.getBundle());
-            }
-            schemasVisibleToPackagesBundles.put(entry.getKey(), packageIdentifierBundles);
+
+        // Extract a List<VisibilityDocument> from the request and convert to a
+        // List<VisibilityDocument.Bundle> to send via binder.
+        List<VisibilityDocument> visibilityDocuments = VisibilityDocument
+                .toVisibilityDocuments(request);
+        List<Bundle> visibilityBundles = new ArrayList<>(visibilityDocuments.size());
+        for (int i = 0; i < visibilityDocuments.size(); i++) {
+            visibilityBundles.add(visibilityDocuments.get(i).getBundle());
         }
 
         // No need to trigger migration if user never set migrator
@@ -166,14 +164,14 @@ public final class AppSearchSession implements Closeable {
             setSchemaNoMigrations(
                     request,
                     schemaBundles,
-                    schemasVisibleToPackagesBundles,
+                    visibilityBundles,
                     callbackExecutor,
                     callback);
         } else {
             setSchemaWithMigrations(
                     request,
                     schemaBundles,
-                    schemasVisibleToPackagesBundles,
+                    visibilityBundles,
                     workExecutor,
                     callbackExecutor,
                     callback);
@@ -679,7 +677,7 @@ public final class AppSearchSession implements Closeable {
     private void setSchemaNoMigrations(
             @NonNull SetSchemaRequest request,
             @NonNull List<Bundle> schemaBundles,
-            @NonNull Map<String, List<Bundle>> schemasVisibleToPackagesBundles,
+            @NonNull List<Bundle> visibilityBundles,
             @NonNull @CallbackExecutor Executor executor,
             @NonNull Consumer<AppSearchResult<SetSchemaResponse>> callback) {
         try {
@@ -687,8 +685,7 @@ public final class AppSearchSession implements Closeable {
                     mPackageName,
                     mDatabaseName,
                     schemaBundles,
-                    new ArrayList<>(request.getSchemasNotDisplayedBySystem()),
-                    schemasVisibleToPackagesBundles,
+                    visibilityBundles,
                     request.isForceOverride(),
                     request.getVersion(),
                     mUserHandle,
@@ -736,7 +733,7 @@ public final class AppSearchSession implements Closeable {
     private void setSchemaWithMigrations(
             @NonNull SetSchemaRequest request,
             @NonNull List<Bundle> schemaBundles,
-            @NonNull Map<String, List<Bundle>> schemasVisibleToPackagesBundles,
+            @NonNull List<Bundle> visibilityBundles,
             @NonNull Executor workExecutor,
             @NonNull @CallbackExecutor Executor callbackExecutor,
             @NonNull Consumer<AppSearchResult<SetSchemaResponse>> callback) {
@@ -762,7 +759,7 @@ public final class AppSearchSession implements Closeable {
 
                 // No need to trigger migration if no migrator is active.
                 if (activeMigrators.isEmpty()) {
-                    setSchemaNoMigrations(request, schemaBundles, schemasVisibleToPackagesBundles,
+                    setSchemaNoMigrations(request, schemaBundles, visibilityBundles,
                             callbackExecutor, callback);
                     return;
                 }
@@ -775,8 +772,7 @@ public final class AppSearchSession implements Closeable {
                         mPackageName,
                         mDatabaseName,
                         schemaBundles,
-                        new ArrayList<>(request.getSchemasNotDisplayedBySystem()),
-                        schemasVisibleToPackagesBundles,
+                        visibilityBundles,
                         /*forceOverride=*/ false,
                         request.getVersion(),
                         mUserHandle,
@@ -827,8 +823,7 @@ public final class AppSearchSession implements Closeable {
                                 mPackageName,
                                 mDatabaseName,
                                 schemaBundles,
-                                new ArrayList<>(request.getSchemasNotDisplayedBySystem()),
-                                schemasVisibleToPackagesBundles,
+                                visibilityBundles,
                                 /*forceOverride=*/ true,
                                 request.getVersion(),
                                 mUserHandle,
