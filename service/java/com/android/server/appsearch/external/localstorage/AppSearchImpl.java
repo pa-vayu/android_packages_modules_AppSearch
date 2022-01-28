@@ -68,6 +68,7 @@ import com.android.server.appsearch.external.localstorage.stats.SetSchemaStats;
 import com.android.server.appsearch.external.localstorage.util.PrefixUtil;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityChecker;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
+import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityUtil;
 
 import com.google.android.icing.IcingSearchEngine;
 import com.google.android.icing.proto.DeleteByQueryResultProto;
@@ -581,11 +582,16 @@ public final class AppSearchImpl implements Closeable {
      * @param databaseName Database that owns the requested {@link AppSearchSchema} instances.
      * @throws AppSearchException on IcingSearchEngine error.
      */
+    // TODO(b/215624105): The combination of (callerPackageName, callerUid, callerHasSystemAccess)
+    //  occurs together in many places related to visibility. Should these be combined into a struct
+    //  called something like CallerAccess?
     @NonNull
     public GetSchemaResponse getSchema(
-            @NonNull String callerPackageName,
             @NonNull String packageName,
-            @NonNull String databaseName)
+            @NonNull String databaseName,
+            @NonNull String callerPackageName,
+            int callerUid,
+            boolean callerHasSystemAccess)
             throws AppSearchException {
         mReadWriteLock.readLock().lock();
         try {
@@ -600,11 +606,19 @@ public final class AppSearchImpl implements Closeable {
                 SchemaTypeConfigProto typeConfig = fullSchema.getTypes(i);
                 String prefixedSchemaType = typeConfig.getSchemaType();
                 String typePrefix = getPrefix(prefixedSchemaType);
-                String typeName = typeConfig.getSchemaType().substring(typePrefix.length());
-                // TODO(b/215624105) use VisibilityChecker to check the access.
-                if (!prefix.equals(typePrefix)
-                        || !hasAccessToType(
-                                callerPackageName, packageName, databaseName, typeName)) {
+                if (!prefix.equals(typePrefix)) {
+                    // This schema type doesn't belong to the database we're querying for.
+                    continue;
+                }
+                if (!VisibilityUtil.isSchemaSearchableByCaller(
+                        callerPackageName,
+                        callerUid,
+                        callerHasSystemAccess,
+                        packageName,
+                        prefixedSchemaType,
+                        mVisibilityStoreLocked,
+                        mVisibilityCheckerLocked)) {
+                    // Caller doesn't have access to this type.
                     continue;
                 }
 
@@ -622,6 +636,7 @@ public final class AppSearchImpl implements Closeable {
                 // Populate visibility info. Since the constructor of VisibilityStore will get
                 // schema. Avoid call visibility store before we have already created it.
                 if (mVisibilityStoreLocked != null) {
+                    String typeName = typeConfig.getSchemaType().substring(typePrefix.length());
                     VisibilityDocument visibilityDocument =
                             mVisibilityStoreLocked.getVisibility(prefixedSchemaType);
                     if (visibilityDocument != null) {
@@ -643,6 +658,17 @@ public final class AppSearchImpl implements Closeable {
                             }
                             responseBuilder.setSchemaTypeVisibleToPackages(
                                     typeName, packageIdentifier);
+                        }
+                        Set<Integer> visibleToRoles = visibilityDocument.getVisibleToRoles();
+                        if (visibleToRoles != null) {
+                            responseBuilder.setAllowedRolesForSchemaTypeVisibility(
+                                    typeName, visibleToRoles);
+                        }
+                        Set<Integer> visibleToPermissions =
+                                visibilityDocument.getVisibleToPermissions();
+                        if (visibleToPermissions != null) {
+                            responseBuilder.setRequiredPermissionsForSchemaTypeVisibility(
+                                    typeName, visibleToPermissions);
                         }
                     }
                 }
@@ -767,7 +793,13 @@ public final class AppSearchImpl implements Closeable {
 
             // Prepare notifications
             mObserverManager.onDocumentChange(
-                    packageName, databaseName, document.getNamespace(), document.getSchemaType());
+                    packageName,
+                    databaseName,
+                    document.getNamespace(),
+                    document.getSchemaType(),
+                    document.getId(),
+                    mVisibilityStoreLocked,
+                    mVisibilityCheckerLocked);
         } finally {
             mReadWriteLock.writeLock().unlock();
 
@@ -860,6 +892,7 @@ public final class AppSearchImpl implements Closeable {
      * @param id The ID of the document to get.
      * @param typePropertyPaths A map of schema type to a list of property paths to return in the
      *     result.
+     * @param callerPackageName The package name of the caller application
      * @param callerUid The ID of the caller application
      * @param callerHasSystemAccess A boolean signifying if the caller has system access
      * @return The Document contents
@@ -872,6 +905,7 @@ public final class AppSearchImpl implements Closeable {
             @NonNull String namespace,
             @NonNull String id,
             @NonNull Map<String, List<String>> typePropertyPaths,
+            @NonNull String callerPackageName,
             int callerUid,
             boolean callerHasSystemAccess)
             throws AppSearchException {
@@ -886,13 +920,14 @@ public final class AppSearchImpl implements Closeable {
                         getDocumentProtoByIdLocked(
                                 packageName, databaseName, namespace, id, typePropertyPaths);
 
-                if (mVisibilityCheckerLocked == null
-                        || !mVisibilityCheckerLocked.isSchemaSearchableByCaller(
-                                packageName,
-                                documentProto.getSchema(),
-                                callerUid,
-                                callerHasSystemAccess,
-                                mVisibilityStoreLocked)) {
+                if (!VisibilityUtil.isSchemaSearchableByCaller(
+                        callerPackageName,
+                        callerUid,
+                        callerHasSystemAccess,
+                        packageName,
+                        documentProto.getSchema(),
+                        mVisibilityStoreLocked,
+                        mVisibilityCheckerLocked)) {
                     throw new AppSearchException(AppSearchResult.RESULT_NOT_FOUND);
                 }
             } catch (AppSearchException e) {
@@ -1467,7 +1502,14 @@ public final class AppSearchImpl implements Closeable {
 
             // Prepare notifications
             if (schemaType != null) {
-                mObserverManager.onDocumentChange(packageName, databaseName, namespace, schemaType);
+                mObserverManager.onDocumentChange(
+                        packageName,
+                        databaseName,
+                        namespace,
+                        schemaType,
+                        documentId,
+                        mVisibilityStoreLocked,
+                        mVisibilityCheckerLocked);
             }
         } finally {
             mReadWriteLock.writeLock().unlock();
@@ -1633,7 +1675,10 @@ public final class AppSearchImpl implements Closeable {
                             packageName,
                             /*databaseName=*/ PrefixUtil.getDatabaseName(document.getNamespace()),
                             /*namespace=*/ PrefixUtil.removePrefix(document.getNamespace()),
-                            /*schemaType=*/ PrefixUtil.removePrefix(document.getSchema()));
+                            /*schemaType=*/ PrefixUtil.removePrefix(document.getSchema()),
+                            document.getUri(),
+                            mVisibilityStoreLocked,
+                            mVisibilityCheckerLocked);
                 }
             }
 
@@ -2165,23 +2210,37 @@ public final class AppSearchImpl implements Closeable {
 
     /**
      * Adds an {@link AppSearchObserverCallback} to monitor changes within the databases owned by
-     * {@code observedPackage} if they match the given {@link
+     * {@code targetPackageName} if they match the given {@link
      * android.app.appsearch.observer.ObserverSpec}.
      *
-     * <p>If the data owned by {@code observedPackage} is not visible to you, the registration call
-     * will succeed but no notifications will be dispatched. Notifications could start flowing later
-     * if {@code observedPackage} changes its schema visibility settings.
+     * <p>If the data owned by {@code targetPackageName} is not visible to you, the registration
+     * call will succeed but no notifications will be dispatched. Notifications could start flowing
+     * later if {@code targetPackageName} changes its schema visibility settings.
      *
-     * <p>If no package matching {@code observedPackage} exists on the system, the registration call
-     * will succeed but no notifications will be dispatched. Notifications could start flowing later
-     * if {@code observedPackage} is installed and starts indexing data.
+     * <p>If no package matching {@code targetPackageName} exists on the system, the registration
+     * call will succeed but no notifications will be dispatched. Notifications could start flowing
+     * later if {@code targetPackageName} is installed and starts indexing data.
      *
      * <p>Note that this method does not take the standard read/write lock that guards I/O, so it
      * will not queue behind I/O. Therefore it is safe to call from any thread including UI or
      * binder threads.
+     *
+     * @param listeningPackageName The package name of the app that wants to receive notifications.
+     * @param listeningUid The uid of the app that wants to receive notifications.
+     * @param listeningPackageHasSystemAccess Whether the app that wants to receive notifications
+     *     has access to schema types marked 'visible to system'.
+     * @param targetPackageName The package that owns the data the observer wants to be notified
+     *     for.
+     * @param spec Describes the kind of data changes the observer should trigger for.
+     * @param executor The executor on which to trigger the observer callback to deliver
+     *     notifications.
+     * @param observer The callback to trigger on notifications.
      */
     public void addObserver(
-            @NonNull String observedPackage,
+            @NonNull String listeningPackageName,
+            int listeningUid,
+            boolean listeningPackageHasSystemAccess,
+            @NonNull String targetPackageName,
             @NonNull ObserverSpec spec,
             @NonNull Executor executor,
             @NonNull AppSearchObserverCallback observer) {
@@ -2189,12 +2248,19 @@ public final class AppSearchImpl implements Closeable {
         // observers for types that don't exist. This is intentional because we notify for types
         // being created or removed. If we only registered observer for existing types, it would
         // be impossible to ever dispatch a notification of a type being added.
-        mObserverManager.addObserver(observedPackage, spec, executor, observer);
+        mObserverManager.addObserver(
+                listeningPackageName,
+                listeningUid,
+                listeningPackageHasSystemAccess,
+                targetPackageName,
+                spec,
+                executor,
+                observer);
     }
 
     /**
      * Removes an {@link AppSearchObserverCallback} from watching the databases owned by {@code
-     * observedPackage}.
+     * targetPackageName}.
      *
      * <p>All observers which compare equal to the given observer via {@link
      * AppSearchObserverCallback#equals} are removed. This may be 0, 1, or many observers.
@@ -2204,8 +2270,8 @@ public final class AppSearchImpl implements Closeable {
      * binder threads.
      */
     public void removeObserver(
-            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer) {
-        mObserverManager.removeObserver(observedPackage, observer);
+            @NonNull String targetPackageName, @NonNull AppSearchObserverCallback observer) {
+        mObserverManager.removeObserver(targetPackageName, observer);
     }
 
     /**
@@ -2249,25 +2315,6 @@ public final class AppSearchImpl implements Closeable {
         if (schemaTypeMap != null) {
             schemaTypeMap.remove(schemaType);
         }
-    }
-
-    /**
-     * Checks whether the caller package has been granted access to the typeName type created by
-     * packageName package for the databaseName database.
-     *
-     * @param unusedCallerPackageName the package name of the caller
-     * @param unusedPackageName the name of the package that owns the database
-     * @param unusedDatabaseName the name of the database that owns the type
-     * @param unusedTypeName the (non-prefixed) type
-     */
-    private boolean hasAccessToType(
-            String unusedCallerPackageName,
-            String unusedPackageName,
-            String unusedDatabaseName,
-            String unusedTypeName) {
-        // TODO(b/215624105): Update this after permission's refactoring is complete to allow
-        //  access beyond the callerPackage.
-        return true;
     }
 
     /**

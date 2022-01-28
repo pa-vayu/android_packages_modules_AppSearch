@@ -118,21 +118,21 @@ public interface GlobalSearchSessionShim extends Closeable {
 
     /**
      * Adds an {@link AppSearchObserverCallback} to monitor changes within the databases owned by
-     * {@code observedPackage} if they match the given {@link
+     * {@code targetPackageName} if they match the given {@link
      * android.app.appsearch.observer.ObserverSpec}.
      *
-     * <p>If the data owned by {@code observedPackage} is not visible to you, the registration call
-     * will succeed but no notifications will be dispatched. Notifications could start flowing later
-     * if {@code observedPackage} changes its schema visibility settings.
+     * <p>If the data owned by {@code targetPackageName} is not visible to you, the registration
+     * call will succeed but no notifications will be dispatched. Notifications could start flowing
+     * later if {@code targetPackageName} changes its schema visibility settings.
      *
-     * <p>If no package matching {@code observedPackage} exists on the system, the registration call
-     * will succeed but no notifications will be dispatched. Notifications could start flowing later
-     * if {@code observedPackage} is installed and starts indexing data.
+     * <p>If no package matching {@code targetPackageName} exists on the system, the registration
+     * call will succeed but no notifications will be dispatched. Notifications could start flowing
+     * later if {@code targetPackageName} is installed and starts indexing data.
      *
      * <p>This feature may not be available in all implementations. Check {@link
      * Features#GLOBAL_SEARCH_SESSION_ADD_REMOVE_OBSERVER} before calling this method.
      *
-     * @param observedPackage Package whose changes to monitor
+     * @param targetPackageName Package whose changes to monitor
      * @param spec Specification of what types of changes to listen for
      * @param executor Executor on which to call the {@code observer} callback methods.
      * @param observer Callback to trigger when a schema or document changes
@@ -141,7 +141,7 @@ public interface GlobalSearchSessionShim extends Closeable {
      *     implementation.
      */
     void addObserver(
-            @NonNull String observedPackage,
+            @NonNull String targetPackageName,
             @NonNull ObserverSpec spec,
             @NonNull Executor executor,
             @NonNull AppSearchObserverCallback observer)
@@ -150,8 +150,9 @@ public interface GlobalSearchSessionShim extends Closeable {
     /**
      * Removes previously registered {@link AppSearchObserverCallback} instances from the system.
      *
-     * <p>All instances of {@link AppSearchObserverCallback} which are equal to the provided
-     * callback using {@link AppSearchObserverCallback#equals} will be removed.
+     * <p>All instances of {@link AppSearchObserverCallback} which are registered to observe {@code
+     * targetPackageName} and compare equal to the provided callback using {@link
+     * AppSearchObserverCallback#equals} will be removed.
      *
      * <p>If no matching observers have been registered, this method has no effect. If multiple
      * matching observers have been registered, all will be removed.
@@ -159,13 +160,13 @@ public interface GlobalSearchSessionShim extends Closeable {
      * <p>This feature may not be available in all implementations. Check {@link
      * Features#GLOBAL_SEARCH_SESSION_ADD_REMOVE_OBSERVER} before calling this method.
      *
-     * @param observedPackage Package in which the observers to be removed are registered
-     * @param observer Callback to unregister
+     * @param targetPackageName Package which the observers to be removed are listening to.
+     * @param observer Callback to unregister.
      * @throws UnsupportedOperationException if this feature is not available on this AppSearch
      *     implementation.
      */
     void removeObserver(
-            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer)
+            @NonNull String targetPackageName, @NonNull AppSearchObserverCallback observer)
             throws AppSearchException;
 
     /** Closes the {@link GlobalSearchSessionShim}. */

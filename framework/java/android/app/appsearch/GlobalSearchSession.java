@@ -32,12 +32,14 @@ import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.UserHandle;
 import android.util.ArrayMap;
+import android.util.ArraySet;
 import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.util.Preconditions;
 
 import java.io.Closeable;
+import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.Objects;
@@ -337,10 +339,12 @@ public class GlobalSearchSession implements Closeable {
                 stub = new IAppSearchObserverProxy.Stub() {
                     @Override
                     public void onSchemaChanged(
-                            @NonNull String packageName, @NonNull String databaseName) {
+                            @NonNull String packageName,
+                            @NonNull String databaseName,
+                            @NonNull List<String> changedSchemaNames) {
                         executor.execute(() -> {
-                            SchemaChangeInfo changeInfo = new SchemaChangeInfo(packageName,
-                                    databaseName);
+                            SchemaChangeInfo changeInfo = new SchemaChangeInfo(
+                                    packageName, databaseName, new ArraySet<>(changedSchemaNames));
                             observer.onSchemaChanged(changeInfo);
                         });
                     }
@@ -350,10 +354,15 @@ public class GlobalSearchSession implements Closeable {
                             @NonNull String packageName,
                             @NonNull String databaseName,
                             @NonNull String namespace,
-                            @NonNull String schemaName) {
+                            @NonNull String schemaName,
+                            @NonNull List<String> changedDocumentIds) {
                         executor.execute(() -> {
                             DocumentChangeInfo changeInfo = new DocumentChangeInfo(
-                                    packageName, databaseName, namespace, schemaName);
+                                    packageName,
+                                    databaseName,
+                                    namespace,
+                                    schemaName,
+                                    new ArraySet<>(changedDocumentIds));
                             observer.onDocumentChanged(changeInfo);
                         });
                     }

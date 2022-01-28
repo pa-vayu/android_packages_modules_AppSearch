@@ -16,6 +16,7 @@
 package android.app.appsearch;
 
 import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.os.Bundle;
 import android.util.ArraySet;
 
@@ -47,6 +48,12 @@ public class VisibilityDocument extends GenericDocument {
     /** Property that holds the SHA 256 certificate of the app that can access a schema. */
     private static final String SHA_256_CERT_PROPERTY = "sha256Cert";
 
+    /** Property that holds the role can access a schema. */
+    private static final String ROLE_PROPERTY = "role";
+
+    /** Property that holds the required permissions to access the schema. */
+    private static final String PERMISSION_PROPERTY = "permission";
+
     // The initial schema version, one VisibilityDocument contains all visibility information for
     // whole package.
     public static final int SCHEMA_VERSION_DOC_PER_PACKAGE = 0;
@@ -76,6 +83,16 @@ public class VisibilityDocument extends GenericDocument {
                                     .build())
                     .addProperty(
                             new AppSearchSchema.BytesPropertyConfig.Builder(SHA_256_CERT_PROPERTY)
+                                    .setCardinality(
+                                            AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
+                                    .build())
+                    .addProperty(
+                            new AppSearchSchema.LongPropertyConfig.Builder(ROLE_PROPERTY)
+                                    .setCardinality(
+                                            AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
+                                    .build())
+                    .addProperty(
+                            new AppSearchSchema.LongPropertyConfig.Builder(PERMISSION_PROPERTY)
                                     .setCardinality(
                                             AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
                                     .build())
@@ -112,6 +129,24 @@ public class VisibilityDocument extends GenericDocument {
     @NonNull
     public byte[][] getSha256Certs() {
         return getPropertyBytesArray(SHA_256_CERT_PROPERTY);
+    }
+
+    /**
+     * Returns an array of Android Roles that have access to the schema this {@link
+     * VisibilityDocument} represents.
+     */
+    @Nullable
+    public Set<Integer> getVisibleToRoles() {
+        return toInts(getPropertyLongArray(ROLE_PROPERTY));
+    }
+
+    /**
+     * Returns an array of Android Permissions that caller mush hold to access the schema this
+     * {@link VisibilityDocument} represents.
+     */
+    @Nullable
+    public Set<Integer> getVisibleToPermissions() {
+        return toInts(getPropertyLongArray(PERMISSION_PROPERTY));
     }
 
     /** Builder for {@link VisibilityDocument}. */
@@ -152,6 +187,28 @@ public class VisibilityDocument extends GenericDocument {
             return this;
         }
 
+        /**
+         * Add a set of Android role that has access to the schema this {@link VisibilityDocument}
+         * represents.
+         */
+        @NonNull
+        public Builder setVisibleToRoles(@NonNull Set<Integer> visibleToRoles) {
+            Objects.requireNonNull(visibleToRoles);
+            setPropertyLong(ROLE_PROPERTY, toLongs(visibleToRoles));
+            return this;
+        }
+
+        /**
+         * Add a set of Android role that has access to the schema this {@link VisibilityDocument}
+         * represents.
+         */
+        @NonNull
+        public Builder setVisibleToPermissions(@NonNull Set<Integer> visibleToPermissions) {
+            Objects.requireNonNull(visibleToPermissions);
+            setPropertyLong(PERMISSION_PROPERTY, toLongs(visibleToPermissions));
+            return this;
+        }
+
         /** Build a {@link VisibilityDocument} */
         @Override
         @NonNull
@@ -178,6 +235,10 @@ public class VisibilityDocument extends GenericDocument {
         Set<String> schemasNotDisplayedBySystem = setSchemaRequest.getSchemasNotDisplayedBySystem();
         Map<String, Set<PackageIdentifier>> schemasVisibleToPackages =
                 setSchemaRequest.getSchemasVisibleToPackages();
+        Map<String, Set<Integer>> schemasVisibleToRoles =
+                setSchemaRequest.getAllowedRolesForSchemaTypeVisibility();
+        Map<String, Set<Integer>> schemasVisibleToPermissions =
+                setSchemaRequest.getRequiredPermissionsForSchemaTypeVisibility();
 
         List<VisibilityDocument> visibilityDocuments = new ArrayList<>(searchSchemas.size());
 
@@ -187,11 +248,43 @@ public class VisibilityDocument extends GenericDocument {
                     new VisibilityDocument.Builder(/*id=*/ searchSchema.getSchemaType());
             documentBuilder.setNotDisplayedBySystem(
                     schemasNotDisplayedBySystem.contains(schemaType));
+
             if (schemasVisibleToPackages.containsKey(schemaType)) {
                 documentBuilder.addVisibleToPackages(schemasVisibleToPackages.get(schemaType));
+            }
+
+            if (schemasVisibleToRoles.containsKey(schemaType)) {
+                documentBuilder.setVisibleToRoles(schemasVisibleToRoles.get(schemaType));
+            }
+
+            if (schemasVisibleToPermissions.containsKey(schemaType)) {
+                documentBuilder.setVisibleToPermissions(
+                        schemasVisibleToPermissions.get(schemaType));
             }
             visibilityDocuments.add(documentBuilder.build());
         }
         return visibilityDocuments;
+    }
+
+    @NonNull
+    static long[] toLongs(@NonNull Set<Integer> properties) {
+        long[] outputs = new long[properties.size()];
+        int i = 0;
+        for (int property : properties) {
+            outputs[i++] = property;
+        }
+        return outputs;
+    }
+
+    @Nullable
+    private static Set<Integer> toInts(@Nullable long[] properties) {
+        if (properties == null) {
+            return null;
+        }
+        Set<Integer> outputs = new ArraySet<>(properties.length);
+        for (long property : properties) {
+            outputs.add((int) property);
+        }
+        return outputs;
     }
 }
