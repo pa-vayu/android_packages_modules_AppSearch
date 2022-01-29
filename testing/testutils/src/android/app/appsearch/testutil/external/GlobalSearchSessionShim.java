@@ -16,6 +16,7 @@
 
 package android.app.appsearch;
 
+import android.annotation.CallbackExecutor;
 import android.annotation.NonNull;
 import android.annotation.SuppressLint;
 import android.app.appsearch.exceptions.AppSearchException;
@@ -36,6 +37,13 @@ import java.util.concurrent.Executor;
  * @see AppSearchSessionShim
  */
 public interface GlobalSearchSessionShim extends Closeable {
+
+    @NonNull
+    ListenableFuture<AppSearchBatchResult<String, GenericDocument>> getByDocumentId(
+            @NonNull String packageName,
+            @NonNull String databaseName,
+            @NonNull GetByDocumentIdRequest request);
+
     /**
      * Retrieves documents from all AppSearch databases that the querying application has access to.
      *

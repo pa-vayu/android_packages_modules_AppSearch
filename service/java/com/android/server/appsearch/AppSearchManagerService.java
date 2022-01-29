@@ -572,15 +572,18 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void getDocuments(
-                @NonNull String packageName,
+                @NonNull String callingPackageName,
+                @NonNull String targetPackageName,
                 @NonNull String databaseName,
                 @NonNull String namespace,
                 @NonNull List<String> ids,
                 @NonNull Map<String, List<String>> typePropertyPaths,
                 @NonNull UserHandle userHandle,
                 @ElapsedRealtimeLong long binderCallStartTimeMillis,
+                boolean global,
                 @NonNull IAppSearchBatchResultCallback callback) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callingPackageName);
+            Objects.requireNonNull(targetPackageName);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(namespace);
             Objects.requireNonNull(ids);
@@ -597,7 +600,7 @@ public class AppSearchManagerService extends SystemService {
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callingPackageName);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -611,12 +614,27 @@ public class AppSearchManagerService extends SystemService {
                     for (int i = 0; i < ids.size(); i++) {
                         String id = ids.get(i);
                         try {
-                            GenericDocument document = instance.getAppSearchImpl().getDocument(
-                                    packageName,
-                                    databaseName,
-                                    namespace,
-                                    id,
-                                    typePropertyPaths);
+                            GenericDocument document;
+                            if (global) {
+                                // TODO(b/203819101) add test to try out security by binding
+                                // directly to binder and passing callingpackage param
+                                document = instance.getAppSearchImpl().globalGetDocument(
+                                        targetPackageName,
+                                        databaseName,
+                                        namespace,
+                                        id,
+                                        typePropertyPaths,
+                                        callingUid,
+                                        instance.getVisibilityCheckImpl()
+                                                .doesCallerHaveSystemAccess(callingPackageName));
+                            } else {
+                                document = instance.getAppSearchImpl().getDocument(
+                                        targetPackageName,
+                                        databaseName,
+                                        namespace,
+                                        id,
+                                        typePropertyPaths);
+                            }
                             ++operationSuccessCount;
                             resultBuilder.setSuccess(id, document.getBundle());
                         } catch (Throwable t) {
@@ -640,11 +658,12 @@ public class AppSearchManagerService extends SystemService {
                         int totalLatencyMillis =
                                 (int) (SystemClock.elapsedRealtime() - totalLatencyStartTimeMillis);
                         instance.getLogger().logStats(new CallStats.Builder()
-                                .setPackageName(packageName)
+                                .setPackageName(targetPackageName)
                                 .setDatabase(databaseName)
                                 .setStatusCode(statusCode)
                                 .setTotalLatencyMillis(totalLatencyMillis)
                                 .setCallType(CallStats.CALL_TYPE_GET_DOCUMENTS)
+                                // TODO(b/203819101) need mark the call as a global getById
                                 // TODO(b/173532925) check the existing binder call latency chart
                                 // is good enough for us:
                                 // http://dashboards/view/_72c98f9a_91d9_41d4_ab9a_bc14f79742b4

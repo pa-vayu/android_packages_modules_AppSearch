@@ -23,7 +23,6 @@ import android.app.appsearch.aidl.AppSearchResultParcel;
 import android.app.appsearch.aidl.IAppSearchBatchResultCallback;
 import android.app.appsearch.aidl.IAppSearchManager;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
-import android.app.appsearch.exceptions.AppSearchException;
 import android.app.appsearch.util.SchemaMigrationUtil;
 import android.os.Bundle;
 import android.os.RemoteException;
@@ -296,7 +295,7 @@ public final class AppSearchSession implements Closeable {
 
                         @Override
                         public void onSystemError(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> sendSystemErrorToCallback(
+                            executor.execute(() -> SearchSessionUtil.sendSystemErrorToCallback(
                                     resultParcel.getResult(), callback));
                         }
                     });
@@ -331,61 +330,16 @@ public final class AppSearchSession implements Closeable {
         Preconditions.checkState(!mIsClosed, "AppSearchSession has already been closed");
         try {
             mService.getDocuments(
-                    mPackageName,
+                    /*callerPackageName=*/mPackageName,
+                    /*targetPackageName=*/mPackageName,
                     mDatabaseName,
                     request.getNamespace(),
                     new ArrayList<>(request.getIds()),
                     request.getProjectionsInternal(),
                     mUserHandle,
                     /*binderCallStartTimeMillis=*/ SystemClock.elapsedRealtime(),
-                    new IAppSearchBatchResultCallback.Stub() {
-                        @Override
-                        public void onResult(AppSearchBatchResultParcel resultParcel) {
-                            executor.execute(() -> {
-                                AppSearchBatchResult<String, Bundle> result =
-                                        resultParcel.getResult();
-                                AppSearchBatchResult.Builder<String, GenericDocument>
-                                        documentResultBuilder =
-                                        new AppSearchBatchResult.Builder<>();
-
-                                // Translate successful results
-                                for (Map.Entry<String, Bundle> bundleEntry :
-                                        result.getSuccesses().entrySet()) {
-                                    GenericDocument document;
-                                    try {
-                                        document = new GenericDocument(bundleEntry.getValue());
-                                    } catch (Throwable t) {
-                                        // These documents went through validation, so how could
-                                        // this fail? We must have done something wrong.
-                                        documentResultBuilder.setFailure(
-                                                bundleEntry.getKey(),
-                                                AppSearchResult.RESULT_INTERNAL_ERROR,
-                                                t.getMessage());
-                                        continue;
-                                    }
-                                    documentResultBuilder.setSuccess(
-                                            bundleEntry.getKey(), document);
-                                }
-
-                                // Translate failed results
-                                for (Map.Entry<String, AppSearchResult<Bundle>> bundleEntry :
-                                        ((Map<String, AppSearchResult<Bundle>>)
-                                                result.getFailures()).entrySet()) {
-                                    documentResultBuilder.setFailure(
-                                            bundleEntry.getKey(),
-                                            bundleEntry.getValue().getResultCode(),
-                                            bundleEntry.getValue().getErrorMessage());
-                                }
-                                callback.onResult(documentResultBuilder.build());
-                            });
-                        }
-
-                        @Override
-                        public void onSystemError(AppSearchResultParcel result) {
-                            executor.execute(
-                                    () -> sendSystemErrorToCallback(result.getResult(), callback));
-                        }
-                    });
+                    /*global=*/false,
+                    SearchSessionUtil.createGetDocumentCallback(executor, callback));
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -551,7 +505,7 @@ public final class AppSearchSession implements Closeable {
 
                         @Override
                         public void onSystemError(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> sendSystemErrorToCallback(
+                            executor.execute(() -> SearchSessionUtil.sendSystemErrorToCallback(
                                     resultParcel.getResult(), callback));
                         }
                     });
@@ -860,22 +814,5 @@ public final class AppSearchSession implements Closeable {
                         AppSearchResult.throwableToFailedResult(t)));
             }
         });
-    }
-
-    /**
-     * Calls {@link BatchResultCallback#onSystemError} with a throwable derived from the given
-     * failed {@link AppSearchResult}.
-     *
-     * <p>The {@link AppSearchResult} generally comes from
-     * {@link IAppSearchBatchResultCallback#onSystemError}.
-     *
-     * <p>This method should be called from the callback executor thread.
-     */
-    private void sendSystemErrorToCallback(
-            @NonNull AppSearchResult<?> failedResult, @NonNull BatchResultCallback<?, ?> callback) {
-        Preconditions.checkArgument(!failedResult.isSuccess());
-        Throwable throwable = new AppSearchException(
-                failedResult.getResultCode(), failedResult.getErrorMessage());
-        callback.onSystemError(throwable);
     }
 }

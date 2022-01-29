@@ -17,10 +17,13 @@
 package android.app.appsearch.testutil;
 
 import android.annotation.NonNull;
+import android.app.appsearch.AppSearchBatchResult;
 import android.app.appsearch.AppSearchManager;
 import android.app.appsearch.AppSearchResult;
 import android.app.appsearch.Features;
 import android.app.appsearch.GetSchemaResponse;
+import android.app.appsearch.GenericDocument;
+import android.app.appsearch.GetByDocumentIdRequest;
 import android.app.appsearch.GlobalSearchSession;
 import android.app.appsearch.GlobalSearchSessionShim;
 import android.app.appsearch.ReportSystemUsageRequest;
@@ -78,6 +81,19 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
             @NonNull GlobalSearchSession session, @NonNull ExecutorService executor) {
         mGlobalSearchSession = Objects.requireNonNull(session);
         mExecutor = Objects.requireNonNull(executor);
+    }
+
+    @NonNull
+    public ListenableFuture<AppSearchBatchResult<String, GenericDocument>> getByDocumentId(
+            @NonNull String packageName,
+            @NonNull String databaseName,
+            @NonNull GetByDocumentIdRequest request) {
+        SettableFuture<AppSearchBatchResult<String, GenericDocument>> future =
+                SettableFuture.create();
+        mGlobalSearchSession.getByDocumentId(
+                packageName, databaseName, request, mExecutor,
+                new BatchResultCallbackAdapter<>(future));
+        return future;
     }
 
     @NonNull
@@ -140,3 +156,4 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
         return Futures.immediateFuture(result.getResultValue());
     }
 }
+

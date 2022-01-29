@@ -39,6 +39,7 @@ import com.android.internal.util.Preconditions;
 
 import java.io.Closeable;
 import java.util.Map;
+import java.util.ArrayList;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
@@ -116,6 +117,55 @@ public class GlobalSearchSession implements Closeable {
         mService = service;
         mUserHandle = userHandle;
         mPackageName = packageName;
+    }
+
+    /**
+     * Gets {@link GenericDocument} objects by document IDs in a namespace in a database in a
+     * package from the {@link GlobalSearchSession} database. If the package or database doesn't
+     * exist or if the calling package doesn't have access, the gets will be handled as
+     * failures in an {@link AppSearchBatchResult} object in the callback.
+     *
+     * @param packageName the name of the package to get from
+     * @param databaseName the name of the database to get from
+     * @param request a request containing a namespace and IDs to get documents for.
+     * @param executor Executor on which to invoke the callback.
+     * @param callback Callback to receive the pending result of performing this operation. The keys
+     *                 of the returned {@link AppSearchBatchResult} are the input IDs. The values
+     *                 are the returned {@link GenericDocument}s on success, or a failed
+     *                 {@link AppSearchResult} otherwise. IDs that are not found will return a
+     *                 failed {@link AppSearchResult} with a result code of
+     *                 {@link AppSearchResult#RESULT_NOT_FOUND}. If an unexpected internal error
+     *                 occurs in the AppSearch service, {@link BatchResultCallback#onSystemError}
+     *                 will be invoked with a {@link Throwable}.
+     */
+    public void getByDocumentId(
+            @NonNull String packageName,
+            @NonNull String databaseName,
+            @NonNull GetByDocumentIdRequest request,
+            @NonNull @CallbackExecutor Executor executor,
+            @NonNull BatchResultCallback<String, GenericDocument> callback) {
+        Objects.requireNonNull(packageName);
+        Objects.requireNonNull(databaseName);
+        Objects.requireNonNull(request);
+        Objects.requireNonNull(executor);
+        Objects.requireNonNull(callback);
+        Preconditions.checkState(!mIsClosed, "GlobalSearchSession has already been closed");
+
+        try {
+            mService.getDocuments(
+                    /*callerPackageName=*/mPackageName,
+                    /*targetPackageName=*/packageName,
+                    databaseName,
+                    request.getNamespace(),
+                    new ArrayList<>(request.getIds()),
+                    request.getProjectionsInternal(),
+                    mUserHandle,
+                    SystemClock.elapsedRealtime(),
+                    /*global=*/true,
+                    SearchSessionUtil.createGetDocumentCallback(executor, callback));
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
     }
 
     /**
