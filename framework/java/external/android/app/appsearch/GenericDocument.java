@@ -239,6 +239,12 @@ public class GenericDocument {
      * one of the typed versions of this method instead, such as {@link #getPropertyString} or
      * {@link #getPropertyStringArray}.
      *
+     * <p>If the property has been set is an empty {@link GenericDocument}[] or {@code byte[][]},
+     * this will return an empty {@link GenericDocument}[] or {@code byte[][]} respectively starting
+     * in {@link android.os.Build.VERSION_CODES#TIRAMISU Android T} and {@code null} in earlier
+     * versions of Android. For other types it will always return an empty array if the property has
+     * been set as an empty array.
+     *
      * @param path The path to look for.
      * @return The entry with the given path as an object or {@code null} if there is no such path.
      *     The returned object will be one of the following types: {@code String[]}, {@code long[]},
@@ -262,9 +268,6 @@ public class GenericDocument {
             // entry: BYTE_ARRAY_FIELD -> byte[].
             @SuppressWarnings("unchecked")
             List<Bundle> bundles = (List<Bundle>) rawValue;
-            if (bundles.size() == 0) {
-                return null;
-            }
             byte[][] bytes = new byte[bundles.size()][];
             for (int i = 0; i < bundles.size(); i++) {
                 Bundle bundle = bundles.get(i);
@@ -286,9 +289,6 @@ public class GenericDocument {
             // The underlying Bundle of nested GenericDocuments is packed into a Parcelable array.
             // We must unpack it into GenericDocument instances.
             Parcelable[] bundles = (Parcelable[]) rawValue;
-            if (bundles.length == 0) {
-                return null;
-            }
             GenericDocument[] documents = new GenericDocument[bundles.length];
             for (int i = 0; i < bundles.length; i++) {
                 if (bundles[i] == null) {
@@ -785,6 +785,11 @@ public class GenericDocument {
      *
      * <p>See {@link #getProperty} for a detailed description of the path syntax.
      *
+     * <p>If the property has been set via @link Builder#setPropertyBytes} is an empty {@code
+     * byte[][]}. This will return an empty {@code byte[][]} respectively starting in {@link
+     * android.os.Build.VERSION_CODES#TIRAMISU Android T} and {@code null} in earlier versions of
+     * Android.
+     *
      * @param path The path to look for.
      * @return The {@code byte[][]} associated with the given path, or {@code null} if no value is
      *     set or the value is of a different type.
@@ -801,6 +806,11 @@ public class GenericDocument {
      * Retrieves a repeated {@link GenericDocument} property by path.
      *
      * <p>See {@link #getProperty} for a detailed description of the path syntax.
+     *
+     * <p>If the property has been set via {@link Builder#setPropertyDocument} is an empty {@link
+     * GenericDocument}[], this will return an empty {@link GenericDocument}[] respectively starting
+     * in {@link android.os.Build.VERSION_CODES#TIRAMISU Android T} and {@code null} in earlier
+     * versions of Android.
      *
      * @param path The path to look for.
      * @return The {@link GenericDocument}[] associated with the given path, or {@code null} if no
