@@ -27,7 +27,11 @@ import static com.google.common.truth.Truth.assertThat;
 import android.app.appsearch.SearchSpec;
 import android.app.appsearch.testutil.AppSearchTestUtils;
 
+import com.android.server.appsearch.external.localstorage.AppSearchImpl;
+import com.android.server.appsearch.external.localstorage.OptimizeStrategy;
+import com.android.server.appsearch.external.localstorage.UnlimitedLimitConfig;
 import com.android.server.appsearch.external.localstorage.util.PrefixUtil;
+import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
 import com.android.server.appsearch.icing.proto.ResultSpecProto;
 import com.android.server.appsearch.icing.proto.SchemaTypeConfigProto;
 import com.android.server.appsearch.icing.proto.ScoringSpecProto;
@@ -36,12 +40,18 @@ import com.android.server.appsearch.icing.proto.SearchSpecProto;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import java.util.Map;
 import java.util.Set;
 
 public class SearchSpecToProtoConverterTest {
+    /** An optimize strategy that always triggers optimize. */
+    public static final OptimizeStrategy ALWAYS_OPTIMIZE = optimizeInfo -> true;
+
+    @Rule public final TemporaryFolder mTemporaryFolder = new TemporaryFolder();
 
     @Test
     public void testToSearchSpecProto() throws Exception {
@@ -460,16 +470,22 @@ public class SearchSpecToProtoConverterTest {
     }
 
     @Test
-    public void testRemoveInaccessibleSchemaFilter() {
-        String prefix = PrefixUtil.createPrefix("package", "database");
+    public void testRemoveInaccessibleSchemaFilter() throws Exception {
+        AppSearchImpl appSearchImpl =
+                AppSearchImpl.create(
+                        mTemporaryFolder.newFolder(),
+                        new UnlimitedLimitConfig(),
+                        /*initStatsBuilder=*/ null,
+                        ALWAYS_OPTIMIZE,
+                        /*visibilityChecker=*/ null);
+        VisibilityStore visibilityStore = new VisibilityStore(appSearchImpl);
 
-        SearchSpec searchSpec = new SearchSpec.Builder().build();
-
+        final String prefix = PrefixUtil.createPrefix("package", "database");
         SchemaTypeConfigProto schemaTypeConfigProto =
                 SchemaTypeConfigProto.newBuilder().getDefaultInstanceForType();
         SearchSpecToProtoConverter converter =
                 new SearchSpecToProtoConverter(
-                        searchSpec,
+                        new SearchSpec.Builder().build(),
                         /*prefixes=*/ ImmutableSet.of(prefix),
                         /*namespaceMap=*/ ImmutableMap.of(
                                 prefix, ImmutableSet.of("package$database/namespace1")),
@@ -484,7 +500,7 @@ public class SearchSpecToProtoConverterTest {
                 /*callerPackageName=*/ "otherPackageName",
                 /*callerUid=*/ -1,
                 /*callerHasSystemAccess=*/ true,
-                /*visibilityStore=*/ null, // VS doesn't mater in this test
+                /*visibilityStore=*/ visibilityStore,
                 AppSearchTestUtils.createMockVisibilityChecker(
                         /*visiblePrefixedSchemas=*/ ImmutableSet.of(
                                 prefix + "schema1", prefix + "schema3")));
@@ -539,9 +555,8 @@ public class SearchSpecToProtoConverterTest {
                 /*callerPackageName=*/ "otherPackageName",
                 /*callerUid=*/ -1,
                 /*callerHasSystemAccess=*/ true,
-                /*visibilityStore=*/ null, // VS doesn't mater in this test
-                AppSearchTestUtils.createMockVisibilityChecker(
-                        /*visiblePrefixedSchemas=*/ ImmutableSet.of()));
+                /*visibilityStore=*/ null,
+                /*visibilityChecker=*/ null);
         assertThat(nonEmptyConverter.isNothingToSearch()).isTrue();
     }
 }

@@ -435,7 +435,12 @@ public class AppSearchManagerService extends SystemService {
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     GetSchemaResponse response =
                             instance.getAppSearchImpl().getSchema(
-                                callingPackageName, packageName, databaseName);
+                                    packageName,
+                                    databaseName,
+                                    callingPackageName,
+                                    callingUid,
+                                    instance.getVisibilityChecker()
+                                            .doesCallerHaveSystemAccess(callingPackageName));
                     invokeCallbackOnResult(
                             callback,
                             AppSearchResult.newSuccessfulResult(response.getBundle()));
@@ -624,8 +629,9 @@ public class AppSearchManagerService extends SystemService {
                                         namespace,
                                         id,
                                         typePropertyPaths,
+                                        callingPackageName,
                                         callingUid,
-                                        instance.getVisibilityCheckImpl()
+                                        instance.getVisibilityChecker()
                                                 .doesCallerHaveSystemAccess(callingPackageName));
                             } else {
                                 document = instance.getAppSearchImpl().getDocument(
@@ -781,7 +787,7 @@ public class AppSearchManagerService extends SystemService {
 
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
 
-                    boolean callerHasSystemAccess = instance.getVisibilityCheckImpl()
+                    boolean callerHasSystemAccess = instance.getVisibilityChecker()
                             .doesCallerHaveSystemAccess(packageName);
                     SearchResultPage searchResultPage = instance.getAppSearchImpl().globalQuery(
                             queryExpression,
@@ -1039,7 +1045,7 @@ public class AppSearchManagerService extends SystemService {
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
 
-                    if (systemUsage && !instance.getVisibilityCheckImpl().
+                    if (systemUsage && !instance.getVisibilityChecker().
                             doesCallerHaveSystemAccess(packageName)) {
                         throw new AppSearchException(
                                 AppSearchResult.RESULT_SECURITY_ERROR,
@@ -1322,12 +1328,12 @@ public class AppSearchManagerService extends SystemService {
         @Override
         public AppSearchResultParcel<Void> addObserver(
                 @NonNull String callingPackage,
-                @NonNull String observedPackage,
+                @NonNull String targetPackageName,
                 @NonNull Bundle observerSpecBundle,
                 @NonNull UserHandle userHandle,
                 @NonNull IAppSearchObserverProxy observerProxyStub) {
             Objects.requireNonNull(callingPackage);
-            Objects.requireNonNull(observedPackage);
+            Objects.requireNonNull(targetPackageName);
             Objects.requireNonNull(observerSpecBundle);
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(observerProxyStub);
@@ -1345,7 +1351,10 @@ public class AppSearchManagerService extends SystemService {
                 AppSearchUserInstance instance =
                         mAppSearchUserInstanceManager.getUserInstance(targetUser);
                 instance.getAppSearchImpl().addObserver(
-                        observedPackage,
+                        callingPackage,
+                        callingUid,
+                        instance.getVisibilityChecker().doesCallerHaveSystemAccess(callingPackage),
+                        targetPackageName,
                         new ObserverSpec(observerSpecBundle),
                         EXECUTOR,
                         new AppSearchObserverProxy(observerProxyStub));

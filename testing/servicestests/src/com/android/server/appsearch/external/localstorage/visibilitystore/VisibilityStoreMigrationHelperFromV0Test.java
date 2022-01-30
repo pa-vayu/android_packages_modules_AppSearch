@@ -30,9 +30,6 @@ import android.app.appsearch.AppSearchSchema;
 import android.app.appsearch.GenericDocument;
 import android.app.appsearch.PackageIdentifier;
 import android.app.appsearch.VisibilityDocument;
-import android.content.pm.PackageManager;
-import android.os.UserHandle;
-import android.util.ArrayMap;
 
 import com.android.server.appsearch.external.localstorage.AppSearchImpl;
 import com.android.server.appsearch.external.localstorage.OptimizeStrategy;
@@ -48,7 +45,6 @@ import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
 import java.util.Collections;
-import java.util.Map;
 
 public class VisibilityStoreMigrationHelperFromV0Test {
 
@@ -58,7 +54,6 @@ public class VisibilityStoreMigrationHelperFromV0Test {
     private static final OptimizeStrategy ALWAYS_OPTIMIZE = optimizeInfo -> true;
 
     @Rule public TemporaryFolder mTemporaryFolder = new TemporaryFolder();
-    private final Map<UserHandle, PackageManager> mMockPackageManagers = new ArrayMap<>();
     private File mFile;
 
     @Before

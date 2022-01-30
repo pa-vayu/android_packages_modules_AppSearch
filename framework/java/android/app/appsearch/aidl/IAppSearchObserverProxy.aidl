@@ -17,11 +17,13 @@ package android.app.appsearch.aidl;
 
 /** {@hide} */
 oneway interface IAppSearchObserverProxy {
-    void onSchemaChanged(in String packageName, in String databaseName);
+    void onSchemaChanged(
+            in String packageName, in String databaseName, in List<String> changedSchemaNames);
 
     void onDocumentChanged(
             in String packageName,
             in String databaseName,
             in String namespace,
-            in String schemaName);
+            in String schemaName,
+            in List<String> changedDocumentIds);
 }

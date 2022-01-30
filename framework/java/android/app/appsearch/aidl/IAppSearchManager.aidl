@@ -378,7 +378,7 @@ interface IAppSearchManager {
      * they match the given ObserverSpec.
      *
      * @param callingPackage The name of the package which is registering an observer.
-     * @param observedPackage Package whose changes to monitor
+     * @param targetPackageName Package whose changes to monitor
      * @param observerSpecBundle Bundle of ObserverSpec showing what types of changes to listen for
      * @param userHandle Handle of the calling user
      * @param observerProxy Callback to trigger when a schema or document changes
@@ -386,7 +386,7 @@ interface IAppSearchManager {
      */
     AppSearchResultParcel addObserver(
         in String callingPackage,
-        in String observedPackage,
+        in String targetPackageName,
         in Bundle observerSpecBundle,
         in UserHandle userHandle,
         in IAppSearchObserverProxy observerProxy);

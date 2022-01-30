@@ -18,6 +18,7 @@ package com.android.server.appsearch.external.localstorage.visibilitystore;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import android.app.appsearch.AppSearchSchema;
 import android.app.appsearch.PackageIdentifier;
 import android.app.appsearch.VisibilityDocument;
 
@@ -36,6 +37,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
+import java.util.Collections;
 
 public class VisibilityStoreTest {
 
@@ -115,5 +117,36 @@ public class VisibilityStoreTest {
 
         mVisibilityStore.removeVisibility(ImmutableSet.of(visibilityDocument.getId()));
         assertThat(mVisibilityStore.getVisibility("Email")).isNull();
+    }
+
+    @Test
+    public void testRecoverBrokenVisibilitySchema() throws Exception {
+        // Create a broken schema which could be recovered to the latest schema in a compatible
+        // change. Since we won't set force override to true to recover the broken case.
+        AppSearchSchema brokenSchema =
+                new AppSearchSchema.Builder(VisibilityDocument.SCHEMA_TYPE).build();
+
+        // Index a broken schema into AppSearch, use the latest version to make it broken.
+        mAppSearchImpl.setSchema(
+                VisibilityStore.VISIBILITY_PACKAGE_NAME,
+                VisibilityStore.VISIBILITY_DATABASE_NAME,
+                Collections.singletonList(brokenSchema),
+                /*visibilityDocuments=*/ Collections.emptyList(),
+                /*forceOverride=*/ true,
+                /*version=*/ VisibilityDocument.SCHEMA_VERSION_LATEST,
+                /*setSchemaStatsBuilder=*/ null);
+        // Create VisibilityStore should recover the broken schema
+        mVisibilityStore = new VisibilityStore(mAppSearchImpl);
+
+        // We should be able to set and get Visibility settings.
+        String prefix = PrefixUtil.createPrefix("packageName", "databaseName");
+        VisibilityDocument visibilityDocument =
+                new VisibilityDocument.Builder(prefix + "Email")
+                        .setNotDisplayedBySystem(true)
+                        .addVisibleToPackage(new PackageIdentifier("pkgBar", new byte[32]))
+                        .build();
+        mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
+
+        assertThat(mVisibilityStore.getVisibility(prefix + "Email")).isEqualTo(visibilityDocument);
     }
 }

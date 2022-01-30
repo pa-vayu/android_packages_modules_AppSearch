@@ -24,6 +24,7 @@ import android.app.appsearch.observer.SchemaChangeInfo;
 import android.os.RemoteException;
 import android.util.Log;
 
+import java.util.ArrayList;
 import java.util.Objects;
 
 /**
@@ -44,7 +45,10 @@ public class AppSearchObserverProxy implements AppSearchObserverCallback {
     @Override
     public void onSchemaChanged(@NonNull SchemaChangeInfo changeInfo) {
         try {
-            mStub.onSchemaChanged(changeInfo.getPackageName(), changeInfo.getDatabaseName());
+            mStub.onSchemaChanged(
+                    changeInfo.getPackageName(),
+                    changeInfo.getDatabaseName(),
+                    new ArrayList<>(changeInfo.getChangedSchemaNames()));
         } catch (RemoteException e) {
             onRemoteException(e);
         }
@@ -57,7 +61,8 @@ public class AppSearchObserverProxy implements AppSearchObserverCallback {
                     changeInfo.getPackageName(),
                     changeInfo.getDatabaseName(),
                     changeInfo.getNamespace(),
-                    changeInfo.getSchemaName());
+                    changeInfo.getSchemaName(),
+                    new ArrayList<>(changeInfo.getChangedDocumentIds()));
         } catch (RemoteException e) {
             onRemoteException(e);
         }

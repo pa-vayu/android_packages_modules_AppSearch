@@ -52,7 +52,7 @@ public final class AppSearchUserInstance {
     }
 
     @NonNull
-    public VisibilityCheckerImpl getVisibilityCheckImpl() {
+    public VisibilityCheckerImpl getVisibilityChecker() {
         return mVisibilityCheckerImpl;
     }
 }

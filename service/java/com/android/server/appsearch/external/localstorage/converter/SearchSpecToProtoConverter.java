@@ -30,6 +30,7 @@ import android.util.Log;
 
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityChecker;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
+import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityUtil;
 
 import com.google.android.icing.proto.ResultSpecProto;
 import com.google.android.icing.proto.SchemaTypeConfigProto;
@@ -166,7 +167,7 @@ public final class SearchSpecToProtoConverter {
             @NonNull String callerPackageName,
             int callerUid,
             boolean callerHasSystemAccess,
-            @NonNull VisibilityStore visibilityStore,
+            @Nullable VisibilityStore visibilityStore,
             @Nullable VisibilityChecker visibilityChecker) {
         Iterator<String> targetPrefixedSchemaFilterIterator =
                 mTargetPrefixedSchemaFilters.iterator();
@@ -174,23 +175,14 @@ public final class SearchSpecToProtoConverter {
             String targetPrefixedSchemaFilter = targetPrefixedSchemaFilterIterator.next();
             String packageName = getPackageName(targetPrefixedSchemaFilter);
 
-            boolean allow;
-            if (packageName.equals(callerPackageName)) {
-                // Callers can always retrieve their own data
-                allow = true;
-            } else if (visibilityChecker == null) {
-                // If there's no visibility checker, there's no extra access
-                allow = false;
-            } else {
-                allow =
-                        visibilityChecker.isSchemaSearchableByCaller(
-                                packageName,
-                                targetPrefixedSchemaFilter,
-                                callerUid,
-                                callerHasSystemAccess,
-                                visibilityStore);
-            }
-            if (!allow) {
+            if (!VisibilityUtil.isSchemaSearchableByCaller(
+                    callerPackageName,
+                    callerUid,
+                    callerHasSystemAccess,
+                    packageName,
+                    targetPrefixedSchemaFilter,
+                    visibilityStore,
+                    visibilityChecker)) {
                 targetPrefixedSchemaFilterIterator.remove();
             }
         }

@@ -207,6 +207,7 @@ package android.app.appsearch {
   }
 
   public final class GetSchemaResponse {
+    method @NonNull public java.util.Map<java.lang.String,java.util.Set<java.lang.Integer>> getRequiredPermissionsForSchemaTypeVisibility();
     method @NonNull public java.util.Set<java.lang.String> getSchemaTypesNotDisplayedBySystem();
     method @NonNull public java.util.Map<java.lang.String,java.util.Set<android.app.appsearch.PackageIdentifier>> getSchemaTypesVisibleToPackages();
     method @NonNull public java.util.Set<android.app.appsearch.AppSearchSchema> getSchemas();
@@ -218,6 +219,7 @@ package android.app.appsearch {
     method @NonNull public android.app.appsearch.GetSchemaResponse.Builder addSchema(@NonNull android.app.appsearch.AppSearchSchema);
     method @NonNull public android.app.appsearch.GetSchemaResponse.Builder addSchemaTypeNotDisplayedBySystem(@NonNull String);
     method @NonNull public android.app.appsearch.GetSchemaResponse build();
+    method @NonNull public android.app.appsearch.GetSchemaResponse.Builder setRequiredPermissionsForSchemaTypeVisibility(@NonNull String, @NonNull java.util.Set<java.lang.Integer>);
     method @NonNull public android.app.appsearch.GetSchemaResponse.Builder setSchemaTypeVisibleToPackages(@NonNull String, @NonNull java.util.Set<android.app.appsearch.PackageIdentifier>);
     method @NonNull public android.app.appsearch.GetSchemaResponse.Builder setVersion(@IntRange(from=0) int);
   }
@@ -393,11 +395,16 @@ package android.app.appsearch {
 
   public final class SetSchemaRequest {
     method @NonNull public java.util.Map<java.lang.String,android.app.appsearch.Migrator> getMigrators();
+    method @NonNull public java.util.Map<java.lang.String,java.util.Set<java.lang.Integer>> getRequiredPermissionsForSchemaTypeVisibility();
     method @NonNull public java.util.Set<android.app.appsearch.AppSearchSchema> getSchemas();
     method @NonNull public java.util.Set<java.lang.String> getSchemasNotDisplayedBySystem();
     method @NonNull public java.util.Map<java.lang.String,java.util.Set<android.app.appsearch.PackageIdentifier>> getSchemasVisibleToPackages();
     method @IntRange(from=1) public int getVersion();
     method public boolean isForceOverride();
+    field public static final int READ_CALENDAR = 2; // 0x2
+    field public static final int READ_CONTACTS = 3; // 0x3
+    field public static final int READ_EXTERNAL_STORAGE = 4; // 0x4
+    field public static final int READ_SMS = 1; // 0x1
   }
 
   public static final class SetSchemaRequest.Builder {
@@ -408,6 +415,7 @@ package android.app.appsearch {
     method @NonNull public android.app.appsearch.SetSchemaRequest.Builder setForceOverride(boolean);
     method @NonNull public android.app.appsearch.SetSchemaRequest.Builder setMigrator(@NonNull String, @NonNull android.app.appsearch.Migrator);
     method @NonNull public android.app.appsearch.SetSchemaRequest.Builder setMigrators(@NonNull java.util.Map<java.lang.String,android.app.appsearch.Migrator>);
+    method @NonNull public android.app.appsearch.SetSchemaRequest.Builder setRequiredPermissionsForSchemaTypeVisibility(@NonNull String, @NonNull java.util.Set<java.lang.Integer>);
     method @NonNull public android.app.appsearch.SetSchemaRequest.Builder setSchemaTypeDisplayedBySystem(@NonNull String, boolean);
     method @NonNull public android.app.appsearch.SetSchemaRequest.Builder setSchemaTypeVisibilityForPackage(@NonNull String, boolean, @NonNull android.app.appsearch.PackageIdentifier);
     method @NonNull public android.app.appsearch.SetSchemaRequest.Builder setVersion(@IntRange(from=1) int);
@@ -477,7 +485,8 @@ package android.app.appsearch.observer {
   }
 
   public final class DocumentChangeInfo {
-    ctor public DocumentChangeInfo(@NonNull String, @NonNull String, @NonNull String, @NonNull String);
+    ctor public DocumentChangeInfo(@NonNull String, @NonNull String, @NonNull String, @NonNull String, @NonNull java.util.Set<java.lang.String>);
+    method @NonNull public java.util.Set<java.lang.String> getChangedDocumentIds();
     method @NonNull public String getDatabaseName();
     method @NonNull public String getNamespace();
     method @NonNull public String getPackageName();
@@ -496,7 +505,8 @@ package android.app.appsearch.observer {
   }
 
   public final class SchemaChangeInfo {
-    ctor public SchemaChangeInfo(@NonNull String, @NonNull String);
+    ctor public SchemaChangeInfo(@NonNull String, @NonNull String, @NonNull java.util.Set<java.lang.String>);
+    method @NonNull public java.util.Set<java.lang.String> getChangedSchemaNames();
     method @NonNull public String getDatabaseName();
     method @NonNull public String getPackageName();
   }
