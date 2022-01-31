@@ -15,19 +15,26 @@
  */
 package com.android.server.appsearch.external.localstorage;
 
-import android.app.appsearch.Capabilities;
+import android.annotation.NonNull;
+import android.app.appsearch.Features;
 
 /**
- * An implementation of {@link Capabilities}. This implementation always returns true. This is
+ * An implementation of {@link Features}. This implementation always returns true. This is
  * sufficient for the use in the local backend because all features are always available on the
  * local backend.
  *
  * @hide
  */
-public class AlwaysSupportedCapabilities implements Capabilities {
+public class AlwaysSupportedFeatures implements Features {
 
     @Override
-    public boolean isSubmatchSupported() {
-        return true;
+    public boolean isFeatureSupported(@NonNull String feature) {
+        if (Features.SEARCH_RESULT_MATCH_INFO_SUBMATCH.equals(feature)) {
+            return true;
+        }
+        if (Features.GLOBAL_SEARCH_SESSION_ADD_REMOVE_OBSERVER.equals(feature)) {
+            return true;
+        }
+        return false;
     }
 }

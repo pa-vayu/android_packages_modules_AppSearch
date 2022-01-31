@@ -95,6 +95,9 @@ public final class GenericDocumentToProtoConverter {
                     DocumentProto proto = toDocumentProto(documentValues[j]);
                     propertyProto.addDocumentValues(proto);
                 }
+            } else if (property == null) {
+                throw new IllegalStateException(
+                        String.format("Property \"%s\" doesn't have any value!", name));
             } else {
                 throw new IllegalStateException(
                         String.format(

@@ -18,12 +18,29 @@ package android.app.appsearch.aidl;
 import android.os.Bundle;
 import android.os.UserHandle;
 
+import android.app.appsearch.aidl.AppSearchResultParcel;
 import android.app.appsearch.aidl.IAppSearchBatchResultCallback;
+import android.app.appsearch.aidl.IAppSearchObserverProxy;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
 import android.os.ParcelFileDescriptor;
 
 /** {@hide} */
 interface IAppSearchManager {
+    /**
+     * Creates and initializes AppSearchImpl for the calling app.
+     *
+     * @param packageName The name of the package to initialize for.
+     * @param userHandle Handle of the calling user
+     * @param binderCallStartTimeMillis start timestamp of binder call in Millis
+     * @param callback {@link IAppSearchResultCallback#onResult} will be called with an
+     *     {@link AppSearchResult}&lt;{@link Void}&gt;.
+     */
+    void initialize(
+        in String packageName,
+        in UserHandle userHandle,
+        in long binderCallStartTimeMillis,
+        in IAppSearchResultCallback callback);
+
     /**
      * Updates the AppSearch schema for this database.
      *
@@ -355,17 +372,20 @@ interface IAppSearchManager {
         in long binderCallStartTimeMillis);
 
     /**
-     * Creates and initializes AppSearchImpl for the calling app.
+     * Adds an observer to monitor changes within the databases owned by {@code observedPackage} if
+     * they match the given ObserverSpec.
      *
-     * @param packageName The name of the package to initialize for.
+     * @param callingPackage The name of the package which is registering an observer.
+     * @param observedPackage Package whose changes to monitor
+     * @param observerSpecBundle Bundle of ObserverSpec showing what types of changes to listen for
      * @param userHandle Handle of the calling user
-     * @param binderCallStartTimeMillis start timestamp of binder call in Millis
-     * @param callback {@link IAppSearchResultCallback#onResult} will be called with an
-     *     {@link AppSearchResult}&lt;{@link Void}&gt;.
+     * @param observerProxy Callback to trigger when a schema or document changes
+     * @return the success or failure of this operation
      */
-    void initialize(
-        in String packageName,
+    AppSearchResultParcel addObserver(
+        in String callingPackage,
+        in String observedPackage,
+        in Bundle observerSpecBundle,
         in UserHandle userHandle,
-        in long binderCallStartTimeMillis,
-        in IAppSearchResultCallback callback);
+        in IAppSearchObserverProxy observerProxy);
 }

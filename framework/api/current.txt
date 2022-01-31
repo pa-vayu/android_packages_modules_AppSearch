@@ -219,6 +219,7 @@ package android.app.appsearch {
   }
 
   public class GlobalSearchSession implements java.io.Closeable {
+    method public void addObserver(@NonNull String, @NonNull android.app.appsearch.observer.ObserverSpec, @NonNull java.util.concurrent.Executor, @NonNull android.app.appsearch.observer.AppSearchObserverCallback) throws android.app.appsearch.exceptions.AppSearchException;
     method public void close();
     method public void reportSystemUsage(@NonNull android.app.appsearch.ReportSystemUsageRequest, @NonNull java.util.concurrent.Executor, @NonNull java.util.function.Consumer<android.app.appsearch.AppSearchResult<java.lang.Void>>);
     method @NonNull public android.app.appsearch.SearchResults search(@NonNull String, @NonNull android.app.appsearch.SearchSpec);
@@ -457,6 +458,40 @@ package android.app.appsearch.exceptions {
     ctor public AppSearchException(int, @Nullable String, @Nullable Throwable);
     method public int getResultCode();
     method @NonNull public <T> android.app.appsearch.AppSearchResult<T> toAppSearchResult();
+  }
+
+}
+
+package android.app.appsearch.observer {
+
+  public interface AppSearchObserverCallback {
+    method public void onDocumentChanged(@NonNull android.app.appsearch.observer.DocumentChangeInfo);
+    method public void onSchemaChanged(@NonNull android.app.appsearch.observer.SchemaChangeInfo);
+  }
+
+  public final class DocumentChangeInfo {
+    ctor public DocumentChangeInfo(@NonNull String, @NonNull String, @NonNull String, @NonNull String);
+    method @NonNull public String getDatabaseName();
+    method @NonNull public String getNamespace();
+    method @NonNull public String getPackageName();
+    method @NonNull public String getSchemaName();
+  }
+
+  public final class ObserverSpec {
+    method @NonNull public java.util.Set<java.lang.String> getFilterSchemas();
+  }
+
+  public static final class ObserverSpec.Builder {
+    ctor public ObserverSpec.Builder();
+    method @NonNull public android.app.appsearch.observer.ObserverSpec.Builder addFilterSchemas(@NonNull java.lang.String...);
+    method @NonNull public android.app.appsearch.observer.ObserverSpec.Builder addFilterSchemas(@NonNull java.util.Collection<java.lang.String>);
+    method @NonNull public android.app.appsearch.observer.ObserverSpec build();
+  }
+
+  public final class SchemaChangeInfo {
+    ctor public SchemaChangeInfo(@NonNull String, @NonNull String);
+    method @NonNull public String getDatabaseName();
+    method @NonNull public String getPackageName();
   }
 
 }

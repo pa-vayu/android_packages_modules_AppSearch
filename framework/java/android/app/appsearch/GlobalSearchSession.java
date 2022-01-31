@@ -20,7 +20,13 @@ import android.annotation.CallbackExecutor;
 import android.annotation.NonNull;
 import android.app.appsearch.aidl.AppSearchResultParcel;
 import android.app.appsearch.aidl.IAppSearchManager;
+import android.app.appsearch.aidl.IAppSearchObserverProxy;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
+import android.app.appsearch.exceptions.AppSearchException;
+import android.app.appsearch.observer.AppSearchObserverCallback;
+import android.app.appsearch.observer.DocumentChangeInfo;
+import android.app.appsearch.observer.ObserverSpec;
+import android.app.appsearch.observer.SchemaChangeInfo;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.UserHandle;
@@ -176,6 +182,76 @@ public class GlobalSearchSession implements Closeable {
             mIsMutated = true;
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Adds an {@link AppSearchObserverCallback} to monitor changes within the
+     * databases owned by {@code observedPackage} if they match the given
+     * {@link android.app.appsearch.observer.ObserverSpec}.
+     *
+     * <p>If the data owned by {@code observedPackage} is not visible to you, the registration call
+     * will succeed but no notifications will be dispatched. Notifications could start flowing later
+     * if {@code observedPackage} changes its schema visibility settings.
+     *
+     * <p>If no package matching {@code observedPackage} exists on the system, the registration call
+     * will succeed but no notifications will be dispatched. Notifications could start flowing later
+     * if {@code observedPackage} is installed and starts indexing data.
+     *
+     * @param observedPackage Package whose changes to monitor
+     * @param spec            Specification of what types of changes to listen for
+     * @param executor        Executor on which to call the {@code observer} callback methods.
+     * @param observer        Callback to trigger when a schema or document changes
+     * @throws AppSearchException If an unexpected error occurs when trying to register an observer.
+     */
+    public void addObserver(
+            @NonNull String observedPackage,
+            @NonNull ObserverSpec spec,
+            @NonNull Executor executor,
+            @NonNull AppSearchObserverCallback observer) throws AppSearchException {
+        Objects.requireNonNull(observedPackage);
+        Objects.requireNonNull(spec);
+        Objects.requireNonNull(executor);
+        Objects.requireNonNull(observer);
+        Preconditions.checkState(!mIsClosed, "GlobalSearchSession has already been closed");
+        AppSearchResultParcel<Void> resultParcel;
+        try {
+             resultParcel = mService.addObserver(
+                    mPackageName,
+                    observedPackage,
+                    spec.getBundle(),
+                    mUserHandle,
+                    new IAppSearchObserverProxy.Stub() {
+                        @Override
+                        public void onSchemaChanged(
+                                @NonNull String packageName, @NonNull String databaseName) {
+                            executor.execute(() -> {
+                                SchemaChangeInfo changeInfo =
+                                        new SchemaChangeInfo(packageName, databaseName);
+                                observer.onSchemaChanged(changeInfo);
+                            });
+                        }
+
+                        @Override
+                        public void onDocumentChanged(
+                                @NonNull String packageName,
+                                @NonNull String databaseName,
+                                @NonNull String namespace,
+                                @NonNull String schemaName) {
+                            executor.execute(() -> {
+                                DocumentChangeInfo changeInfo = new DocumentChangeInfo(
+                                        packageName, databaseName, namespace, schemaName);
+                                observer.onDocumentChanged(changeInfo);
+                            });
+                        }
+                    });
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+
+        AppSearchResult<Void> result = resultParcel.getResult();
+        if (!result.isSuccess()) {
+            throw new AppSearchException(result.getResultCode(), result.getErrorMessage());
         }
     }
 
