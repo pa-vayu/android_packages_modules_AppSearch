@@ -585,7 +585,6 @@ public class AppSearchManagerService extends SystemService {
                 @NonNull Map<String, List<String>> typePropertyPaths,
                 @NonNull UserHandle userHandle,
                 @ElapsedRealtimeLong long binderCallStartTimeMillis,
-                boolean global,
                 @NonNull IAppSearchBatchResultCallback callback) {
             Objects.requireNonNull(callingPackageName);
             Objects.requireNonNull(targetPackageName);
@@ -599,6 +598,8 @@ public class AppSearchManagerService extends SystemService {
             long totalLatencyStartTimeMillis = SystemClock.elapsedRealtime();
             int callingPid = Binder.getCallingPid();
             int callingUid = Binder.getCallingUid();
+
+            boolean global = !callingPackageName.equals(targetPackageName);
             EXECUTOR.execute(() -> {
                 @AppSearchResult.ResultCode int statusCode = AppSearchResult.RESULT_OK;
                 AppSearchUserInstance instance = null;
@@ -621,8 +622,6 @@ public class AppSearchManagerService extends SystemService {
                         try {
                             GenericDocument document;
                             if (global) {
-                                // TODO(b/203819101) add test to try out security by binding
-                                // directly to binder and passing callingpackage param
                                 document = instance.getAppSearchImpl().globalGetDocument(
                                         targetPackageName,
                                         databaseName,
@@ -663,13 +662,15 @@ public class AppSearchManagerService extends SystemService {
                                 2 * (int) (totalLatencyStartTimeMillis - binderCallStartTimeMillis);
                         int totalLatencyMillis =
                                 (int) (SystemClock.elapsedRealtime() - totalLatencyStartTimeMillis);
+                        int callType = global?
+                                CallStats.CALL_TYPE_GLOBAL_GET_DOCUMENT_BY_ID:
+                                CallStats.CALL_TYPE_GET_DOCUMENTS;
                         instance.getLogger().logStats(new CallStats.Builder()
                                 .setPackageName(targetPackageName)
                                 .setDatabase(databaseName)
                                 .setStatusCode(statusCode)
                                 .setTotalLatencyMillis(totalLatencyMillis)
-                                .setCallType(CallStats.CALL_TYPE_GET_DOCUMENTS)
-                                // TODO(b/203819101) need mark the call as a global getById
+                                .setCallType(callType)
                                 // TODO(b/173532925) check the existing binder call latency chart
                                 // is good enough for us:
                                 // http://dashboards/view/_72c98f9a_91d9_41d4_ab9a_bc14f79742b4

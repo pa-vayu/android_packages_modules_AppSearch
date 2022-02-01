@@ -338,7 +338,6 @@ public final class AppSearchSession implements Closeable {
                     request.getProjectionsInternal(),
                     mUserHandle,
                     /*binderCallStartTimeMillis=*/ SystemClock.elapsedRealtime(),
-                    /*global=*/false,
                     SearchSessionUtil.createGetDocumentCallback(executor, callback));
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
