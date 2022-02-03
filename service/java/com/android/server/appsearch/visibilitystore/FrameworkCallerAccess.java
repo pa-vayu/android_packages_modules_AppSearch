@@ -18,6 +18,7 @@ package com.android.server.appsearch.visibilitystore;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.content.AttributionSource;
 
 import com.android.server.appsearch.external.localstorage.visibilitystore.CallerAccess;
 
@@ -29,28 +30,28 @@ import java.util.Objects;
  * @hide
  */
 public class FrameworkCallerAccess extends CallerAccess {
-    private final int mCallingUid;
+    private final AttributionSource mAttributionSource;
     private final boolean mCallerHasSystemAccess;
 
     /**
      * Constructs a new {@link CallerAccess}.
      *
-     * @param callingPackageName The name of the package which wants to access data.
-     * @param callingUid The uid of the package which wants to access data.
+     * @param callerAttributionSource The permission identity of the caller
      * @param callerHasSystemAccess Whether {@code callingPackageName} has access to schema types
      *     marked visible to system via {@link
      *     android.app.appsearch.SetSchemaRequest.Builder#setSchemaTypeDisplayedBySystem}.
      */
     public FrameworkCallerAccess(
-            @NonNull String callingPackageName, int callingUid, boolean callerHasSystemAccess) {
-        super(callingPackageName);
-        mCallingUid = callingUid;
+            @NonNull AttributionSource callerAttributionSource,boolean callerHasSystemAccess) {
+        super(callerAttributionSource.getPackageName());
+        mAttributionSource = callerAttributionSource;
         mCallerHasSystemAccess = callerHasSystemAccess;
     }
 
-    /** Returns the uid of the package which wants to access data. */
-    public int getCallingUid() {
-        return mCallingUid;
+    /** Returns the permission identity {@link AttributionSource} of the caller. */
+    @NonNull
+    public AttributionSource getCallingAttributionSource() {
+        return mAttributionSource;
     }
 
     /**
@@ -67,13 +68,13 @@ public class FrameworkCallerAccess extends CallerAccess {
         if (this == o) return true;
         if (!(o instanceof FrameworkCallerAccess)) return false;
         FrameworkCallerAccess that = (FrameworkCallerAccess) o;
-        return super.equals(that)
-                && mCallingUid == that.mCallingUid
-                && mCallerHasSystemAccess == that.mCallerHasSystemAccess;
+        return super.equals(o)
+                && mCallerHasSystemAccess == that.mCallerHasSystemAccess
+                && Objects.equals(mAttributionSource, that.mAttributionSource);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), mCallingUid, mCallerHasSystemAccess);
+        return Objects.hash(super.hashCode(), mAttributionSource, mCallerHasSystemAccess);
     }
 }

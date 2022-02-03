@@ -41,6 +41,7 @@ import android.app.appsearch.aidl.IAppSearchObserverProxy;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
 import android.app.appsearch.exceptions.AppSearchException;
 import android.app.appsearch.observer.ObserverSpec;
+import android.content.AttributionSource;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -63,7 +64,6 @@ import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
 import com.android.server.appsearch.external.localstorage.stats.CallStats;
 import com.android.server.appsearch.external.localstorage.stats.OptimizeStats;
-import com.android.server.appsearch.external.localstorage.visibilitystore.CallerAccess;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
 import com.android.server.appsearch.observer.AppSearchObserverProxy;
 import com.android.server.appsearch.stats.StatsCollector;
@@ -319,7 +319,7 @@ public class AppSearchManagerService extends SystemService {
     private class Stub extends IAppSearchManager.Stub {
         @Override
         public void setSchema(
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull String databaseName,
                 @NonNull List<Bundle> schemaBundles,
                 @NonNull List<Bundle> visibilityBundles,
@@ -328,7 +328,7 @@ public class AppSearchManagerService extends SystemService {
                 @NonNull UserHandle userHandle,
                 @ElapsedRealtimeLong long binderCallStartTimeMillis,
                 @NonNull IAppSearchResultCallback callback) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(schemaBundles);
             Objects.requireNonNull(visibilityBundles);
@@ -344,7 +344,7 @@ public class AppSearchManagerService extends SystemService {
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -365,7 +365,7 @@ public class AppSearchManagerService extends SystemService {
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     // TODO(b/173532925): Implement logging for statsBuilder
                     SetSchemaResponse setSchemaResponse = instance.getAppSearchImpl().setSchema(
-                            packageName,
+                            callerAttributionSource.getPackageName(),
                             databaseName,
                             schemas,
                             visibilityDocuments,
@@ -396,7 +396,7 @@ public class AppSearchManagerService extends SystemService {
                         int totalLatencyMillis =
                                 (int) (SystemClock.elapsedRealtime() - totalLatencyStartTimeMillis);
                         instance.getLogger().logStats(new CallStats.Builder()
-                                .setPackageName(packageName)
+                                .setPackageName(callerAttributionSource.getPackageName())
                                 .setDatabase(databaseName)
                                 .setStatusCode(statusCode)
                                 .setTotalLatencyMillis(totalLatencyMillis)
@@ -415,13 +415,13 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void getSchema(
-                @NonNull String callingPackageName,
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
+                @NonNull String targetPackageName,
                 @NonNull String databaseName,
                 @NonNull UserHandle userHandle,
                 @NonNull IAppSearchResultCallback callback) {
-            Objects.requireNonNull(callingPackageName);
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
+            Objects.requireNonNull(targetPackageName);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
@@ -430,7 +430,7 @@ public class AppSearchManagerService extends SystemService {
             int callingUid = Binder.getCallingUid();
             EXECUTOR.execute(() -> {
                 try {
-                    verifyCaller(callingUid, callingPackageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -440,16 +440,15 @@ public class AppSearchManagerService extends SystemService {
 
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
+
+                    boolean callerHasSystemAccess = instance.getVisibilityChecker()
+                            .doesCallerHaveSystemAccess(callerAttributionSource.getPackageName());
                     GetSchemaResponse response =
                             instance.getAppSearchImpl().getSchema(
-                                    packageName,
+                                    targetPackageName,
                                     databaseName,
-                                    new FrameworkCallerAccess(
-                                            callingPackageName,
-                                            callingUid,
-                                            instance.getVisibilityChecker()
-                                                    .doesCallerHaveSystemAccess(
-                                                            callingPackageName)));
+                                    new FrameworkCallerAccess(callerAttributionSource,
+                                            callerHasSystemAccess));
                     invokeCallbackOnResult(
                             callback,
                             AppSearchResult.newSuccessfulResult(response.getBundle()));
@@ -461,11 +460,11 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void getNamespaces(
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull String databaseName,
                 @NonNull UserHandle userHandle,
                 @NonNull IAppSearchResultCallback callback) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
@@ -474,7 +473,7 @@ public class AppSearchManagerService extends SystemService {
             int callingUid = Binder.getCallingUid();
             EXECUTOR.execute(() -> {
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -485,7 +484,8 @@ public class AppSearchManagerService extends SystemService {
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     List<String> namespaces =
-                            instance.getAppSearchImpl().getNamespaces(packageName, databaseName);
+                            instance.getAppSearchImpl().getNamespaces(
+                                    callerAttributionSource.getPackageName(), databaseName);
                     invokeCallbackOnResult(
                             callback, AppSearchResult.newSuccessfulResult(namespaces));
                 } catch (Throwable t) {
@@ -496,13 +496,13 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void putDocuments(
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull String databaseName,
                 @NonNull List<Bundle> documentBundles,
                 @NonNull UserHandle userHandle,
                 @ElapsedRealtimeLong long binderCallStartTimeMillis,
                 @NonNull IAppSearchBatchResultCallback callback) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(documentBundles);
             Objects.requireNonNull(userHandle);
@@ -517,7 +517,7 @@ public class AppSearchManagerService extends SystemService {
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -532,7 +532,10 @@ public class AppSearchManagerService extends SystemService {
                         GenericDocument document = new GenericDocument(documentBundles.get(i));
                         try {
                             instance.getAppSearchImpl().putDocument(
-                                    packageName, databaseName, document, instance.getLogger());
+                                    callerAttributionSource.getPackageName(),
+                                    databaseName,
+                                    document,
+                                    instance.getLogger());
                             resultBuilder.setSuccess(document.getId(), /*value=*/ null);
                             ++operationSuccessCount;
                         } catch (Throwable t) {
@@ -567,7 +570,7 @@ public class AppSearchManagerService extends SystemService {
                         int totalLatencyMillis =
                                 (int) (SystemClock.elapsedRealtime() - totalLatencyStartTimeMillis);
                         instance.getLogger().logStats(new CallStats.Builder()
-                                .setPackageName(packageName)
+                                .setPackageName(callerAttributionSource.getPackageName())
                                 .setDatabase(databaseName)
                                 .setStatusCode(statusCode)
                                 .setTotalLatencyMillis(totalLatencyMillis)
@@ -586,7 +589,7 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void getDocuments(
-                @NonNull String callingPackageName,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull String targetPackageName,
                 @NonNull String databaseName,
                 @NonNull String namespace,
@@ -595,7 +598,7 @@ public class AppSearchManagerService extends SystemService {
                 @NonNull UserHandle userHandle,
                 @ElapsedRealtimeLong long binderCallStartTimeMillis,
                 @NonNull IAppSearchBatchResultCallback callback) {
-            Objects.requireNonNull(callingPackageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(targetPackageName);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(namespace);
@@ -608,14 +611,14 @@ public class AppSearchManagerService extends SystemService {
             int callingPid = Binder.getCallingPid();
             int callingUid = Binder.getCallingUid();
 
-            boolean global = !callingPackageName.equals(targetPackageName);
+            boolean global = !callerAttributionSource.getPackageName().equals(targetPackageName);
             EXECUTOR.execute(() -> {
                 @AppSearchResult.ResultCode int statusCode = AppSearchResult.RESULT_OK;
                 AppSearchUserInstance instance = null;
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, callingPackageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -631,18 +634,17 @@ public class AppSearchManagerService extends SystemService {
                         try {
                             GenericDocument document;
                             if (global) {
+                                boolean callerHasSystemAccess = instance.getVisibilityChecker()
+                                        .doesCallerHaveSystemAccess(callerAttributionSource
+                                                .getPackageName());
                                 document = instance.getAppSearchImpl().globalGetDocument(
                                         targetPackageName,
                                         databaseName,
                                         namespace,
                                         id,
                                         typePropertyPaths,
-                                        new FrameworkCallerAccess(
-                                                callingPackageName,
-                                                callingUid,
-                                                instance.getVisibilityChecker()
-                                                        .doesCallerHaveSystemAccess(
-                                                                callingPackageName)));
+                                        new FrameworkCallerAccess(callerAttributionSource,
+                                                callerHasSystemAccess));
                             } else {
                                 document = instance.getAppSearchImpl().getDocument(
                                         targetPackageName,
@@ -696,14 +698,14 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void query(
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull String databaseName,
                 @NonNull String queryExpression,
                 @NonNull Bundle searchSpecBundle,
                 @NonNull UserHandle userHandle,
                 @ElapsedRealtimeLong long binderCallStartTimeMillis,
                 @NonNull IAppSearchResultCallback callback) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(queryExpression);
             Objects.requireNonNull(searchSpecBundle);
@@ -719,7 +721,7 @@ public class AppSearchManagerService extends SystemService {
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -729,7 +731,7 @@ public class AppSearchManagerService extends SystemService {
 
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     SearchResultPage searchResultPage = instance.getAppSearchImpl().query(
-                            packageName,
+                            callerAttributionSource.getPackageName(),
                             databaseName,
                             queryExpression,
                             new SearchSpec(searchSpecBundle),
@@ -749,7 +751,7 @@ public class AppSearchManagerService extends SystemService {
                         int totalLatencyMillis =
                                 (int) (SystemClock.elapsedRealtime() - totalLatencyStartTimeMillis);
                         instance.getLogger().logStats(new CallStats.Builder()
-                                .setPackageName(packageName)
+                                .setPackageName(callerAttributionSource.getPackageName())
                                 .setDatabase(databaseName)
                                 .setStatusCode(statusCode)
                                 .setTotalLatencyMillis(totalLatencyMillis)
@@ -768,13 +770,13 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void globalQuery(
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull String queryExpression,
                 @NonNull Bundle searchSpecBundle,
                 @NonNull UserHandle userHandle,
                 @ElapsedRealtimeLong long binderCallStartTimeMillis,
                 @NonNull IAppSearchResultCallback callback) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(queryExpression);
             Objects.requireNonNull(searchSpecBundle);
             Objects.requireNonNull(userHandle);
@@ -789,7 +791,7 @@ public class AppSearchManagerService extends SystemService {
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -800,13 +802,12 @@ public class AppSearchManagerService extends SystemService {
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
 
                     boolean callerHasSystemAccess = instance.getVisibilityChecker()
-                            .doesCallerHaveSystemAccess(packageName);
+                            .doesCallerHaveSystemAccess(callerAttributionSource.getPackageName());
+
                     SearchResultPage searchResultPage = instance.getAppSearchImpl().globalQuery(
                             queryExpression,
                             new SearchSpec(searchSpecBundle),
-                            new FrameworkCallerAccess(
-                                    packageName,
-                                    callingUid,
+                            new FrameworkCallerAccess(callerAttributionSource,
                                     callerHasSystemAccess),
                             instance.getLogger());
                     ++operationSuccessCount;
@@ -824,7 +825,7 @@ public class AppSearchManagerService extends SystemService {
                         int totalLatencyMillis =
                                 (int) (SystemClock.elapsedRealtime() - totalLatencyStartTimeMillis);
                         instance.getLogger().logStats(new CallStats.Builder()
-                                .setPackageName(packageName)
+                                .setPackageName(callerAttributionSource.getPackageName())
                                 .setStatusCode(statusCode)
                                 .setTotalLatencyMillis(totalLatencyMillis)
                                 .setCallType(CallStats.CALL_TYPE_GLOBAL_SEARCH)
@@ -842,11 +843,11 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void getNextPage(
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
                 long nextPageToken,
                 @NonNull UserHandle userHandle,
                 @NonNull IAppSearchResultCallback callback) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
 
@@ -854,7 +855,7 @@ public class AppSearchManagerService extends SystemService {
             int callingUid = Binder.getCallingUid();
             EXECUTOR.execute(() -> {
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -867,7 +868,8 @@ public class AppSearchManagerService extends SystemService {
                     // TODO(b/173532925): Implement logging for statsBuilder
                     SearchResultPage searchResultPage =
                             instance.getAppSearchImpl().getNextPage(
-                                    packageName, nextPageToken, /*statsBuilder=*/ null);
+                                    callerAttributionSource.getPackageName(), nextPageToken,
+                                    /*statsBuilder=*/ null);
                     invokeCallbackOnResult(
                             callback,
                             AppSearchResult.newSuccessfulResult(searchResultPage.getBundle()));
@@ -878,16 +880,18 @@ public class AppSearchManagerService extends SystemService {
         }
 
         @Override
-        public void invalidateNextPageToken(@NonNull String packageName, long nextPageToken,
+        public void invalidateNextPageToken(
+                @NonNull AttributionSource callerAttributionSource,
+                long nextPageToken,
                 @NonNull UserHandle userHandle) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(userHandle);
 
             int callingPid = Binder.getCallingPid();
             int callingUid = Binder.getCallingUid();
             EXECUTOR.execute(() -> {
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -897,7 +901,8 @@ public class AppSearchManagerService extends SystemService {
 
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
-                    instance.getAppSearchImpl().invalidateNextPageToken(packageName, nextPageToken);
+                    instance.getAppSearchImpl().invalidateNextPageToken(
+                            callerAttributionSource.getPackageName(), nextPageToken);
                 } catch (Throwable t) {
                     Log.e(TAG, "Unable to invalidate the query page token", t);
                 }
@@ -906,14 +911,14 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void writeQueryResultsToFile(
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull String databaseName,
                 @NonNull ParcelFileDescriptor fileDescriptor,
                 @NonNull String queryExpression,
                 @NonNull Bundle searchSpecBundle,
                 @NonNull UserHandle userHandle,
                 @NonNull IAppSearchResultCallback callback) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(fileDescriptor);
             Objects.requireNonNull(queryExpression);
@@ -925,7 +930,7 @@ public class AppSearchManagerService extends SystemService {
             int callingUid = Binder.getCallingUid();
             EXECUTOR.execute(() -> {
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -939,7 +944,7 @@ public class AppSearchManagerService extends SystemService {
                     try (DataOutputStream outputStream = new DataOutputStream(
                             new FileOutputStream(fileDescriptor.getFileDescriptor()))) {
                         SearchResultPage searchResultPage = instance.getAppSearchImpl().query(
-                                packageName,
+                                callerAttributionSource.getPackageName(),
                                 databaseName,
                                 queryExpression,
                                 new SearchSpec(searchSpecBundle),
@@ -952,7 +957,7 @@ public class AppSearchManagerService extends SystemService {
                             }
                             // TODO(b/173532925): Implement logging for statsBuilder
                             searchResultPage = instance.getAppSearchImpl().getNextPage(
-                                    packageName,
+                                    callerAttributionSource.getPackageName(),
                                     searchResultPage.getNextPageToken(),
                                     /*statsBuilder=*/ null);
                         }
@@ -966,12 +971,12 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void putDocumentsFromFile(
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull String databaseName,
                 @NonNull ParcelFileDescriptor fileDescriptor,
                 @NonNull UserHandle userHandle,
                 @NonNull IAppSearchResultCallback callback) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(fileDescriptor);
             Objects.requireNonNull(userHandle);
@@ -981,7 +986,7 @@ public class AppSearchManagerService extends SystemService {
             int callingUid = Binder.getCallingUid();
             EXECUTOR.execute(() -> {
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -1006,7 +1011,10 @@ public class AppSearchManagerService extends SystemService {
                             }
                             try {
                                 instance.getAppSearchImpl().putDocument(
-                                        packageName, databaseName, document, /*logger=*/ null);
+                                        callerAttributionSource.getPackageName(),
+                                        databaseName,
+                                        document,
+                                        /*logger=*/ null);
                             } catch (Throwable t) {
                                 migrationFailureBundles.add(new SetSchemaResponse.MigrationFailure(
                                         document.getNamespace(),
@@ -1028,7 +1036,8 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void reportUsage(
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
+                @NonNull String targetPackageName,
                 @NonNull String databaseName,
                 @NonNull String namespace,
                 @NonNull String documentId,
@@ -1036,7 +1045,8 @@ public class AppSearchManagerService extends SystemService {
                 boolean systemUsage,
                 @NonNull UserHandle userHandle,
                 @NonNull IAppSearchResultCallback callback) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
+            Objects.requireNonNull(targetPackageName);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(namespace);
             Objects.requireNonNull(documentId);
@@ -1047,7 +1057,8 @@ public class AppSearchManagerService extends SystemService {
             int callingUid = Binder.getCallingUid();
             EXECUTOR.execute(() -> {
                 try {
-                    verifyCaller(callingUid, packageName);
+                    String callingPackageName = callerAttributionSource.getPackageName();
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -1057,17 +1068,24 @@ public class AppSearchManagerService extends SystemService {
 
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
-
-                    if (systemUsage && !instance.getVisibilityChecker().
-                            doesCallerHaveSystemAccess(packageName)) {
-                        throw new AppSearchException(
-                                AppSearchResult.RESULT_SECURITY_ERROR,
-                                packageName + " does not have access to report system usage");
+                    if (systemUsage) {
+                        if (!instance.getVisibilityChecker().doesCallerHaveSystemAccess(
+                                callerAttributionSource.getPackageName())) {
+                            throw new AppSearchException(AppSearchResult.RESULT_SECURITY_ERROR,
+                                    callingPackageName
+                                            + " does not have access to report system usage");
+                        }
+                    } else {
+                        if (!callingPackageName.equals(targetPackageName)) {
+                            throw new AppSearchException(AppSearchResult.RESULT_SECURITY_ERROR,
+                                    "Cannot report usage to different package: "
+                                            + targetPackageName + " from package: "
+                                            + callingPackageName);
+                        }
                     }
 
-                    instance.getAppSearchImpl().reportUsage(
-                            packageName, databaseName, namespace, documentId,
-                            usageTimeMillis, systemUsage);
+                    instance.getAppSearchImpl().reportUsage(targetPackageName, databaseName,
+                            namespace, documentId, usageTimeMillis, systemUsage);
                     invokeCallbackOnResult(
                             callback, AppSearchResult.newSuccessfulResult(/*value=*/ null));
                 } catch (Throwable t) {
@@ -1078,14 +1096,14 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void removeByDocumentId(
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull String databaseName,
                 @NonNull String namespace,
                 @NonNull List<String> ids,
                 @NonNull UserHandle userHandle,
                 @ElapsedRealtimeLong long binderCallStartTimeMillis,
                 @NonNull IAppSearchBatchResultCallback callback) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(namespace);
             Objects.requireNonNull(ids);
@@ -1101,7 +1119,7 @@ public class AppSearchManagerService extends SystemService {
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -1116,7 +1134,7 @@ public class AppSearchManagerService extends SystemService {
                         String id = ids.get(i);
                         try {
                             instance.getAppSearchImpl().remove(
-                                    packageName,
+                                    callerAttributionSource.getPackageName(),
                                     databaseName,
                                     namespace,
                                     id,
@@ -1152,7 +1170,7 @@ public class AppSearchManagerService extends SystemService {
                         int totalLatencyMillis =
                                 (int) (SystemClock.elapsedRealtime() - totalLatencyStartTimeMillis);
                         instance.getLogger().logStats(new CallStats.Builder()
-                                .setPackageName(packageName)
+                                .setPackageName(callerAttributionSource.getPackageName())
                                 .setDatabase(databaseName)
                                 .setStatusCode(statusCode)
                                 .setTotalLatencyMillis(totalLatencyMillis)
@@ -1171,7 +1189,7 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void removeByQuery(
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull String databaseName,
                 @NonNull String queryExpression,
                 @NonNull Bundle searchSpecBundle,
@@ -1179,7 +1197,7 @@ public class AppSearchManagerService extends SystemService {
                 @ElapsedRealtimeLong long binderCallStartTimeMillis,
                 @NonNull IAppSearchResultCallback callback) {
             // TODO(b/173532925) log CallStats once we have CALL_TYPE_REMOVE_BY_QUERY added
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(queryExpression);
             Objects.requireNonNull(searchSpecBundle);
@@ -1195,7 +1213,7 @@ public class AppSearchManagerService extends SystemService {
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -1205,7 +1223,7 @@ public class AppSearchManagerService extends SystemService {
 
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     instance.getAppSearchImpl().removeByQuery(
-                            packageName,
+                            callerAttributionSource.getPackageName(),
                             databaseName,
                             queryExpression,
                             new SearchSpec(searchSpecBundle),
@@ -1231,7 +1249,7 @@ public class AppSearchManagerService extends SystemService {
                         int totalLatencyMillis =
                                 (int) (SystemClock.elapsedRealtime() - totalLatencyStartTimeMillis);
                         instance.getLogger().logStats(new CallStats.Builder()
-                                .setPackageName(packageName)
+                                .setPackageName(callerAttributionSource.getPackageName())
                                 .setDatabase(databaseName)
                                 .setStatusCode(statusCode)
                                 .setTotalLatencyMillis(totalLatencyMillis)
@@ -1250,11 +1268,11 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void getStorageInfo(
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull String databaseName,
                 @NonNull UserHandle userHandle,
                 @NonNull IAppSearchResultCallback callback) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
@@ -1263,7 +1281,7 @@ public class AppSearchManagerService extends SystemService {
             int callingUid = Binder.getCallingUid();
             EXECUTOR.execute(() -> {
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -1273,8 +1291,8 @@ public class AppSearchManagerService extends SystemService {
 
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
-                    StorageInfo storageInfo = instance.getAppSearchImpl()
-                            .getStorageInfoForDatabase(packageName, databaseName);
+                    StorageInfo storageInfo = instance.getAppSearchImpl().getStorageInfoForDatabase(
+                            callerAttributionSource.getPackageName(), databaseName);
                     Bundle storageInfoBundle = storageInfo.getBundle();
                     invokeCallbackOnResult(
                             callback, AppSearchResult.newSuccessfulResult(storageInfoBundle));
@@ -1286,10 +1304,10 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void persistToDisk(
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull UserHandle userHandle,
                 @ElapsedRealtimeLong long binderCallStartTimeMillis) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(userHandle);
 
             long totalLatencyStartTimeMillis = SystemClock.elapsedRealtime();
@@ -1301,7 +1319,7 @@ public class AppSearchManagerService extends SystemService {
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -1340,12 +1358,12 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public AppSearchResultParcel<Void> addObserver(
-                @NonNull String callingPackage,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull String targetPackageName,
                 @NonNull Bundle observerSpecBundle,
                 @NonNull UserHandle userHandle,
                 @NonNull IAppSearchObserverProxy observerProxyStub) {
-            Objects.requireNonNull(callingPackage);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(targetPackageName);
             Objects.requireNonNull(observerSpecBundle);
             Objects.requireNonNull(userHandle);
@@ -1357,18 +1375,16 @@ public class AppSearchManagerService extends SystemService {
 
             // Note: addObserver is performed on the binder thread, unlike most AppSearch APIs
             try {
-                verifyCaller(callingUid, callingPackage);
+                verifyCaller(callingUid, callerAttributionSource);
                 UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
                 verifyUserUnlocked(targetUser);
 
                 AppSearchUserInstance instance =
                         mAppSearchUserInstanceManager.getUserInstance(targetUser);
+                boolean callerHasSystemAccess = instance.getVisibilityChecker()
+                        .doesCallerHaveSystemAccess(callerAttributionSource.getPackageName());
                 instance.getAppSearchImpl().addObserver(
-                        new FrameworkCallerAccess(
-                                callingPackage,
-                                callingUid,
-                                instance.getVisibilityChecker()
-                                        .doesCallerHaveSystemAccess(callingPackage)),
+                        new FrameworkCallerAccess(callerAttributionSource, callerHasSystemAccess),
                         targetPackageName,
                         new ObserverSpec(observerSpecBundle),
                         EXECUTOR,
@@ -1383,11 +1399,11 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public AppSearchResultParcel<Void> removeObserver(
-                @NonNull String callingPackage,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull String observedPackage,
                 @NonNull UserHandle userHandle,
                 @NonNull IAppSearchObserverProxy observerProxyStub) {
-            Objects.requireNonNull(callingPackage);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(observedPackage);
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(observerProxyStub);
@@ -1398,7 +1414,7 @@ public class AppSearchManagerService extends SystemService {
 
             // Note: removeObserver is performed on the binder thread, unlike most AppSearch APIs
             try {
-                verifyCaller(callingUid, callingPackage);
+                verifyCaller(callingUid, callerAttributionSource);
                 UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
                 verifyUserUnlocked(targetUser);
 
@@ -1417,11 +1433,11 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void initialize(
-                @NonNull String packageName,
+                @NonNull AttributionSource callerAttributionSource,
                 @NonNull UserHandle userHandle,
                 @ElapsedRealtimeLong long binderCallStartTimeMillis,
                 @NonNull IAppSearchResultCallback callback) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
 
@@ -1435,7 +1451,7 @@ public class AppSearchManagerService extends SystemService {
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callerAttributionSource);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -1569,19 +1585,21 @@ public class AppSearchManagerService extends SystemService {
 
     /**
      * Verify various aspects of the calling user.
-     *
      * @param callingUid Uid of the caller, usually retrieved from Binder for authenticity.
-     * @param claimedCallingPackage Package name the caller claims to be.
+     * @param callerAttributionSource The permission identity of the caller
      */
-    private void verifyCaller(int callingUid, @NonNull String claimedCallingPackage) {
+    private void verifyCaller(int callingUid, @NonNull AttributionSource callerAttributionSource) {
+        // Check does the attribution source is one for the calling app.
+        callerAttributionSource.enforceCallingUid();
         // Obtain the user where the client is running in. Note that this could be different from
         // the userHandle where the client wants to run the AppSearch operation in.
         UserHandle callingUserHandle = UserHandle.getUserHandleForUid(callingUid);
         Context callingUserContext = mContext.createContextAsUser(callingUserHandle,
                 /*flags=*/ 0);
 
-        verifyCallingPackage(callingUserContext, callingUid, claimedCallingPackage);
-        verifyNotInstantApp(callingUserContext, claimedCallingPackage);
+        verifyCallingPackage(callingUserContext, callingUid,
+                callerAttributionSource.getPackageName());
+        verifyNotInstantApp(callingUserContext, callerAttributionSource.getPackageName());
     }
 
     /**

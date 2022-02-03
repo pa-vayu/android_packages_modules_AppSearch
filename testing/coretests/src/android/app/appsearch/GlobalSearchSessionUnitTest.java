@@ -18,6 +18,7 @@ package android.app.appsearch;
 
 import android.app.appsearch.aidl.IAppSearchManager;
 import android.app.appsearch.exceptions.AppSearchException;
+import android.content.AttributionSource;
 import android.content.Context;
 import static com.google.common.truth.Truth.assertThat;
 
@@ -25,8 +26,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.test.core.app.ApplicationProvider;
 
-import android.app.appsearch.testutil.AppSearchEmail;
-import android.content.ContextParams;
 import android.os.SystemClock;
 
 import com.google.common.collect.ImmutableList;
@@ -94,7 +93,8 @@ public class GlobalSearchSessionUnitTest {
         String invalidPackageName = "not_this_package";
 
         service.getDocuments(
-                invalidPackageName,
+                new AttributionSource.Builder(android.os.Process.myUid())
+                        .setPackageName(invalidPackageName).build(),
                 /*targetPackageName=*/mContext.getPackageName(),
                 /*databaseName*/"testDb",
                 /*namespace=*/"namespace",

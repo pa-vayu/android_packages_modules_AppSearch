@@ -15,13 +15,22 @@
  */
 package com.android.server.appsearch.visibilitystore;
 
+import static android.Manifest.permission.READ_CALENDAR;
+import static android.Manifest.permission.READ_CONTACTS;
+import static android.Manifest.permission.READ_EXTERNAL_STORAGE;
 import static android.Manifest.permission.READ_GLOBAL_APP_SEARCH_DATA;
+import static android.Manifest.permission.READ_SMS;
+import static android.permission.PermissionManager.PERMISSION_GRANTED;
 
 import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.app.appsearch.SetSchemaRequest;
 import android.app.appsearch.VisibilityDocument;
+import android.content.AttributionSource;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.UserHandle;
+import android.permission.PermissionManager;
 
 import com.android.server.appsearch.external.localstorage.visibilitystore.CallerAccess;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityChecker;
@@ -29,6 +38,7 @@ import com.android.server.appsearch.external.localstorage.visibilitystore.Visibi
 import com.android.server.appsearch.util.PackageUtil;
 
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * A platform implementation of {@link VisibilityChecker}.
@@ -38,9 +48,11 @@ import java.util.Objects;
 public class VisibilityCheckerImpl implements VisibilityChecker {
     // Context of the user that the call is being made as.
     private final Context mUserContext;
+    private final PermissionManager mPermissionManager;
 
     public VisibilityCheckerImpl(@NonNull Context userContext) {
         mUserContext = Objects.requireNonNull(userContext);
+        mPermissionManager = userContext.getSystemService(PermissionManager.class);
     }
 
     @Override
@@ -52,7 +64,6 @@ public class VisibilityCheckerImpl implements VisibilityChecker {
         Objects.requireNonNull(callerAccess);
         Objects.requireNonNull(packageName);
         Objects.requireNonNull(prefixedSchema);
-
         if (packageName.equals(VisibilityStore.VISIBILITY_PACKAGE_NAME)) {
             return false; // VisibilityStore schemas are for internal bookkeeping.
         }
@@ -70,8 +81,15 @@ public class VisibilityCheckerImpl implements VisibilityChecker {
             return true;
         }
 
-        // May not be platform surfaceable, but might still be accessible through 3p access.
-        return isSchemaVisibleToPackages(visibilityDocument, frameworkCallerAccess.getCallingUid());
+        if (isSchemaVisibleToPackages(visibilityDocument,
+                frameworkCallerAccess.getCallingAttributionSource().getUid())) {
+            // The caller is in the allow list and has access to the given schema.
+            return true;
+        }
+
+        // Checker whether the caller has all required for the given schema.
+        return isSchemaVisibleToPermission(visibilityDocument,
+                frameworkCallerAccess.getCallingAttributionSource());
     }
 
     /**
@@ -120,6 +138,48 @@ public class VisibilityCheckerImpl implements VisibilityChecker {
         }
         // If we can't verify the schema is package accessible, default to no access.
         return false;
+    }
+
+    /**
+     * Returns whether the caller holds all required permissions for the given schema.
+     */
+    private boolean isSchemaVisibleToPermission(@NonNull VisibilityDocument visibilityDocument,
+            @Nullable AttributionSource callerAttributionSource) {
+        Set<Integer> requiredPermissions = visibilityDocument.getVisibleToPermissions();
+        if (requiredPermissions == null || requiredPermissions.isEmpty()
+                || callerAttributionSource == null) {
+            // Provider doesn't set any permissions or there is no caller attribution source,
+            // default is not accessible to anyone.
+            return false;
+        }
+        for (int requiredPermission : requiredPermissions) {
+            String permission;
+            switch (requiredPermission) {
+                case SetSchemaRequest.READ_SMS :
+                    permission = READ_SMS;
+                    break;
+                case SetSchemaRequest.READ_CALENDAR:
+                    permission = READ_CALENDAR;
+                    break;
+                case SetSchemaRequest.READ_CONTACTS:
+                    permission = READ_CONTACTS;
+                    break;
+                case SetSchemaRequest.READ_EXTERNAL_STORAGE :
+                    permission = READ_EXTERNAL_STORAGE;
+                    break;
+                default:
+                    throw new UnsupportedOperationException(
+                            "The required permission is unsupported in AppSearch : "
+                                    + requiredPermission);
+            }
+            if (PERMISSION_GRANTED != mPermissionManager.checkPermissionForDataDelivery(
+                    permission, callerAttributionSource, /*message=*/"appsearch")) {
+                // The calling package doesn't have this required permission, return false.
+                return false;
+            }
+        }
+        // The calling package has all required permissions, return true.
+        return true;
     }
 
     /**

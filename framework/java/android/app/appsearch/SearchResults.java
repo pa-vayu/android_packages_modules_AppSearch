@@ -22,6 +22,7 @@ import android.annotation.Nullable;
 import android.app.appsearch.aidl.AppSearchResultParcel;
 import android.app.appsearch.aidl.IAppSearchManager;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
+import android.content.AttributionSource;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.os.SystemClock;
@@ -55,8 +56,8 @@ public class SearchResults implements Closeable {
 
     private final IAppSearchManager mService;
 
-    // The package name of the caller.
-    private final String mPackageName;
+    // The permission identity of the caller
+    private final AttributionSource mAttributionSource;
 
     // The database name to search over. If null, this will search over all database names.
     @Nullable
@@ -76,13 +77,13 @@ public class SearchResults implements Closeable {
 
     SearchResults(
             @NonNull IAppSearchManager service,
-            @NonNull String packageName,
+            @NonNull AttributionSource attributionSource,
             @Nullable String databaseName,
             @NonNull String queryExpression,
             @NonNull SearchSpec searchSpec,
             @NonNull UserHandle userHandle) {
         mService = Objects.requireNonNull(service);
-        mPackageName = packageName;
+        mAttributionSource = Objects.requireNonNull(attributionSource);
         mDatabaseName = databaseName;
         mQueryExpression = Objects.requireNonNull(queryExpression);
         mSearchSpec = Objects.requireNonNull(searchSpec);
@@ -112,19 +113,18 @@ public class SearchResults implements Closeable {
                 long binderCallStartTimeMillis = SystemClock.elapsedRealtime();
                 if (mDatabaseName == null) {
                     // Global query, there's no one package-database combination to check.
-                    mService.globalQuery(mPackageName, mQueryExpression,
-                            mSearchSpec.getBundle(), mUserHandle,
-                            binderCallStartTimeMillis,
+                    mService.globalQuery(mAttributionSource, mQueryExpression,
+                            mSearchSpec.getBundle(), mUserHandle, binderCallStartTimeMillis,
                             wrapCallback(executor, callback));
                 } else {
                     // Normal local query, pass in specified database.
-                    mService.query(mPackageName, mDatabaseName, mQueryExpression,
+                    mService.query(mAttributionSource, mDatabaseName, mQueryExpression,
                             mSearchSpec.getBundle(), mUserHandle,
                             binderCallStartTimeMillis,
                             wrapCallback(executor, callback));
                 }
             } else {
-                mService.getNextPage(mPackageName, mNextPageToken, mUserHandle,
+                mService.getNextPage(mAttributionSource, mNextPageToken, mUserHandle,
                         wrapCallback(executor, callback));
             }
         } catch (RemoteException e) {
@@ -136,7 +136,7 @@ public class SearchResults implements Closeable {
     public void close() {
         if (!mIsClosed) {
             try {
-                mService.invalidateNextPageToken(mPackageName, mNextPageToken, mUserHandle);
+                mService.invalidateNextPageToken(mAttributionSource, mNextPageToken, mUserHandle);
                 mIsClosed = true;
             } catch (RemoteException e) {
                 Log.e(TAG, "Unable to close the SearchResults", e);
