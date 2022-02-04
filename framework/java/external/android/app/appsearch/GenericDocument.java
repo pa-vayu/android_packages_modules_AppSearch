@@ -73,7 +73,7 @@ public class GenericDocument {
      *
      * <p>Indexed properties are properties which are strings where the {@link
      * AppSearchSchema.StringPropertyConfig#getIndexingType} value is anything other than {@link
-     * AppSearchSchema.StringPropertyConfig.IndexingType#INDEXING_TYPE_NONE}.
+     * AppSearchSchema.StringPropertyConfig#INDEXING_TYPE_NONE}.
      */
     public static int getMaxIndexedProperties() {
         return MAX_INDEXED_PROPERTIES;
