@@ -29,10 +29,9 @@ android_test {
     ],
     libs: [
         "android.test.runner",
-        "framework",
-        "framework-res",
+        "framework-appsearch.impl",
     ],
-    sdk_version: "core_current",
+    sdk_version: "module_current",
     test_suites: [
         "general-tests",
         "mts-appsearch",
