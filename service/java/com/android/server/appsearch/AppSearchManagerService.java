@@ -63,6 +63,7 @@ import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
 import com.android.server.appsearch.external.localstorage.stats.CallStats;
 import com.android.server.appsearch.external.localstorage.stats.OptimizeStats;
+import com.android.server.appsearch.external.localstorage.visibilitystore.CallerAccess;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
 import com.android.server.appsearch.observer.AppSearchObserverProxy;
 import com.android.server.appsearch.stats.StatsCollector;
@@ -437,10 +438,12 @@ public class AppSearchManagerService extends SystemService {
                             instance.getAppSearchImpl().getSchema(
                                     packageName,
                                     databaseName,
-                                    callingPackageName,
-                                    callingUid,
-                                    instance.getVisibilityChecker()
-                                            .doesCallerHaveSystemAccess(callingPackageName));
+                                    new CallerAccess(
+                                            callingPackageName,
+                                            callingUid,
+                                            instance.getVisibilityChecker()
+                                                    .doesCallerHaveSystemAccess(
+                                                            callingPackageName)));
                     invokeCallbackOnResult(
                             callback,
                             AppSearchResult.newSuccessfulResult(response.getBundle()));
@@ -629,10 +632,12 @@ public class AppSearchManagerService extends SystemService {
                                         namespace,
                                         id,
                                         typePropertyPaths,
-                                        callingPackageName,
-                                        callingUid,
-                                        instance.getVisibilityChecker()
-                                                .doesCallerHaveSystemAccess(callingPackageName));
+                                        new CallerAccess(
+                                                callingPackageName,
+                                                callingUid,
+                                                instance.getVisibilityChecker()
+                                                        .doesCallerHaveSystemAccess(
+                                                                callingPackageName)));
                             } else {
                                 document = instance.getAppSearchImpl().getDocument(
                                         targetPackageName,
@@ -792,9 +797,10 @@ public class AppSearchManagerService extends SystemService {
                     SearchResultPage searchResultPage = instance.getAppSearchImpl().globalQuery(
                             queryExpression,
                             new SearchSpec(searchSpecBundle),
-                            packageName,
-                            callingUid,
-                            callerHasSystemAccess,
+                            new CallerAccess(
+                                    packageName,
+                                    callingUid,
+                                    callerHasSystemAccess),
                             instance.getLogger());
                     ++operationSuccessCount;
                     invokeCallbackOnResult(
@@ -1351,9 +1357,11 @@ public class AppSearchManagerService extends SystemService {
                 AppSearchUserInstance instance =
                         mAppSearchUserInstanceManager.getUserInstance(targetUser);
                 instance.getAppSearchImpl().addObserver(
-                        callingPackage,
-                        callingUid,
-                        instance.getVisibilityChecker().doesCallerHaveSystemAccess(callingPackage),
+                        new CallerAccess(
+                                callingPackage,
+                                callingUid,
+                                instance.getVisibilityChecker()
+                                        .doesCallerHaveSystemAccess(callingPackage)),
                         targetPackageName,
                         new ObserverSpec(observerSpecBundle),
                         EXECUTOR,
