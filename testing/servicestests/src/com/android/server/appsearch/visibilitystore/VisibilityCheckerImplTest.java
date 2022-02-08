@@ -133,17 +133,19 @@ public class VisibilityCheckerImplTest {
                 ImmutableList.of(visibilityDocument1, visibilityDocument2));
 
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        mUid,
+                        /*callerHasSystemAccess=*/ true),
                 "package",
                 "prefix/Schema1",
-                mUid,
-                /*callerHasSystemAccess=*/ true,
                 mVisibilityStore))
                 .isFalse();
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        mUid,
+                        /*callerHasSystemAccess=*/ true),
                 "package",
                 "prefix/Schema2",
-                mUid,
-                /*callerHasSystemAccess=*/ true,
                 mVisibilityStore))
                 .isFalse();
 
@@ -152,17 +154,19 @@ public class VisibilityCheckerImplTest {
         mVisibilityStore.setVisibility(
                 ImmutableList.of(visibilityDocument1, visibilityDocument2));
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        mUid,
+                        /*callerHasSystemAccess=*/ true),
                 "package",
                 "prefix/Schema1",
-                mUid,
-                /*callerHasSystemAccess=*/ true,
                 mVisibilityStore))
                 .isTrue();
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        mUid,
+                        /*callerHasSystemAccess=*/ true),
                 "package",
                 "prefix/Schema2",
-                mUid,
-                /*callerHasSystemAccess=*/ true,
                 mVisibilityStore))
                 .isFalse();
     }
@@ -208,10 +212,11 @@ public class VisibilityCheckerImplTest {
                 packageNameFoo, sha256CertFoo, PackageManager.CERT_INPUT_SHA256))
                 .thenReturn(false);
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        uidFoo,
+                        /*callerHasSystemAccess=*/ false),
                 "package",
                 "prefix/SchemaFoo",
-                uidFoo,
-                /*callerHasSystemAccess=*/ false,
                 mVisibilityStore))
                 .isFalse();
 
@@ -222,10 +227,11 @@ public class VisibilityCheckerImplTest {
                 packageNameFoo, sha256CertFoo, PackageManager.CERT_INPUT_SHA256))
                 .thenReturn(true);
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        uidFoo,
+                        /*callerHasSystemAccess=*/ false),
                 "package",
                 "prefix/SchemaFoo",
-                uidFoo,
-                /*callerHasSystemAccess=*/ false,
                 mVisibilityStore))
                 .isFalse();
 
@@ -236,10 +242,11 @@ public class VisibilityCheckerImplTest {
                 packageNameFoo, sha256CertFoo, PackageManager.CERT_INPUT_SHA256))
                 .thenReturn(true);
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        uidFoo,
+                        /*callerHasSystemAccess=*/ false),
                 "package",
                 "prefix/SchemaFoo",
-                uidFoo,
-                /*callerHasSystemAccess=*/ false,
                 mVisibilityStore))
                 .isTrue();
 
@@ -249,10 +256,11 @@ public class VisibilityCheckerImplTest {
                 packageNameBar, sha256CertBar, PackageManager.CERT_INPUT_SHA256))
                 .thenReturn(true);
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        uidBar,
+                        /*callerHasSystemAccess=*/ false),
                 "package",
                 "prefix/SchemaBar",
-                uidBar,
-                /*callerHasSystemAccess=*/ false,
                 mVisibilityStore))
                 .isTrue();
 
@@ -261,17 +269,19 @@ public class VisibilityCheckerImplTest {
         visibilityDocument2 = new VisibilityDocument.Builder(/*id=*/"prefix/SchemaBar").build();
         mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument1, visibilityDocument2));
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        uidFoo,
+                        /*callerHasSystemAccess=*/ false),
                 "package",
                 "prefix/SchemaFoo",
-                uidFoo,
-                /*callerHasSystemAccess=*/ false,
                 mVisibilityStore))
                 .isFalse();
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        uidBar,
+                        /*callerHasSystemAccess=*/ false),
                 "package",
                 "prefix/SchemaBar",
-                uidBar,
-                /*callerHasSystemAccess=*/ false,
                 mVisibilityStore))
                 .isFalse();
     }
@@ -301,10 +311,11 @@ public class VisibilityCheckerImplTest {
 
         // If we can't verify the Foo package that has access, assume it doesn't have access.
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        uidFoo,
+                        /*callerHasSystemAccess=*/ false),
                 "package",
                 "prefix/SchemaFoo",
-                uidFoo,
-                /*callerHasSystemAccess=*/ false,
                 mVisibilityStore))
                 .isFalse();
     }
@@ -330,10 +341,11 @@ public class VisibilityCheckerImplTest {
         mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
 
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        mUid,
+                        /*callerHasSystemAccess=*/ true),
                 /*packageName=*/ "",
                 "$/Schema",
-                mUid,
-                /*callerHasSystemAccess=*/ true,
                 mVisibilityStore)).isTrue();
 
         when(mockPackageManager.getPackageUid(eq(packageNameFoo), /*flags=*/ anyInt()))
@@ -342,10 +354,11 @@ public class VisibilityCheckerImplTest {
                 packageNameFoo, sha256CertFoo, PackageManager.CERT_INPUT_SHA256))
                 .thenReturn(true);
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        uidFoo,
+                        /*callerHasSystemAccess=*/ false),
                 /*packageName=*/ "",
                 "$/Schema",
-                uidFoo,
-                /*callerHasSystemAccess=*/ false,
                 mVisibilityStore)).isTrue();
     }
 
@@ -362,10 +375,11 @@ public class VisibilityCheckerImplTest {
                 /*id=*/prefix + "Schema").build();
         mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        mUid,
+                        /*callerHasSystemAccess=*/ true),
                 "package",
                 prefix + "Schema",
-                mUid,
-                /*callerHasSystemAccess=*/ true,
                 mVisibilityStore))
                 .isTrue();
     }
@@ -385,10 +399,11 @@ public class VisibilityCheckerImplTest {
         mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
 
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        mUid,
+                        /*callerHasSystemAccess=*/ true),
                 "package",
                 prefix + "Schema",
-                mUid,
-                /*callerHasSystemAccess=*/ true,
                 mVisibilityStore))
                 .isFalse();
     }
@@ -407,12 +422,12 @@ public class VisibilityCheckerImplTest {
                 /*id=*/prefix + "Schema").build();
         mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
 
-        assertThat(mVisibilityChecker
-                .isSchemaSearchableByCaller(
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        /*callerUid=*/ 42,
+                        /*callerHasSystemAccess=*/ false),
                         "package",
                         prefix + "Schema",
-                        /*callerUid=*/ 42,
-                        /*callerHasSystemAccess=*/ false,
                         mVisibilityStore))
                 .isFalse();
     }
@@ -444,10 +459,11 @@ public class VisibilityCheckerImplTest {
         mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
 
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(/*callingPackageName=*/"package",
+                        uidFoo,
+                        /*callerHasSystemAccess=*/ false),
                 "package",
                 prefix + "Schema",
-                uidFoo,
-                /*callerHasSystemAccess=*/ false,
                 mVisibilityStore))
                 .isTrue();
     }

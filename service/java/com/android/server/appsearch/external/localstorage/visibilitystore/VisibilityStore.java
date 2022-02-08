@@ -25,7 +25,6 @@ import android.app.appsearch.GenericDocument;
 import android.app.appsearch.GetSchemaResponse;
 import android.app.appsearch.VisibilityDocument;
 import android.app.appsearch.exceptions.AppSearchException;
-import android.os.Process;
 import android.util.ArrayMap;
 import android.util.Log;
 
@@ -79,9 +78,7 @@ public class VisibilityStore {
                 mAppSearchImpl.getSchema(
                         VISIBILITY_PACKAGE_NAME,
                         VISIBILITY_DATABASE_NAME,
-                        /*callerPackageName=*/ VISIBILITY_PACKAGE_NAME,
-                        /*callerUid=*/ Process.myUid(),
-                        /*callerHasSystemAccess=*/ false);
+                        new CallerAccess(/*callingPackageName=*/ VISIBILITY_PACKAGE_NAME));
         switch (getSchemaResponse.getVersion()) {
             case VisibilityDocument.SCHEMA_VERSION_DOC_PER_PACKAGE:
                 maybeMigrateToLatest(getSchemaResponse);
