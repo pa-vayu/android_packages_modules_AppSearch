@@ -41,7 +41,6 @@ import android.app.appsearch.observer.ObserverSpec;
 import android.app.appsearch.observer.SchemaChangeInfo;
 import android.app.appsearch.testutil.TestObserverCallback;
 import android.content.Context;
-import android.os.Process;
 import android.util.ArrayMap;
 import android.util.ArraySet;
 
@@ -94,15 +93,8 @@ public class AppSearchImplTest {
 
     private final Context mContext = ApplicationProvider.getApplicationContext();
 
-    // Some constants for caller access
-    private final CallerAccess mInvalidCallerAccess =
-            new CallerAccess(
-                    mContext.getPackageName(),
-                    Process.INVALID_UID,
-                    /*callerHasSystemAccess=*/ false);
-    private final CallerAccess mSelfCallerAccess =
-            new CallerAccess(
-                    mContext.getPackageName(), Process.myUid(), /*callerHasSystemAccess=*/ false);
+    // The caller access for this package
+    private final CallerAccess mSelfCallerAccess = new CallerAccess(mContext.getPackageName());
 
     private AppSearchImpl mAppSearchImpl;
 
@@ -531,7 +523,7 @@ public class AppSearchImplTest {
                 mAppSearchImpl.globalQuery(
                         /*queryExpression=*/ "",
                         new SearchSpec.Builder().addFilterSchemas("Type1").build(),
-                        mInvalidCallerAccess,
+                        mSelfCallerAccess,
                         /*logger=*/ null);
         assertThat(results.getResults()).hasSize(1);
         assertThat(results.getResults().get(0).getGenericDocument()).isEqualTo(validDoc);
@@ -597,7 +589,7 @@ public class AppSearchImplTest {
                 mAppSearchImpl.globalQuery(
                         /*queryExpression=*/ "",
                         new SearchSpec.Builder().addFilterSchemas("Type1").build(),
-                        mInvalidCallerAccess,
+                        mSelfCallerAccess,
                         /*logger=*/ null);
         assertThat(results.getResults()).isEmpty();
 
@@ -620,7 +612,7 @@ public class AppSearchImplTest {
                 mAppSearchImpl.globalQuery(
                         /*queryExpression=*/ "",
                         new SearchSpec.Builder().addFilterSchemas("Type1").build(),
-                        mInvalidCallerAccess,
+                        mSelfCallerAccess,
                         /*logger=*/ null);
         assertThat(results.getResults()).hasSize(1);
         assertThat(results.getResults().get(0).getGenericDocument()).isEqualTo(validDoc);
@@ -760,10 +752,7 @@ public class AppSearchImplTest {
                 mAppSearchImpl.globalQuery(
                         /*queryExpression=*/ "",
                         searchSpec,
-                        new CallerAccess(
-                                /*callingPackageName=*/ "",
-                                /*callingUid=*/ Process.INVALID_UID,
-                                /*callerHasSystemAccess=*/ false),
+                        new CallerAccess(/*callingPackageName=*/ ""),
                         /*logger=*/ null);
         assertThat(searchResultPage.getResults()).isEmpty();
     }
@@ -900,8 +889,7 @@ public class AppSearchImplTest {
                 mAppSearchImpl.globalQuery(
                         /*queryExpression=*/ "",
                         searchSpec,
-                        new CallerAccess(
-                                "package1", Process.myUid(), /*callerHasSystemAccess=*/ false),
+                        new CallerAccess(/*callingPackageName=*/ "package1"),
                         /*logger=*/ null);
 
         // Document2 will come first because it was inserted last and default return order is
@@ -948,8 +936,7 @@ public class AppSearchImplTest {
                 mAppSearchImpl.globalQuery(
                         /*queryExpression=*/ "",
                         searchSpec,
-                        new CallerAccess(
-                                "package1", Process.myUid(), /*callerHasSystemAccess=*/ false),
+                        new CallerAccess(/*callingPackageName=*/ "package1"),
                         /*logger=*/ null);
 
         // Document2 will come first because it was inserted last and default return order is
@@ -1159,8 +1146,7 @@ public class AppSearchImplTest {
                 mAppSearchImpl.globalQuery(
                         /*queryExpression=*/ "",
                         searchSpec,
-                        new CallerAccess(
-                                "package1", Process.myUid(), /*callerHasSystemAccess=*/ false),
+                        new CallerAccess(/*callingPackageName=*/ "package1"),
                         /*logger=*/ null);
 
         // Document2 will come first because it was inserted last and default return order is
@@ -1218,8 +1204,7 @@ public class AppSearchImplTest {
                 mAppSearchImpl.globalQuery(
                         /*queryExpression=*/ "",
                         searchSpec,
-                        new CallerAccess(
-                                "package1", Process.myUid(), /*callerHasSystemAccess=*/ false),
+                        new CallerAccess(/*callingPackageName=*/ "package1"),
                         /*logger=*/ null);
 
         // Document2 will come first because it was inserted last and default return order is
@@ -2120,7 +2105,7 @@ public class AppSearchImplTest {
                         mAppSearchImpl.globalQuery(
                                 "query",
                                 new SearchSpec.Builder().build(),
-                                mInvalidCallerAccess,
+                                mSelfCallerAccess,
                                 /*logger=*/ null));
 
         assertThrows(
@@ -3213,8 +3198,7 @@ public class AppSearchImplTest {
         mAppSearchImpl.close();
         File tempFolder = mTemporaryFolder.newFolder();
         VisibilityChecker mockVisibilityChecker =
-                (packageName, prefixedSchema, callerUid, callerHasSystemAccess, visibilityStore) ->
-                        false;
+                (callerAccess, packageName, prefixedSchema, visibilityStore) -> false;
         mAppSearchImpl =
                 AppSearchImpl.create(
                         tempFolder,
@@ -3262,8 +3246,7 @@ public class AppSearchImplTest {
         mAppSearchImpl.close();
         File tempFolder = mTemporaryFolder.newFolder();
         VisibilityChecker mockVisibilityChecker =
-                (packageName, prefixedSchema, callerUid, callerHasSystemAccess, visibilityStore) ->
-                        true;
+                (callerAccess, packageName, prefixedSchema, visibilityStore) -> true;
         mAppSearchImpl =
                 AppSearchImpl.create(
                         tempFolder,
@@ -3307,8 +3290,7 @@ public class AppSearchImplTest {
         mAppSearchImpl.close();
         File tempFolder = mTemporaryFolder.newFolder();
         VisibilityChecker mockVisibilityChecker =
-                (packageName, prefixedSchema, callerUid, callerHasSystemAccess, visibilityStore) ->
-                        true;
+                (callerAccess, packageName, prefixedSchema, visibilityStore) -> true;
         mAppSearchImpl =
                 AppSearchImpl.create(
                         tempFolder,
@@ -3355,8 +3337,8 @@ public class AppSearchImplTest {
         mAppSearchImpl.close();
         File tempFolder = mTemporaryFolder.newFolder();
         VisibilityChecker mockVisibilityChecker =
-                (packageName, prefixedSchema, callerUid, callerHasSystemAccess, visibilityStore) ->
-                        callerUid == 1;
+                (callerAccess, packageName, prefixedSchema, visibilityStore) ->
+                        callerAccess.getCallingPackageName().equals("visiblePackage");
         mAppSearchImpl =
                 AppSearchImpl.create(
                         tempFolder,
@@ -3390,7 +3372,8 @@ public class AppSearchImplTest {
                                         "namespace1",
                                         "id1",
                                         /*typePropertyPaths=*/ Collections.emptyMap(),
-                                        /*callerAccess=*/ mSelfCallerAccess));
+                                        new CallerAccess(
+                                                /*callingPackageName=*/ "invisiblePackage")));
 
         mAppSearchImpl.remove(
                 "package", "database", "namespace1", "id1", /*removeStatsBuilder=*/ null);
@@ -3406,9 +3389,7 @@ public class AppSearchImplTest {
                                         "id1",
                                         /*typePropertyPaths=*/ Collections.emptyMap(),
                                         new CallerAccess(
-                                                "package",
-                                                Process.myUid(),
-                                                /*callerHasSystemAccess=*/ true)));
+                                                /*callingPackageName=*/ "visiblePackage")));
 
         assertThat(noDocException.getResultCode()).isEqualTo(unauthorizedException.getResultCode());
         assertThat(noDocException.getMessage()).isEqualTo(unauthorizedException.getMessage());
@@ -3634,8 +3615,7 @@ public class AppSearchImplTest {
         mAppSearchImpl.close();
         File tempFolder = mTemporaryFolder.newFolder();
         VisibilityChecker mockVisibilityChecker =
-                (packageName, prefixedSchema, callerUid, callerHasSystemAccess, visibilityStore) ->
-                        true;
+                (callerAccess, packageName, prefixedSchema, visibilityStore) -> true;
         mAppSearchImpl =
                 AppSearchImpl.create(
                         tempFolder,
@@ -3662,9 +3642,7 @@ public class AppSearchImplTest {
                         "package",
                         "database",
                         new CallerAccess(
-                                "com.android.appsearch.fake.package",
-                                /*callerUid=*/ 1,
-                                /*callerHasSystemAccess=*/ false));
+                                /*callingPackageName=*/ "com.android.appsearch.fake.package"));
         assertThat(getResponse.getSchemas()).containsExactlyElementsIn(schemas);
         assertThat(getResponse.getSchemaTypesNotDisplayedBySystem()).containsExactly("Type");
     }
@@ -3686,8 +3664,7 @@ public class AppSearchImplTest {
                 mAppSearchImpl.getSchema(
                         "com.android.appsearch.fake.package",
                         "database",
-                        new CallerAccess(
-                                "package", /*callerUid=*/ 1, /*callerHasSystemAccess=*/ false));
+                        new CallerAccess(/*callingPackageName=*/ "package"));
         assertThat(getResponse.getSchemas()).isEmpty();
         assertThat(getResponse.getSchemaTypesNotDisplayedBySystem()).isEmpty();
     }
@@ -3709,9 +3686,7 @@ public class AppSearchImplTest {
                         "package",
                         "database",
                         new CallerAccess(
-                                "com.android.appsearch.fake.package",
-                                /*callerUid=*/ 1,
-                                /*callerHasSystemAccess=*/ false));
+                                /*callingPackageName=*/ "com.android.appsearch.fake.package"));
         assertThat(getResponse.getSchemas()).isEmpty();
         assertThat(getResponse.getSchemaTypesNotDisplayedBySystem()).isEmpty();
         assertThat(getResponse.getVersion()).isEqualTo(0);
@@ -3720,10 +3695,7 @@ public class AppSearchImplTest {
         // from the same package
         getResponse =
                 mAppSearchImpl.getSchema(
-                        "package",
-                        "database",
-                        new CallerAccess(
-                                "package", /*callerUid=*/ 1, /*callerHasSystemAccess=*/ false));
+                        "package", "database", new CallerAccess(/*callingPackageName=*/ "package"));
         assertThat(getResponse.getSchemas()).containsExactlyElementsIn(schemas);
     }
 
@@ -3738,7 +3710,7 @@ public class AppSearchImplTest {
         mAppSearchImpl.close();
         File tempFolder = mTemporaryFolder.newFolder();
         VisibilityChecker mockVisibilityChecker =
-                (packageName, prefixedSchema, callerUid, callerHasSystemAccess, visibilityStore) ->
+                (callerAccess, packageName, prefixedSchema, visibilityStore) ->
                         prefixedSchema.endsWith("VisibleType");
         mAppSearchImpl =
                 AppSearchImpl.create(
@@ -3768,9 +3740,7 @@ public class AppSearchImplTest {
                         "package",
                         "database",
                         new CallerAccess(
-                                "com.android.appsearch.fake.package",
-                                /*callerUid=*/ 1,
-                                /*callerHasSystemAccess=*/ false));
+                                /*callingPackageName=*/ "com.android.appsearch.fake.package"));
         assertThat(getResponse.getSchemas()).containsExactly(schemas.get(0));
         assertThat(getResponse.getSchemaTypesNotDisplayedBySystem()).containsExactly("VisibleType");
         assertThat(getResponse.getVersion()).isEqualTo(1);
@@ -3824,8 +3794,7 @@ public class AppSearchImplTest {
     public void testDispatchObserver_samePackage_withVisStore_accept() throws Exception {
         // Make a visibility checker that rejects everything
         final VisibilityChecker rejectChecker =
-                (packageName, prefixedSchema, callerUid, callerHasSystemAccess, visibilityStore) ->
-                        false;
+                (callerAccess, packageName, prefixedSchema, visibilityStore) -> false;
         mAppSearchImpl.close();
         mAppSearchImpl =
                 AppSearchImpl.create(
@@ -3891,10 +3860,7 @@ public class AppSearchImplTest {
         // Register an observer from a simulated different package
         TestObserverCallback observer = new TestObserverCallback();
         mAppSearchImpl.addObserver(
-                new CallerAccess(
-                        "com.fake.Listening.package",
-                        Process.myUid(),
-                        /*callerHasSystemAccess=*/ false),
+                new CallerAccess(/*callingPackageName=*/ "com.fake.Listening.package"),
                 /*targetPackageName=*/ mContext.getPackageName(),
                 new ObserverSpec.Builder().build(),
                 MoreExecutors.directExecutor(),
@@ -3920,12 +3886,11 @@ public class AppSearchImplTest {
     @Test
     public void testDispatchObserver_differentPackage_withVisStore_accept() throws Exception {
         final String fakeListeningPackage = "com.fake.listening.package";
-        final int fakeListeningUid = 42;
 
         // Make a visibility checker that allows only fakeListeningPackage.
         final VisibilityChecker visibilityChecker =
-                (packageName, prefixedSchema, callerUid, callerHasSystemAccess, visibilityStore) ->
-                        callerUid == fakeListeningUid;
+                (callerAccess, packageName, prefixedSchema, visibilityStore) ->
+                        callerAccess.getCallingPackageName().equals(fakeListeningPackage);
         mAppSearchImpl.close();
         mAppSearchImpl =
                 AppSearchImpl.create(
@@ -3947,8 +3912,7 @@ public class AppSearchImplTest {
         // Register an observer
         TestObserverCallback observer = new TestObserverCallback();
         mAppSearchImpl.addObserver(
-                new CallerAccess(
-                        fakeListeningPackage, fakeListeningUid, /*callerHasSystemAccess=*/ false),
+                new CallerAccess(/*callingPackageName=*/ fakeListeningPackage),
                 /*targetPackageName=*/ mContext.getPackageName(),
                 new ObserverSpec.Builder().build(),
                 MoreExecutors.directExecutor(),
@@ -3981,12 +3945,10 @@ public class AppSearchImplTest {
     @Test
     public void testDispatchObserver_differentPackage_withVisStore_reject() throws Exception {
         final String fakeListeningPackage = "com.fake.Listening.package";
-        final int fakeListeningUid = 42;
 
         // Make a visibility checker that rejects everything.
         final VisibilityChecker rejectChecker =
-                (packageName, prefixedSchema, callerUid, callerHasSystemAccess, visibilityStore) ->
-                        false;
+                (callerAccess, packageName, prefixedSchema, visibilityStore) -> false;
         mAppSearchImpl.close();
         mAppSearchImpl =
                 AppSearchImpl.create(
@@ -4008,8 +3970,7 @@ public class AppSearchImplTest {
         // Register an observer
         TestObserverCallback observer = new TestObserverCallback();
         mAppSearchImpl.addObserver(
-                new CallerAccess(
-                        fakeListeningPackage, fakeListeningUid, /*callerHasSystemAccess=*/ false),
+                new CallerAccess(/*callingPackageName=*/ fakeListeningPackage),
                 /*targetPackageName=*/ mContext.getPackageName(),
                 new ObserverSpec.Builder().build(),
                 MoreExecutors.directExecutor(),
@@ -4307,16 +4268,11 @@ public class AppSearchImplTest {
     @Test
     public void testAddObserver_schemaChange_visibilityOnly() throws Exception {
         final String fakeListeningPackage = "com.fake.listening.package";
-        final int fakeListeningUid = 42;
 
         // Make a fake visibility checker that actually looks at visibility store
         final VisibilityChecker visibilityChecker =
-                (packageName,
-                        prefixedSchema,
-                        callerUid,
-                        callerHasSystemAccess,
-                        visibilityStore) -> {
-                    if (callerUid != fakeListeningUid) {
+                (callerAccess, packageName, prefixedSchema, visibilityStore) -> {
+                    if (!callerAccess.getCallingPackageName().equals(fakeListeningPackage)) {
                         return false;
                     }
                     Set<String> allowedPackages =
@@ -4338,8 +4294,7 @@ public class AppSearchImplTest {
         // Register an observer
         TestObserverCallback observer = new TestObserverCallback();
         mAppSearchImpl.addObserver(
-                new CallerAccess(
-                        fakeListeningPackage, fakeListeningUid, /*callerHasSystemAccess=*/ false),
+                new CallerAccess(/*callingPackageName=*/ fakeListeningPackage),
                 /*targetPackageName=*/ mContext.getPackageName(),
                 new ObserverSpec.Builder().build(),
                 MoreExecutors.directExecutor(),
@@ -4479,12 +4434,12 @@ public class AppSearchImplTest {
     @Test
     public void testAddObserver_schemaChange_visibilityAndContents() throws Exception {
         final String fakeListeningPackage = "com.fake.listening.package";
-        final int fakeListeningUid = 42;
 
         // Make a visibility checker that allows fakeListeningPackage access only to Type2.
         final VisibilityChecker visibilityChecker =
-                (packageName, prefixedSchema, callerUid, callerHasSystemAccess, visibilityStore) ->
-                        callerUid == fakeListeningUid && prefixedSchema.endsWith("Type2");
+                (callerAccess, packageName, prefixedSchema, visibilityStore) ->
+                        callerAccess.getCallingPackageName().equals(fakeListeningPackage)
+                                && prefixedSchema.endsWith("Type2");
         mAppSearchImpl.close();
         mAppSearchImpl =
                 AppSearchImpl.create(
@@ -4525,8 +4480,7 @@ public class AppSearchImplTest {
         // Register an observer
         TestObserverCallback observer = new TestObserverCallback();
         mAppSearchImpl.addObserver(
-                new CallerAccess(
-                        fakeListeningPackage, fakeListeningUid, /*callerHasSystemAccess=*/ false),
+                new CallerAccess(/*callingPackageName=*/ fakeListeningPackage),
                 /*targetPackageName=*/ mContext.getPackageName(),
                 new ObserverSpec.Builder().build(),
                 MoreExecutors.directExecutor(),
@@ -4574,12 +4528,12 @@ public class AppSearchImplTest {
     @Test
     public void testAddObserver_schemaChange_partialVisibility_removed() throws Exception {
         final String fakeListeningPackage = "com.fake.listening.package";
-        final int fakeListeningUid = 42;
 
         // Make a visibility checker that allows fakeListeningPackage access only to Type2.
         final VisibilityChecker visibilityChecker =
-                (packageName, prefixedSchema, callerUid, callerHasSystemAccess, visibilityStore) ->
-                        callerUid == fakeListeningUid && prefixedSchema.endsWith("Type2");
+                (callerAccess, packageName, prefixedSchema, visibilityStore) ->
+                        callerAccess.getCallingPackageName().equals(fakeListeningPackage)
+                                && prefixedSchema.endsWith("Type2");
         mAppSearchImpl.close();
         mAppSearchImpl =
                 AppSearchImpl.create(
@@ -4604,8 +4558,7 @@ public class AppSearchImplTest {
         // Register an observer
         TestObserverCallback observer = new TestObserverCallback();
         mAppSearchImpl.addObserver(
-                new CallerAccess(
-                        fakeListeningPackage, fakeListeningUid, /*callerHasSystemAccess=*/ false),
+                new CallerAccess(/*callingPackageName=*/ fakeListeningPackage),
                 /*targetPackageName=*/ mContext.getPackageName(),
                 new ObserverSpec.Builder().build(),
                 MoreExecutors.directExecutor(),
@@ -4652,21 +4605,15 @@ public class AppSearchImplTest {
         // Create two fake packages. One can access Type1, one can access Type2, they both can
         // access Type3, and no one can access Type4.
         final String fakePackage1 = "com.fake.listening.package1";
-        final int fakePackage1Uid = 42;
 
         final String fakePackage2 = "com.fake.listening.package2";
-        final int fakePackage2Uid = 43;
 
         final VisibilityChecker visibilityChecker =
-                (packageName,
-                        prefixedSchema,
-                        callerUid,
-                        callerHasSystemAccess,
-                        visibilityStore) -> {
+                (callerAccess, packageName, prefixedSchema, visibilityStore) -> {
                     if (prefixedSchema.endsWith("Type1")) {
-                        return callerUid == fakePackage1Uid;
+                        return callerAccess.getCallingPackageName().equals(fakePackage1);
                     } else if (prefixedSchema.endsWith("Type2")) {
-                        return callerUid == fakePackage2Uid;
+                        return callerAccess.getCallingPackageName().equals(fakePackage2);
                     } else if (prefixedSchema.endsWith("Type3")) {
                         return false;
                     } else if (prefixedSchema.endsWith("Type4")) {
@@ -4701,7 +4648,7 @@ public class AppSearchImplTest {
         // Register three observers: one in each package, and another in package1 with a filter.
         TestObserverCallback observerPkg1NoFilter = new TestObserverCallback();
         mAppSearchImpl.addObserver(
-                new CallerAccess(fakePackage1, fakePackage1Uid, /*callerHasSystemAccess=*/ false),
+                new CallerAccess(/*callingPackageName=*/ fakePackage1),
                 /*targetPackageName=*/ mContext.getPackageName(),
                 new ObserverSpec.Builder().build(),
                 MoreExecutors.directExecutor(),
@@ -4709,7 +4656,7 @@ public class AppSearchImplTest {
 
         TestObserverCallback observerPkg2NoFilter = new TestObserverCallback();
         mAppSearchImpl.addObserver(
-                new CallerAccess(fakePackage2, fakePackage2Uid, /*callerHasSystemAccess=*/ false),
+                new CallerAccess(/*callingPackageName=*/ fakePackage2),
                 /*targetPackageName=*/ mContext.getPackageName(),
                 new ObserverSpec.Builder().build(),
                 MoreExecutors.directExecutor(),
@@ -4717,7 +4664,7 @@ public class AppSearchImplTest {
 
         TestObserverCallback observerPkg1FilterType4 = new TestObserverCallback();
         mAppSearchImpl.addObserver(
-                new CallerAccess(fakePackage1, fakePackage1Uid, /*callerHasSystemAccess=*/ false),
+                new CallerAccess(/*callingPackageName=*/ fakePackage1),
                 /*targetPackageName=*/ mContext.getPackageName(),
                 new ObserverSpec.Builder().addFilterSchemas("Type4").build(),
                 MoreExecutors.directExecutor(),

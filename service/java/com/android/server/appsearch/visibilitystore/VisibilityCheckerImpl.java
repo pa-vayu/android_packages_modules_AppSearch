@@ -23,12 +23,10 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.UserHandle;
 
-import com.android.internal.annotations.VisibleForTesting;
+import com.android.server.appsearch.external.localstorage.visibilitystore.CallerAccess;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityChecker;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
 import com.android.server.appsearch.util.PackageUtil;
-
-import com.google.android.icing.proto.PersistType;
 
 import java.util.Objects;
 
@@ -47,31 +45,33 @@ public class VisibilityCheckerImpl implements VisibilityChecker {
 
     @Override
     public boolean isSchemaSearchableByCaller(
+            @NonNull CallerAccess callerAccess,
             @NonNull String packageName,
             @NonNull String prefixedSchema,
-            int callerUid,
-            boolean callerHasSystemAccess,
             @NonNull VisibilityStore visibilityStore) {
+        Objects.requireNonNull(callerAccess);
         Objects.requireNonNull(packageName);
         Objects.requireNonNull(prefixedSchema);
 
         if (packageName.equals(VisibilityStore.VISIBILITY_PACKAGE_NAME)) {
             return false; // VisibilityStore schemas are for internal bookkeeping.
         }
-        VisibilityDocument visibilityDocument = visibilityStore.getVisibility(prefixedSchema);
 
+        FrameworkCallerAccess frameworkCallerAccess = (FrameworkCallerAccess) callerAccess;
+        VisibilityDocument visibilityDocument = visibilityStore.getVisibility(prefixedSchema);
         if (visibilityDocument == null) {
             // The target schema doesn't exist yet. We will treat it as default setting and the only
             // accessible case is that the caller has system access.
-            return callerHasSystemAccess;
+            return frameworkCallerAccess.doesCallerHaveSystemAccess();
         }
 
-        if (callerHasSystemAccess && !visibilityDocument.isNotDisplayedBySystem()) {
+        if (frameworkCallerAccess.doesCallerHaveSystemAccess() &&
+                !visibilityDocument.isNotDisplayedBySystem()) {
             return true;
         }
 
         // May not be platform surfaceable, but might still be accessible through 3p access.
-        return isSchemaVisibleToPackages(visibilityDocument, callerUid);
+        return isSchemaVisibleToPackages(visibilityDocument, frameworkCallerAccess.getCallingUid());
     }
 
     /**

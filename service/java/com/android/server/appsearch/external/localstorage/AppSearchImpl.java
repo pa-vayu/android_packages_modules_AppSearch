@@ -45,7 +45,6 @@ import android.app.appsearch.observer.AppSearchObserverCallback;
 import android.app.appsearch.observer.ObserverSpec;
 import android.app.appsearch.util.LogUtil;
 import android.os.Bundle;
-import android.os.Process;
 import android.os.SystemClock;
 import android.util.ArrayMap;
 import android.util.ArraySet;
@@ -525,12 +524,7 @@ public final class AppSearchImpl implements Closeable {
                         databaseName,
                         // A CallerAccess object for internal use that has local access to this
                         // database.
-                        new CallerAccess(
-                                /*callingPackageName=*/ packageName,
-                                // The below two settings don't matter since callingPackageName
-                                // matches
-                                /*callingUid=*/ Process.INVALID_UID,
-                                /*callerHasSystemAccess=*/ false));
+                        new CallerAccess(/*callingPackageName=*/ packageName));
 
         // Cache some lookup tables to help us work with the old schema
         Set<AppSearchSchema> oldSchemaTypes = oldSchema.getSchemas();

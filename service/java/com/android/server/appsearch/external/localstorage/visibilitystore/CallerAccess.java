@@ -28,23 +28,14 @@ import java.util.Objects;
  */
 public class CallerAccess {
     private final String mCallingPackageName;
-    private final int mCallingUid;
-    private final boolean mCallerHasSystemAccess;
 
     /**
      * Constructs a new {@link CallerAccess}.
      *
      * @param callingPackageName The name of the package which wants to access data.
-     * @param callingUid The uid of the package which wants to access data.
-     * @param callerHasSystemAccess Whether {@code callingPackageName} has access to schema types
-     *     marked visible to system via {@link
-     *     android.app.appsearch.SetSchemaRequest.Builder#setSchemaTypeDisplayedBySystem}.
      */
-    public CallerAccess(
-            @NonNull String callingPackageName, int callingUid, boolean callerHasSystemAccess) {
+    public CallerAccess(@NonNull String callingPackageName) {
         mCallingPackageName = Objects.requireNonNull(callingPackageName);
-        mCallingUid = callingUid;
-        mCallerHasSystemAccess = callerHasSystemAccess;
     }
 
     /** Returns the name of the package which wants to access data. */
@@ -53,32 +44,16 @@ public class CallerAccess {
         return mCallingPackageName;
     }
 
-    /** Returns the uid of the package which wants to access data. */
-    public int getCallingUid() {
-        return mCallingUid;
-    }
-
-    /**
-     * Returns whether {@code callingPackageName} has access to schema types marked visible to
-     * system via {@link
-     * android.app.appsearch.SetSchemaRequest.Builder#setSchemaTypeDisplayedBySystem}.
-     */
-    public boolean doesCallerHaveSystemAccess() {
-        return mCallerHasSystemAccess;
-    }
-
     @Override
     public boolean equals(@Nullable Object o) {
         if (this == o) return true;
         if (!(o instanceof CallerAccess)) return false;
         CallerAccess that = (CallerAccess) o;
-        return mCallingUid == that.mCallingUid
-                && mCallerHasSystemAccess == that.mCallerHasSystemAccess
-                && mCallingPackageName.equals(that.mCallingPackageName);
+        return mCallingPackageName.equals(that.mCallingPackageName);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(mCallingPackageName, mCallingUid, mCallerHasSystemAccess);
+        return mCallingPackageName.hashCode();
     }
 }

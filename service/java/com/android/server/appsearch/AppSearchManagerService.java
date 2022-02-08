@@ -68,6 +68,7 @@ import com.android.server.appsearch.external.localstorage.visibilitystore.Visibi
 import com.android.server.appsearch.observer.AppSearchObserverProxy;
 import com.android.server.appsearch.stats.StatsCollector;
 import com.android.server.appsearch.util.PackageUtil;
+import com.android.server.appsearch.visibilitystore.FrameworkCallerAccess;
 import com.android.server.usage.StorageStatsManagerLocal;
 import com.android.server.usage.StorageStatsManagerLocal.StorageStatsAugmenter;
 
@@ -438,7 +439,7 @@ public class AppSearchManagerService extends SystemService {
                             instance.getAppSearchImpl().getSchema(
                                     packageName,
                                     databaseName,
-                                    new CallerAccess(
+                                    new FrameworkCallerAccess(
                                             callingPackageName,
                                             callingUid,
                                             instance.getVisibilityChecker()
@@ -632,7 +633,7 @@ public class AppSearchManagerService extends SystemService {
                                         namespace,
                                         id,
                                         typePropertyPaths,
-                                        new CallerAccess(
+                                        new FrameworkCallerAccess(
                                                 callingPackageName,
                                                 callingUid,
                                                 instance.getVisibilityChecker()
@@ -797,7 +798,7 @@ public class AppSearchManagerService extends SystemService {
                     SearchResultPage searchResultPage = instance.getAppSearchImpl().globalQuery(
                             queryExpression,
                             new SearchSpec(searchSpecBundle),
-                            new CallerAccess(
+                            new FrameworkCallerAccess(
                                     packageName,
                                     callingUid,
                                     callerHasSystemAccess),
@@ -1357,7 +1358,7 @@ public class AppSearchManagerService extends SystemService {
                 AppSearchUserInstance instance =
                         mAppSearchUserInstanceManager.getUserInstance(targetUser);
                 instance.getAppSearchImpl().addObserver(
-                        new CallerAccess(
+                        new FrameworkCallerAccess(
                                 callingPackage,
                                 callingUid,
                                 instance.getVisibilityChecker()
