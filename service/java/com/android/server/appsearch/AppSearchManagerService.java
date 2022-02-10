@@ -243,6 +243,7 @@ public class AppSearchManagerService extends SystemService {
                                 userContext, userHandle, AppSearchConfig.getInstance(EXECUTOR));
                 //TODO(b/145759910) clear visibility setting for package.
                 instance.getAppSearchImpl().clearPackageData(packageName);
+                dispatchChangeNotifications(instance);
                 instance.getLogger().removeCachedUidForPackage(packageName);
             }
         } catch (Throwable t) {
@@ -374,6 +375,10 @@ public class AppSearchManagerService extends SystemService {
                     ++operationSuccessCount;
                     invokeCallbackOnResult(callback,
                             AppSearchResult.newSuccessfulResult(setSchemaResponse.getBundle()));
+
+                    // Schedule a task to dispatch change notifications. See requirements for where
+                    // the method is called documented in the method description.
+                    dispatchChangeNotifications(instance);
 
                     // setSchema will sync the schemas in the request to AppSearch, any existing
                     // schemas which  is not included in the request will be delete if we force
