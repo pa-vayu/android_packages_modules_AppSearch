@@ -66,6 +66,7 @@ import com.android.server.appsearch.external.localstorage.stats.RemoveStats;
 import com.android.server.appsearch.external.localstorage.stats.SearchStats;
 import com.android.server.appsearch.external.localstorage.stats.SetSchemaStats;
 import com.android.server.appsearch.external.localstorage.util.PrefixUtil;
+import com.android.server.appsearch.external.localstorage.visibilitystore.CallerAccess;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityChecker;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityUtil;
@@ -472,104 +473,290 @@ public final class AppSearchImpl implements Closeable {
         mReadWriteLock.writeLock().lock();
         try {
             throwIfClosedLocked();
-
-            SchemaProto.Builder existingSchemaBuilder = getSchemaProtoLocked().toBuilder();
-
-            SchemaProto.Builder newSchemaBuilder = SchemaProto.newBuilder();
-            for (int i = 0; i < schemas.size(); i++) {
-                AppSearchSchema schema = schemas.get(i);
-                SchemaTypeConfigProto schemaTypeProto =
-                        SchemaToProtoConverter.toSchemaTypeConfigProto(schema, version);
-                newSchemaBuilder.addTypes(schemaTypeProto);
+            if (mObserverManager.isPackageObserved(packageName)) {
+                return doSetSchemaWithChangeNotificationLocked(
+                        packageName,
+                        databaseName,
+                        schemas,
+                        visibilityDocuments,
+                        forceOverride,
+                        version,
+                        setSchemaStatsBuilder);
+            } else {
+                return doSetSchemaNoChangeNotificationLocked(
+                        packageName,
+                        databaseName,
+                        schemas,
+                        visibilityDocuments,
+                        forceOverride,
+                        version,
+                        setSchemaStatsBuilder);
             }
-
-            String prefix = createPrefix(packageName, databaseName);
-            // Combine the existing schema (which may have types from other prefixes) with this
-            // prefix's new schema. Modifies the existingSchemaBuilder.
-            RewrittenSchemaResults rewrittenSchemaResults =
-                    rewriteSchema(prefix, existingSchemaBuilder, newSchemaBuilder.build());
-
-            // Apply schema
-            SchemaProto finalSchema = existingSchemaBuilder.build();
-            mLogUtil.piiTrace("setSchema, request", finalSchema.getTypesCount(), finalSchema);
-            SetSchemaResultProto setSchemaResultProto =
-                    mIcingSearchEngineLocked.setSchema(finalSchema, forceOverride);
-            mLogUtil.piiTrace(
-                    "setSchema, response", setSchemaResultProto.getStatus(), setSchemaResultProto);
-
-            if (setSchemaStatsBuilder != null) {
-                setSchemaStatsBuilder.setStatusCode(
-                        statusProtoToResultCode(setSchemaResultProto.getStatus()));
-                AppSearchLoggerHelper.copyNativeStats(setSchemaResultProto, setSchemaStatsBuilder);
-            }
-
-            // Determine whether it succeeded.
-            try {
-                checkSuccess(setSchemaResultProto.getStatus());
-            } catch (AppSearchException e) {
-                // Swallow the exception for the incompatible change case. We will propagate
-                // those deleted schemas and incompatible types to the SetSchemaResponse.
-                boolean isFailedPrecondition =
-                        setSchemaResultProto.getStatus().getCode()
-                                == StatusProto.Code.FAILED_PRECONDITION;
-                boolean isIncompatible =
-                        setSchemaResultProto.getDeletedSchemaTypesCount() > 0
-                                || setSchemaResultProto.getIncompatibleSchemaTypesCount() > 0;
-                if (isFailedPrecondition && isIncompatible) {
-                    return SetSchemaResponseToProtoConverter.toSetSchemaResponse(
-                            setSchemaResultProto, prefix);
-                } else {
-                    throw e;
-                }
-            }
-
-            // Update derived data structures.
-            for (SchemaTypeConfigProto schemaTypeConfigProto :
-                    rewrittenSchemaResults.mRewrittenPrefixedTypes.values()) {
-                addToMap(mSchemaMapLocked, prefix, schemaTypeConfigProto);
-            }
-
-            for (String schemaType : rewrittenSchemaResults.mDeletedPrefixedTypes) {
-                removeFromMap(mSchemaMapLocked, prefix, schemaType);
-            }
-            // Since the constructor of VisibilityStore will set schema. Avoid call visibility
-            // store before we have already created it.
-            if (mVisibilityStoreLocked != null) {
-                // Add prefix to all visibility documents.
-                List<VisibilityDocument> prefixedVisibilityDocuments =
-                        new ArrayList<>(visibilityDocuments.size());
-                // Find out which Visibility document is deleted or changed to all-default settings.
-                // We need to remove them from Visibility Store.
-                Set<String> deprecatedVisibilityDocuments =
-                        new ArraySet<>(rewrittenSchemaResults.mRewrittenPrefixedTypes.keySet());
-                for (int i = 0; i < visibilityDocuments.size(); i++) {
-                    VisibilityDocument unPrefixedDocument = visibilityDocuments.get(i);
-                    // The VisibilityDocument is controlled by the client and it's untrusted but we
-                    // make it safe by appending a prefix.
-                    // We must control the package-database prefix. Therefore even if the client
-                    // fake the id, they can only mess their own app. That's totally allowed and
-                    // they can do this via the public API too.
-                    String prefixedSchemaType = prefix + unPrefixedDocument.getId();
-                    prefixedVisibilityDocuments.add(
-                            new VisibilityDocument(
-                                    unPrefixedDocument.toBuilder()
-                                            .setId(prefixedSchemaType)
-                                            .build()));
-                    // This schema has visibility settings. We should keep it from the removal list.
-                    deprecatedVisibilityDocuments.remove(prefixedSchemaType);
-                }
-                // Now deprecatedVisibilityDocuments contains those existing schemas that has
-                // all-default visibility settings, add deleted schemas. That's all we need to
-                // remove.
-                deprecatedVisibilityDocuments.addAll(rewrittenSchemaResults.mDeletedPrefixedTypes);
-                mVisibilityStoreLocked.removeVisibility(deprecatedVisibilityDocuments);
-                mVisibilityStoreLocked.setVisibility(prefixedVisibilityDocuments);
-            }
-            return SetSchemaResponseToProtoConverter.toSetSchemaResponse(
-                    setSchemaResultProto, prefix);
         } finally {
             mReadWriteLock.writeLock().unlock();
         }
+    }
+
+    /**
+     * Updates the AppSearch schema for this app, dispatching change notifications.
+     *
+     * @see #setSchema
+     * @see #doSetSchemaNoChangeNotificationLocked
+     */
+    @GuardedBy("mReadWriteLock")
+    @NonNull
+    private SetSchemaResponse doSetSchemaWithChangeNotificationLocked(
+            @NonNull String packageName,
+            @NonNull String databaseName,
+            @NonNull List<AppSearchSchema> schemas,
+            @NonNull List<VisibilityDocument> visibilityDocuments,
+            boolean forceOverride,
+            int version,
+            @Nullable SetSchemaStats.Builder setSchemaStatsBuilder)
+            throws AppSearchException {
+        // First, capture the old state of the system. This includes the old schema as well as
+        // whether each registered observer can access each type. Once VisibilityStore is updated
+        // by the setSchema call, the information of which observers could see which types will be
+        // lost.
+        GetSchemaResponse oldSchema =
+                getSchema(
+                        packageName,
+                        databaseName,
+                        // A CallerAccess object for internal use that has local access to this
+                        // database.
+                        new CallerAccess(/*callingPackageName=*/ packageName));
+
+        // Cache some lookup tables to help us work with the old schema
+        Set<AppSearchSchema> oldSchemaTypes = oldSchema.getSchemas();
+        Map<String, AppSearchSchema> oldSchemaNameToType = new ArrayMap<>(oldSchemaTypes.size());
+        // Maps unprefixed schema name to the set of listening packages that had visibility into
+        // that type under the old schema.
+        Map<String, Set<String>> oldSchemaNameToVisibleListeningPackage =
+                new ArrayMap<>(oldSchemaTypes.size());
+        for (AppSearchSchema oldSchemaType : oldSchemaTypes) {
+            String oldSchemaName = oldSchemaType.getSchemaType();
+            oldSchemaNameToType.put(oldSchemaName, oldSchemaType);
+            oldSchemaNameToVisibleListeningPackage.put(
+                    oldSchemaName,
+                    mObserverManager.getObserversForSchemaType(
+                            packageName,
+                            databaseName,
+                            oldSchemaName,
+                            mVisibilityStoreLocked,
+                            mVisibilityCheckerLocked));
+        }
+
+        // Apply the new schema
+        SetSchemaResponse setSchemaResponse =
+                doSetSchemaNoChangeNotificationLocked(
+                        packageName,
+                        databaseName,
+                        schemas,
+                        visibilityDocuments,
+                        forceOverride,
+                        version,
+                        setSchemaStatsBuilder);
+
+        // Cache some lookup tables to help us work with the new schema
+        Map<String, AppSearchSchema> newSchemaNameToType = new ArrayMap<>(schemas.size());
+        // Maps unprefixed schema name to the set of listening packages that have visibility into
+        // that type under the new schema.
+        Map<String, Set<String>> newSchemaNameToVisibleListeningPackage =
+                new ArrayMap<>(schemas.size());
+        for (AppSearchSchema newSchemaType : schemas) {
+            String newSchemaName = newSchemaType.getSchemaType();
+            newSchemaNameToType.put(newSchemaName, newSchemaType);
+            newSchemaNameToVisibleListeningPackage.put(
+                    newSchemaName,
+                    mObserverManager.getObserversForSchemaType(
+                            packageName,
+                            databaseName,
+                            newSchemaName,
+                            mVisibilityStoreLocked,
+                            mVisibilityCheckerLocked));
+        }
+
+        // Create a unified set of all schema names mentioned in either the old or new schema.
+        Set<String> allSchemaNames = new ArraySet<>(oldSchemaNameToType.keySet());
+        allSchemaNames.addAll(newSchemaNameToType.keySet());
+
+        // Perform the diff between the old and new schema.
+        for (String schemaName : allSchemaNames) {
+            final AppSearchSchema contentBefore = oldSchemaNameToType.get(schemaName);
+            final AppSearchSchema contentAfter = newSchemaNameToType.get(schemaName);
+
+            final boolean existBefore = (contentBefore != null);
+            final boolean existAfter = (contentAfter != null);
+
+            // This should never happen
+            if (!existBefore && !existAfter) {
+                continue;
+            }
+
+            boolean contentsChanged = true;
+            if (existBefore && existAfter && contentBefore.equals(contentAfter)) {
+                contentsChanged = false;
+            }
+
+            Set<String> oldVisibleListeners =
+                    oldSchemaNameToVisibleListeningPackage.get(schemaName);
+            Set<String> newVisibleListeners =
+                    newSchemaNameToVisibleListeningPackage.get(schemaName);
+            Set<String> allListeningPackages = new ArraySet<>(oldVisibleListeners);
+            if (newVisibleListeners != null) {
+                allListeningPackages.addAll(newVisibleListeners);
+            }
+
+            // Now that we've computed the relationship between the old and new schema, we go
+            // observer by observer and consider the observer's own personal view of the schema.
+            for (String listeningPackageName : allListeningPackages) {
+                // Figure out the visibility
+                final boolean visibleBefore =
+                        (existBefore
+                                && oldVisibleListeners != null
+                                && oldVisibleListeners.contains(listeningPackageName));
+                final boolean visibleAfter =
+                        (existAfter
+                                && newVisibleListeners != null
+                                && newVisibleListeners.contains(listeningPackageName));
+
+                // Now go through the truth table of all the relevant flags.
+                // visibleBefore and visibleAfter take into account existBefore and existAfter, so
+                // we can stop worrying about existBefore and existAfter.
+                boolean sendNotification = false;
+                if (visibleBefore && visibleAfter && contentsChanged) {
+                    sendNotification = true; // Type configuration was modified
+                } else if (!visibleBefore && visibleAfter) {
+                    sendNotification = true; // Newly granted visibility or type was created
+                } else if (visibleBefore && !visibleAfter) {
+                    sendNotification = true; // Revoked visibility or type was deleted
+                } else {
+                    // No visibility before and no visibility after. Nothing to dispatch.
+                }
+
+                if (sendNotification) {
+                    mObserverManager.onSchemaChange(
+                            /*listeningPackageName=*/ listeningPackageName,
+                            /*targetPackageName=*/ packageName,
+                            /*databaseName=*/ databaseName,
+                            /*schemaName=*/ schemaName);
+                }
+            }
+        }
+
+        return setSchemaResponse;
+    }
+
+    /**
+     * Updates the AppSearch schema for this app, without dispatching change notifications.
+     *
+     * <p>This method can be used only when no one is observing {@code packageName}.
+     *
+     * @see #setSchema
+     * @see #doSetSchemaWithChangeNotificationLocked
+     */
+    @GuardedBy("mReadWriteLock")
+    @NonNull
+    private SetSchemaResponse doSetSchemaNoChangeNotificationLocked(
+            @NonNull String packageName,
+            @NonNull String databaseName,
+            @NonNull List<AppSearchSchema> schemas,
+            @NonNull List<VisibilityDocument> visibilityDocuments,
+            boolean forceOverride,
+            int version,
+            @Nullable SetSchemaStats.Builder setSchemaStatsBuilder)
+            throws AppSearchException {
+        SchemaProto.Builder existingSchemaBuilder = getSchemaProtoLocked().toBuilder();
+
+        SchemaProto.Builder newSchemaBuilder = SchemaProto.newBuilder();
+        for (int i = 0; i < schemas.size(); i++) {
+            AppSearchSchema schema = schemas.get(i);
+            SchemaTypeConfigProto schemaTypeProto =
+                    SchemaToProtoConverter.toSchemaTypeConfigProto(schema, version);
+            newSchemaBuilder.addTypes(schemaTypeProto);
+        }
+
+        String prefix = createPrefix(packageName, databaseName);
+        // Combine the existing schema (which may have types from other prefixes) with this
+        // prefix's new schema. Modifies the existingSchemaBuilder.
+        RewrittenSchemaResults rewrittenSchemaResults =
+                rewriteSchema(prefix, existingSchemaBuilder, newSchemaBuilder.build());
+
+        // Apply schema
+        SchemaProto finalSchema = existingSchemaBuilder.build();
+        mLogUtil.piiTrace("setSchema, request", finalSchema.getTypesCount(), finalSchema);
+        SetSchemaResultProto setSchemaResultProto =
+                mIcingSearchEngineLocked.setSchema(finalSchema, forceOverride);
+        mLogUtil.piiTrace(
+                "setSchema, response", setSchemaResultProto.getStatus(), setSchemaResultProto);
+
+        if (setSchemaStatsBuilder != null) {
+            setSchemaStatsBuilder.setStatusCode(
+                    statusProtoToResultCode(setSchemaResultProto.getStatus()));
+            AppSearchLoggerHelper.copyNativeStats(setSchemaResultProto, setSchemaStatsBuilder);
+        }
+
+        // Determine whether it succeeded.
+        try {
+            checkSuccess(setSchemaResultProto.getStatus());
+        } catch (AppSearchException e) {
+            // Swallow the exception for the incompatible change case. We will propagate
+            // those deleted schemas and incompatible types to the SetSchemaResponse.
+            boolean isFailedPrecondition =
+                    setSchemaResultProto.getStatus().getCode()
+                            == StatusProto.Code.FAILED_PRECONDITION;
+            boolean isIncompatible =
+                    setSchemaResultProto.getDeletedSchemaTypesCount() > 0
+                            || setSchemaResultProto.getIncompatibleSchemaTypesCount() > 0;
+            if (isFailedPrecondition && isIncompatible) {
+                return SetSchemaResponseToProtoConverter.toSetSchemaResponse(
+                        setSchemaResultProto, prefix);
+            } else {
+                throw e;
+            }
+        }
+
+        // Update derived data structures.
+        for (SchemaTypeConfigProto schemaTypeConfigProto :
+                rewrittenSchemaResults.mRewrittenPrefixedTypes.values()) {
+            addToMap(mSchemaMapLocked, prefix, schemaTypeConfigProto);
+        }
+
+        for (String schemaType : rewrittenSchemaResults.mDeletedPrefixedTypes) {
+            removeFromMap(mSchemaMapLocked, prefix, schemaType);
+        }
+        // Since the constructor of VisibilityStore will set schema. Avoid call visibility
+        // store before we have already created it.
+        if (mVisibilityStoreLocked != null) {
+            // Add prefix to all visibility documents.
+            List<VisibilityDocument> prefixedVisibilityDocuments =
+                    new ArrayList<>(visibilityDocuments.size());
+            // Find out which Visibility document is deleted or changed to all-default settings.
+            // We need to remove them from Visibility Store.
+            Set<String> deprecatedVisibilityDocuments =
+                    new ArraySet<>(rewrittenSchemaResults.mRewrittenPrefixedTypes.keySet());
+            for (int i = 0; i < visibilityDocuments.size(); i++) {
+                VisibilityDocument unPrefixedDocument = visibilityDocuments.get(i);
+                // The VisibilityDocument is controlled by the client and it's untrusted but we
+                // make it safe by appending a prefix.
+                // We must control the package-database prefix. Therefore even if the client
+                // fake the id, they can only mess their own app. That's totally allowed and
+                // they can do this via the public API too.
+                String prefixedSchemaType = prefix + unPrefixedDocument.getId();
+                prefixedVisibilityDocuments.add(
+                        new VisibilityDocument(
+                                unPrefixedDocument.toBuilder().setId(prefixedSchemaType).build()));
+                // This schema has visibility settings. We should keep it from the removal list.
+                deprecatedVisibilityDocuments.remove(prefixedSchemaType);
+            }
+            // Now deprecatedVisibilityDocuments contains those existing schemas that has
+            // all-default visibility settings, add deleted schemas. That's all we need to
+            // remove.
+            deprecatedVisibilityDocuments.addAll(rewrittenSchemaResults.mDeletedPrefixedTypes);
+            mVisibilityStoreLocked.removeVisibility(deprecatedVisibilityDocuments);
+            mVisibilityStoreLocked.setVisibility(prefixedVisibilityDocuments);
+        }
+        return SetSchemaResponseToProtoConverter.toSetSchemaResponse(setSchemaResultProto, prefix);
     }
 
     /**
@@ -577,21 +764,16 @@ public final class AppSearchImpl implements Closeable {
      *
      * <p>This method belongs to query group.
      *
-     * @param callerPackageName Package name of the calling app
      * @param packageName Package that owns the requested {@link AppSearchSchema} instances.
      * @param databaseName Database that owns the requested {@link AppSearchSchema} instances.
+     * @param callerAccess Visibility access info of the calling app
      * @throws AppSearchException on IcingSearchEngine error.
      */
-    // TODO(b/215624105): The combination of (callerPackageName, callerUid, callerHasSystemAccess)
-    //  occurs together in many places related to visibility. Should these be combined into a struct
-    //  called something like CallerAccess?
     @NonNull
     public GetSchemaResponse getSchema(
             @NonNull String packageName,
             @NonNull String databaseName,
-            @NonNull String callerPackageName,
-            int callerUid,
-            boolean callerHasSystemAccess)
+            @NonNull CallerAccess callerAccess)
             throws AppSearchException {
         mReadWriteLock.readLock().lock();
         try {
@@ -611,9 +793,7 @@ public final class AppSearchImpl implements Closeable {
                     continue;
                 }
                 if (!VisibilityUtil.isSchemaSearchableByCaller(
-                        callerPackageName,
-                        callerUid,
-                        callerHasSystemAccess,
+                        callerAccess,
                         packageName,
                         prefixedSchemaType,
                         mVisibilityStoreLocked,
@@ -892,22 +1072,18 @@ public final class AppSearchImpl implements Closeable {
      * @param id The ID of the document to get.
      * @param typePropertyPaths A map of schema type to a list of property paths to return in the
      *     result.
-     * @param callerPackageName The package name of the caller application
-     * @param callerUid The ID of the caller application
-     * @param callerHasSystemAccess A boolean signifying if the caller has system access
+     * @param callerAccess Visibility access info of the calling app
      * @return The Document contents
      * @throws AppSearchException on IcingSearchEngine error or invalid permissions
      */
-    @Nullable
+    @NonNull
     public GenericDocument globalGetDocument(
             @NonNull String packageName,
             @NonNull String databaseName,
             @NonNull String namespace,
             @NonNull String id,
             @NonNull Map<String, List<String>> typePropertyPaths,
-            @NonNull String callerPackageName,
-            int callerUid,
-            boolean callerHasSystemAccess)
+            @NonNull CallerAccess callerAccess)
             throws AppSearchException {
         mReadWriteLock.readLock().lock();
         try {
@@ -921,9 +1097,7 @@ public final class AppSearchImpl implements Closeable {
                                 packageName, databaseName, namespace, id, typePropertyPaths);
 
                 if (!VisibilityUtil.isSchemaSearchableByCaller(
-                        callerPackageName,
-                        callerUid,
-                        callerHasSystemAccess,
+                        callerAccess,
                         packageName,
                         documentProto.getSchema(),
                         mVisibilityStoreLocked,
@@ -969,7 +1143,6 @@ public final class AppSearchImpl implements Closeable {
             @NonNull String id,
             @NonNull Map<String, List<String>> typePropertyPaths)
             throws AppSearchException {
-
         mReadWriteLock.readLock().lock();
         try {
             throwIfClosedLocked();
@@ -1123,11 +1296,7 @@ public final class AppSearchImpl implements Closeable {
      *
      * @param queryExpression Query String to search.
      * @param searchSpec Spec for setting filters, raw query etc.
-     * @param callerPackageName Package name of the caller, should belong to the {@code
-     *     callerUserHandle}.
-     * @param callerUid UID of the client making the globalQuery call.
-     * @param callerHasSystemAccess Whether the caller has been positively identified as having
-     *     access to schemas marked system surfaceable.
+     * @param callerAccess Visibility access info of the calling app
      * @param logger logger to collect globalQuery stats
      * @return The results of performing this search. It may contain an empty list of results if no
      *     documents matched the query.
@@ -1137,16 +1306,16 @@ public final class AppSearchImpl implements Closeable {
     public SearchResultPage globalQuery(
             @NonNull String queryExpression,
             @NonNull SearchSpec searchSpec,
-            @NonNull String callerPackageName,
-            int callerUid,
-            boolean callerHasSystemAccess,
+            @NonNull CallerAccess callerAccess,
             @Nullable AppSearchLogger logger)
             throws AppSearchException {
         long totalLatencyStartMillis = SystemClock.elapsedRealtime();
         SearchStats.Builder sStatsBuilder = null;
         if (logger != null) {
             sStatsBuilder =
-                    new SearchStats.Builder(SearchStats.VISIBILITY_SCOPE_GLOBAL, callerPackageName);
+                    new SearchStats.Builder(
+                            SearchStats.VISIBILITY_SCOPE_GLOBAL,
+                            callerAccess.getCallingPackageName());
         }
 
         mReadWriteLock.readLock().lock();
@@ -1175,11 +1344,7 @@ public final class AppSearchImpl implements Closeable {
                             searchSpec, prefixFilters, mNamespaceMapLocked, mSchemaMapLocked);
             // Remove those inaccessible schemas.
             searchSpecToProtoConverter.removeInaccessibleSchemaFilter(
-                    callerPackageName,
-                    callerUid,
-                    callerHasSystemAccess,
-                    mVisibilityStoreLocked,
-                    mVisibilityCheckerLocked);
+                    callerAccess, mVisibilityStoreLocked, mVisibilityCheckerLocked);
             if (searchSpecToProtoConverter.isNothingToSearch()) {
                 // there is nothing to search over given their search filters, so we can return an
                 // empty SearchResult and skip sending request to Icing.
@@ -1187,7 +1352,8 @@ public final class AppSearchImpl implements Closeable {
             }
             SearchResultPage searchResultPage =
                     doQueryLocked(queryExpression, searchSpecToProtoConverter, sStatsBuilder);
-            addNextPageToken(callerPackageName, searchResultPage.getNextPageToken());
+            addNextPageToken(
+                    callerAccess.getCallingPackageName(), searchResultPage.getNextPageToken());
             return searchResultPage;
         } finally {
             mReadWriteLock.readLock().unlock();
@@ -2225,10 +2391,8 @@ public final class AppSearchImpl implements Closeable {
      * will not queue behind I/O. Therefore it is safe to call from any thread including UI or
      * binder threads.
      *
-     * @param listeningPackageName The package name of the app that wants to receive notifications.
-     * @param listeningUid The uid of the app that wants to receive notifications.
-     * @param listeningPackageHasSystemAccess Whether the app that wants to receive notifications
-     *     has access to schema types marked 'visible to system'.
+     * @param listeningPackageAccess Visibility information about the app that wants to receive
+     *     notifications.
      * @param targetPackageName The package that owns the data the observer wants to be notified
      *     for.
      * @param spec Describes the kind of data changes the observer should trigger for.
@@ -2237,9 +2401,7 @@ public final class AppSearchImpl implements Closeable {
      * @param observer The callback to trigger on notifications.
      */
     public void addObserver(
-            @NonNull String listeningPackageName,
-            int listeningUid,
-            boolean listeningPackageHasSystemAccess,
+            @NonNull CallerAccess listeningPackageAccess,
             @NonNull String targetPackageName,
             @NonNull ObserverSpec spec,
             @NonNull Executor executor,
@@ -2249,13 +2411,7 @@ public final class AppSearchImpl implements Closeable {
         // being created or removed. If we only registered observer for existing types, it would
         // be impossible to ever dispatch a notification of a type being added.
         mObserverManager.addObserver(
-                listeningPackageName,
-                listeningUid,
-                listeningPackageHasSystemAccess,
-                targetPackageName,
-                spec,
-                executor,
-                observer);
+                listeningPackageAccess, targetPackageName, spec, executor, observer);
     }
 
     /**

@@ -21,17 +21,20 @@ import android.annotation.Nullable;
 import android.app.appsearch.observer.AppSearchObserverCallback;
 import android.app.appsearch.observer.DocumentChangeInfo;
 import android.app.appsearch.observer.ObserverSpec;
+import android.app.appsearch.observer.SchemaChangeInfo;
 import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.server.appsearch.external.localstorage.util.PrefixUtil;
+import com.android.server.appsearch.external.localstorage.visibilitystore.CallerAccess;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityChecker;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityUtil;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -86,26 +89,22 @@ public class ObserverManager {
 
     private static final class ObserverInfo {
         /** The package which registered the observer. */
-        final String mListeningPackageName;
+        final CallerAccess mListeningPackageAccess;
 
-        final int mListeningUid;
-        final boolean mListeningPackageHasSystemAccess;
         final ObserverSpec mObserverSpec;
         final Executor mExecutor;
         final AppSearchObserverCallback mObserver;
         // Values is a set of document IDs
         volatile Map<DocumentChangeGroupKey, Set<String>> mDocumentChanges = new ArrayMap<>();
+        // Keys are database prefixes, values are a set of schema names
+        volatile Map<String, Set<String>> mSchemaChanges = new ArrayMap<>();
 
         ObserverInfo(
-                @NonNull String listeningPackageName,
-                int listeningUid,
-                boolean listeningPackageHasSystemAccess,
+                @NonNull CallerAccess listeningPackageAccess,
                 @NonNull ObserverSpec observerSpec,
                 @NonNull Executor executor,
                 @NonNull AppSearchObserverCallback observer) {
-            mListeningPackageName = Objects.requireNonNull(listeningPackageName);
-            mListeningUid = listeningUid;
-            mListeningPackageHasSystemAccess = listeningPackageHasSystemAccess;
+            mListeningPackageAccess = Objects.requireNonNull(listeningPackageAccess);
             mObserverSpec = Objects.requireNonNull(observerSpec);
             mExecutor = Objects.requireNonNull(executor);
             mObserver = Objects.requireNonNull(observer);
@@ -114,7 +113,7 @@ public class ObserverManager {
 
     private final Object mLock = new Object();
 
-    /** Maps observed package to observer infos watching something in that package. */
+    /** Maps target packages to ObserverInfos watching something in that package. */
     @GuardedBy("mLock")
     private final Map<String, List<ObserverInfo>> mObserversLocked = new ArrayMap<>();
 
@@ -137,10 +136,8 @@ public class ObserverManager {
      * will not queue behind I/O. Therefore it is safe to call from any thread including UI or
      * binder threads.
      *
-     * @param listeningPackageName The package name of the app that wants to receive notifications.
-     * @param listeningUid The uid of the app that wants to receive notifications.
-     * @param listeningPackageHasSystemAccess Whether the app that wants to receive notifications
-     *     has access to schema types marked 'visible to system'.
+     * @param listeningPackageAccess Visibility information about the app that wants to receive
+     *     notifications.
      * @param targetPackageName The package that owns the data the observer wants to be notified
      *     for.
      * @param spec Describes the kind of data changes the observer should trigger for.
@@ -149,9 +146,7 @@ public class ObserverManager {
      * @param observer The callback to trigger on notifications.
      */
     public void addObserver(
-            @NonNull String listeningPackageName,
-            int listeningUid,
-            boolean listeningPackageHasSystemAccess,
+            @NonNull CallerAccess listeningPackageAccess,
             @NonNull String targetPackageName,
             @NonNull ObserverSpec spec,
             @NonNull Executor executor,
@@ -162,14 +157,7 @@ public class ObserverManager {
                 infos = new ArrayList<>();
                 mObserversLocked.put(targetPackageName, infos);
             }
-            infos.add(
-                    new ObserverInfo(
-                            listeningPackageName,
-                            listeningUid,
-                            listeningPackageHasSystemAccess,
-                            spec,
-                            executor,
-                            observer));
+            infos.add(new ObserverInfo(listeningPackageAccess, spec, executor, observer));
         }
     }
 
@@ -220,18 +208,15 @@ public class ObserverManager {
                 return; // No observers for this type
             }
             // Enqueue changes for later dispatch once the call returns
+            String prefixedSchema = PrefixUtil.createPrefix(packageName, databaseName) + schemaType;
             DocumentChangeGroupKey key = null;
             for (int i = 0; i < allObserverInfosForPackage.size(); i++) {
                 ObserverInfo observerInfo = allObserverInfosForPackage.get(i);
                 if (!matchesSpec(schemaType, observerInfo.mObserverSpec)) {
                     continue; // Observer doesn't want this notification
                 }
-                String prefixedSchema =
-                        PrefixUtil.createPrefix(packageName, databaseName) + schemaType;
                 if (!VisibilityUtil.isSchemaSearchableByCaller(
-                        /*callerPackageName=*/ observerInfo.mListeningPackageName,
-                        observerInfo.mListeningUid,
-                        observerInfo.mListeningPackageHasSystemAccess,
+                        /*callerAccess=*/ observerInfo.mListeningPackageAccess,
                         /*targetPackageName=*/ packageName,
                         /*prefixedSchema=*/ prefixedSchema,
                         visibilityStore,
@@ -249,6 +234,60 @@ public class ObserverManager {
                     observerInfo.mDocumentChanges.put(key, changedDocumentIds);
                 }
                 changedDocumentIds.add(documentId);
+            }
+            mHasNotifications = true;
+        }
+    }
+
+    /**
+     * Enqueues a change to a schema type for a single observer.
+     *
+     * <p>The notification will be queued in memory for later dispatch. You must call {@link
+     * #dispatchAndClearPendingNotifications} to dispatch all such pending notifications.
+     *
+     * <p>Note that unlike {@link #onDocumentChange}, the changes reported here are not dropped for
+     * observers that don't have visibility. This is because the observer might have had visibility
+     * before the schema change, and a final deletion needs to be sent to it. Caller is responsible
+     * for checking visibility of these notifications.
+     *
+     * @param listeningPackageName Name of package that subscribed to notifications and has been
+     *     validated by the caller to have the right access to receive this notification.
+     * @param targetPackageName Name of package that owns the changed schema types.
+     * @param databaseName Database in which the changed schema types reside.
+     * @param schemaName Unprefixed name of the changed schema type.
+     */
+    public void onSchemaChange(
+            @NonNull String listeningPackageName,
+            @NonNull String targetPackageName,
+            @NonNull String databaseName,
+            @NonNull String schemaName) {
+        synchronized (mLock) {
+            List<ObserverInfo> allObserverInfosForPackage = mObserversLocked.get(targetPackageName);
+            if (allObserverInfosForPackage == null || allObserverInfosForPackage.isEmpty()) {
+                return; // No observers for this type
+            }
+            // Enqueue changes for later dispatch once the call returns
+            String prefix = null;
+            for (int i = 0; i < allObserverInfosForPackage.size(); i++) {
+                ObserverInfo observerInfo = allObserverInfosForPackage.get(i);
+                if (!observerInfo
+                        .mListeningPackageAccess
+                        .getCallingPackageName()
+                        .equals(listeningPackageName)) {
+                    continue; // Not the observer we've been requested to update right now.
+                }
+                if (!matchesSpec(schemaName, observerInfo.mObserverSpec)) {
+                    continue; // Observer doesn't want this notification
+                }
+                if (prefix == null) {
+                    prefix = PrefixUtil.createPrefix(targetPackageName, databaseName);
+                }
+                Set<String> changedSchemaNames = observerInfo.mSchemaChanges.get(prefix);
+                if (changedSchemaNames == null) {
+                    changedSchemaNames = new ArraySet<>();
+                    observerInfo.mSchemaChanges.put(prefix, changedSchemaNames);
+                }
+                changedSchemaNames.add(schemaName);
             }
             mHasNotifications = true;
         }
@@ -281,6 +320,44 @@ public class ObserverManager {
         }
     }
 
+    /**
+     * Returns package names of listening packages registered for changes on the given {@code
+     * packageName}, {@code databaseName} and unprefixed {@code schemaType}, only if they have
+     * access to that type according to the provided {@code visibilityChecker}.
+     */
+    @NonNull
+    public Set<String> getObserversForSchemaType(
+            @NonNull String packageName,
+            @NonNull String databaseName,
+            @NonNull String schemaType,
+            @Nullable VisibilityStore visibilityStore,
+            @Nullable VisibilityChecker visibilityChecker) {
+        synchronized (mLock) {
+            List<ObserverInfo> allObserverInfosForPackage = mObserversLocked.get(packageName);
+            if (allObserverInfosForPackage == null) {
+                return Collections.emptySet();
+            }
+            Set<String> result = new ArraySet<>();
+            String prefixedSchema = PrefixUtil.createPrefix(packageName, databaseName) + schemaType;
+            for (int i = 0; i < allObserverInfosForPackage.size(); i++) {
+                ObserverInfo observerInfo = allObserverInfosForPackage.get(i);
+                if (!matchesSpec(schemaType, observerInfo.mObserverSpec)) {
+                    continue; // Observer doesn't want this notification
+                }
+                if (!VisibilityUtil.isSchemaSearchableByCaller(
+                        /*callerAccess=*/ observerInfo.mListeningPackageAccess,
+                        /*targetPackageName=*/ packageName,
+                        /*prefixedSchema=*/ prefixedSchema,
+                        visibilityStore,
+                        visibilityChecker)) {
+                    continue; // Observer can't have this notification.
+                }
+                result.add(observerInfo.mListeningPackageAccess.getCallingPackageName());
+            }
+            return result;
+        }
+    }
+
     /** Returns whether any notifications have been queued for dispatch. */
     public boolean hasNotifications() {
         return mHasNotifications;
@@ -308,33 +385,63 @@ public class ObserverManager {
     @GuardedBy("mLock")
     private void dispatchAndClearPendingNotificationsLocked(@NonNull ObserverInfo observerInfo) {
         // Get and clear the pending changes
+        Map<String, Set<String>> schemaChanges = observerInfo.mSchemaChanges;
         Map<DocumentChangeGroupKey, Set<String>> documentChanges = observerInfo.mDocumentChanges;
-        if (documentChanges.isEmpty()) {
+        if (schemaChanges.isEmpty() && documentChanges.isEmpty()) {
             return;
         }
-        observerInfo.mDocumentChanges = new ArrayMap<>();
+        if (!schemaChanges.isEmpty()) {
+            observerInfo.mSchemaChanges = new ArrayMap<>();
+        }
+        if (!documentChanges.isEmpty()) {
+            observerInfo.mDocumentChanges = new ArrayMap<>();
+        }
 
         // Dispatch the pending changes
         observerInfo.mExecutor.execute(
                 () -> {
-                    for (Map.Entry<DocumentChangeGroupKey, Set<String>> entry :
-                            documentChanges.entrySet()) {
-                        DocumentChangeInfo documentChangeInfo =
-                                new DocumentChangeInfo(
-                                        entry.getKey().mPackageName,
-                                        entry.getKey().mDatabaseName,
-                                        entry.getKey().mNamespace,
-                                        entry.getKey().mSchemaName,
-                                        entry.getValue());
+                    // Schema changes
+                    if (!schemaChanges.isEmpty()) {
+                        for (Map.Entry<String, Set<String>> entry : schemaChanges.entrySet()) {
+                            SchemaChangeInfo schemaChangeInfo =
+                                    new SchemaChangeInfo(
+                                            /*packageName=*/ PrefixUtil.getPackageName(
+                                                    entry.getKey()),
+                                            /*databaseName=*/ PrefixUtil.getDatabaseName(
+                                                    entry.getKey()),
+                                            /*changedSchemaNames=*/ entry.getValue());
 
-                        try {
-                            // TODO(b/193494000): Add code to dispatch SchemaChangeInfo too.
-                            observerInfo.mObserver.onDocumentChanged(documentChangeInfo);
-                        } catch (Throwable t) {
-                            Log.w(
-                                    TAG,
-                                    "AppSearchObserverCallback threw exception during dispatch",
-                                    t);
+                            try {
+                                observerInfo.mObserver.onSchemaChanged(schemaChangeInfo);
+                            } catch (Throwable t) {
+                                Log.w(
+                                        TAG,
+                                        "AppSearchObserverCallback threw exception during dispatch",
+                                        t);
+                            }
+                        }
+                    }
+
+                    // Document changes
+                    if (!documentChanges.isEmpty()) {
+                        for (Map.Entry<DocumentChangeGroupKey, Set<String>> entry :
+                                documentChanges.entrySet()) {
+                            DocumentChangeInfo documentChangeInfo =
+                                    new DocumentChangeInfo(
+                                            entry.getKey().mPackageName,
+                                            entry.getKey().mDatabaseName,
+                                            entry.getKey().mNamespace,
+                                            entry.getKey().mSchemaName,
+                                            entry.getValue());
+
+                            try {
+                                observerInfo.mObserver.onDocumentChanged(documentChangeInfo);
+                            } catch (Throwable t) {
+                                Log.w(
+                                        TAG,
+                                        "AppSearchObserverCallback threw exception during dispatch",
+                                        t);
+                            }
                         }
                     }
                 });
