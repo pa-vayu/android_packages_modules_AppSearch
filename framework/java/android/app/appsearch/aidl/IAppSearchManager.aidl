@@ -135,7 +135,6 @@ interface IAppSearchManager {
      *     result.
      * @param userHandle Handle of the calling user
      * @param binderCallStartTimeMillis start timestamp of binder call in Millis
-     * @param global signifies whether this is a global get or not
      * @param callback
      *     If the call fails to start, {@link IAppSearchBatchResultCallback#onSystemError}
      *     will be called with the cause throwable. Otherwise,
@@ -152,7 +151,6 @@ interface IAppSearchManager {
         in Map<String, List<String>> typePropertyPaths,
         in UserHandle userHandle,
         in long binderCallStartTimeMillis,
-        in boolean global,
         in IAppSearchBatchResultCallback callback);
 
     /**

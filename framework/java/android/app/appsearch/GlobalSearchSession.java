@@ -163,7 +163,6 @@ public class GlobalSearchSession implements Closeable {
                     request.getProjectionsInternal(),
                     mUserHandle,
                     SystemClock.elapsedRealtime(),
-                    /*global=*/true,
                     SearchSessionUtil.createGetDocumentCallback(executor, callback));
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
