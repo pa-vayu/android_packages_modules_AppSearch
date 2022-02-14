@@ -425,10 +425,12 @@ public class VisibilityCheckerImplTest {
     public void testSetSchema_visibleToPermissions() throws Exception {
         String prefix = PrefixUtil.createPrefix("package", "database");
 
-        // Create a VDoc that require READ_SMS permission.
+        // Create a VDoc that require READ_SMS permission only.
         VisibilityDocument visibilityDocument = new VisibilityDocument.Builder(
                 /*id=*/prefix + "Schema")
-                .setVisibleToPermissions(ImmutableSet.of(SetSchemaRequest.READ_SMS)).build();
+                .setVisibleToPermissions(ImmutableSet.of(
+                        ImmutableSet.of(SetSchemaRequest.READ_SMS)))
+                .build();
         mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
 
         // Grant the READ_SMS permission, we should able to access.
@@ -445,6 +447,103 @@ public class VisibilityCheckerImplTest {
             mUiAutomation.dropShellPermissionIdentity();
         }
         // Drop the READ_SMS permission, it becomes invisible.
+        assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                new FrameworkCallerAccess(mAttributionSource,
+                        /*callerHasSystemAccess=*/ false),
+                "package",
+                prefix + "Schema",
+                mVisibilityStore))
+                .isFalse();
+    }
+
+    //TODO(b/202194495) add test for READ_HOME_APP_SEARCH_DATA and READ_ASSISTANT_APP_SEARCH_DATA
+    // once they are available in Shell.
+    @Test
+    public void testSetSchema_visibleToPermissions_anyCombinations() throws Exception {
+        String prefix = PrefixUtil.createPrefix("package", "database");
+
+        // Create a VDoc that require the querier to hold both READ_SMS and READ_CALENDAR, or
+        // READ_CONTACTS only or READ_EXTERNAL_STORAGE only.
+        VisibilityDocument visibilityDocument = new VisibilityDocument.Builder(
+                /*id=*/prefix + "Schema")
+                .setVisibleToPermissions(ImmutableSet.of(
+                        ImmutableSet.of(SetSchemaRequest.READ_SMS, SetSchemaRequest.READ_CALENDAR),
+                        ImmutableSet.of(SetSchemaRequest.READ_CONTACTS),
+                        ImmutableSet.of(SetSchemaRequest.READ_EXTERNAL_STORAGE)))
+                .build();
+        mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
+
+        // Grant the READ_SMS and READ_CALENDAR permission, we should able to access.
+        mUiAutomation.adoptShellPermissionIdentity(READ_SMS, READ_CALENDAR);
+        try {
+            assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                    new FrameworkCallerAccess(mAttributionSource,
+                            /*callerHasSystemAccess=*/ false),
+                    "package",
+                    prefix + "Schema",
+                    mVisibilityStore))
+                    .isTrue();
+        } finally {
+            mUiAutomation.dropShellPermissionIdentity();
+        }
+
+        // Grant the READ_SMS only, it shouldn't have access.
+        mUiAutomation.adoptShellPermissionIdentity(READ_SMS);
+        try {
+            assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                    new FrameworkCallerAccess(mAttributionSource,
+                            /*callerHasSystemAccess=*/ false),
+                    "package",
+                    prefix + "Schema",
+                    mVisibilityStore))
+                    .isFalse();
+        } finally {
+            mUiAutomation.dropShellPermissionIdentity();
+        }
+
+        // Grant the READ_SMS and READ_CALENDAR permission, we should able to access.
+        mUiAutomation.adoptShellPermissionIdentity(READ_SMS, READ_CALENDAR);
+        try {
+            assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                    new FrameworkCallerAccess(mAttributionSource,
+                            /*callerHasSystemAccess=*/ false),
+                    "package",
+                    prefix + "Schema",
+                    mVisibilityStore))
+                    .isTrue();
+        } finally {
+            mUiAutomation.dropShellPermissionIdentity();
+        }
+
+        // Grant the READ_CONTACTS permission, we should able to access.
+        mUiAutomation.adoptShellPermissionIdentity(READ_CONTACTS);
+        try {
+            assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                    new FrameworkCallerAccess(mAttributionSource,
+                            /*callerHasSystemAccess=*/ false),
+                    "package",
+                    prefix + "Schema",
+                    mVisibilityStore))
+                    .isTrue();
+        } finally {
+            mUiAutomation.dropShellPermissionIdentity();
+        }
+
+        // Grant the READ_EXTERNAL_STORAGE permission, we should able to access.
+        mUiAutomation.adoptShellPermissionIdentity(READ_EXTERNAL_STORAGE);
+        try {
+            assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
+                    new FrameworkCallerAccess(mAttributionSource,
+                            /*callerHasSystemAccess=*/ false),
+                    "package",
+                    prefix + "Schema",
+                    mVisibilityStore))
+                    .isTrue();
+        } finally {
+            mUiAutomation.dropShellPermissionIdentity();
+        }
+
+        // Drop permissions, it becomes invisible.
         assertThat(mVisibilityChecker.isSchemaSearchableByCaller(
                 new FrameworkCallerAccess(mAttributionSource,
                         /*callerHasSystemAccess=*/ false),
@@ -486,8 +585,9 @@ public class VisibilityCheckerImplTest {
         // Create a VDoc which requires both READ_SMS and READ_CALENDAR
         VisibilityDocument visibilityDocument = new VisibilityDocument.Builder(
                 /*id=*/prefix + "Schema")
-                .setVisibleToPermissions(ImmutableSet.of(SetSchemaRequest.READ_SMS,
-                        SetSchemaRequest.READ_CALENDAR)).build();
+                .setVisibleToPermissions(ImmutableSet.of(
+                        ImmutableSet.of(SetSchemaRequest.READ_SMS, SetSchemaRequest.READ_CALENDAR)))
+                        .build();
         mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
 
         mUiAutomation.adoptShellPermissionIdentity(READ_SMS);

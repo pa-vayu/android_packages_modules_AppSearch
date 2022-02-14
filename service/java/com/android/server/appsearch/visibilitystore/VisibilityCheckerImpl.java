@@ -15,10 +15,12 @@
  */
 package com.android.server.appsearch.visibilitystore;
 
+import static android.Manifest.permission.READ_ASSISTANT_APP_SEARCH_DATA;
 import static android.Manifest.permission.READ_CALENDAR;
 import static android.Manifest.permission.READ_CONTACTS;
 import static android.Manifest.permission.READ_EXTERNAL_STORAGE;
 import static android.Manifest.permission.READ_GLOBAL_APP_SEARCH_DATA;
+import static android.Manifest.permission.READ_HOME_APP_SEARCH_DATA;
 import static android.Manifest.permission.READ_SMS;
 import static android.permission.PermissionManager.PERMISSION_GRANTED;
 
@@ -141,21 +143,38 @@ public class VisibilityCheckerImpl implements VisibilityChecker {
     }
 
     /**
-     * Returns whether the caller holds all required permissions for the given schema.
+     * Returns whether the caller holds required permissions for the given schema.
      */
     private boolean isSchemaVisibleToPermission(@NonNull VisibilityDocument visibilityDocument,
             @Nullable AttributionSource callerAttributionSource) {
-        Set<Integer> requiredPermissions = visibilityDocument.getVisibleToPermissions();
-        if (requiredPermissions == null || requiredPermissions.isEmpty()
+        Set<Set<Integer>> visibleToPermissions = visibilityDocument.getVisibleToPermissions();
+        if (visibleToPermissions == null || visibleToPermissions.isEmpty()
                 || callerAttributionSource == null) {
             // Provider doesn't set any permissions or there is no caller attribution source,
             // default is not accessible to anyone.
             return false;
         }
-        for (int requiredPermission : requiredPermissions) {
+        for (Set<Integer> allRequiredPermissions : visibleToPermissions) {
+            // User may set multiple required permission sets. Provider need to hold ALL required
+            // permission of ANY of the individual value sets.
+            if (doesCallerHoldsAllRequiredPermissions(allRequiredPermissions,
+                    callerAttributionSource)) {
+                // The calling package has all required permissions in this set, return true.
+                return true;
+            }
+        }
+        // The calling doesn't hold all required permissions for any individual sets, return false.
+        return false;
+    }
+
+    /** Returns true if the caller holds all required permission in the given set. */
+    private boolean doesCallerHoldsAllRequiredPermissions(
+            @NonNull Set<Integer> allRequiredPermissions,
+            @NonNull AttributionSource callerAttributionSource) {
+        for (int requiredPermission : allRequiredPermissions) {
             String permission;
             switch (requiredPermission) {
-                case SetSchemaRequest.READ_SMS :
+                case SetSchemaRequest.READ_SMS:
                     permission = READ_SMS;
                     break;
                 case SetSchemaRequest.READ_CALENDAR:
@@ -164,8 +183,14 @@ public class VisibilityCheckerImpl implements VisibilityChecker {
                 case SetSchemaRequest.READ_CONTACTS:
                     permission = READ_CONTACTS;
                     break;
-                case SetSchemaRequest.READ_EXTERNAL_STORAGE :
+                case SetSchemaRequest.READ_EXTERNAL_STORAGE:
                     permission = READ_EXTERNAL_STORAGE;
+                    break;
+                case SetSchemaRequest.READ_HOME_APP_SEARCH_DATA:
+                    permission = READ_HOME_APP_SEARCH_DATA;
+                    break;
+                case SetSchemaRequest.READ_ASSISTANT_APP_SEARCH_DATA:
+                    permission = READ_ASSISTANT_APP_SEARCH_DATA;
                     break;
                 default:
                     throw new UnsupportedOperationException(
@@ -178,7 +203,7 @@ public class VisibilityCheckerImpl implements VisibilityChecker {
                 return false;
             }
         }
-        // The calling package has all required permissions, return true.
+        // The calling package has all required permissions in this set, return true.
         return true;
     }
 
