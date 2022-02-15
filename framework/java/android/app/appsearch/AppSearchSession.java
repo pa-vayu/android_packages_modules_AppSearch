@@ -24,6 +24,7 @@ import android.app.appsearch.aidl.IAppSearchBatchResultCallback;
 import android.app.appsearch.aidl.IAppSearchManager;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
 import android.app.appsearch.util.SchemaMigrationUtil;
+import android.content.AttributionSource;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.os.SystemClock;
@@ -56,7 +57,7 @@ import java.util.function.Consumer;
 public final class AppSearchSession implements Closeable {
     private static final String TAG = "AppSearchSession";
 
-    private final String mPackageName;
+    private final AttributionSource mCallerAttributionSource;
     private final String mDatabaseName;
     private final UserHandle mUserHandle;
     private final IAppSearchManager mService;
@@ -72,11 +73,12 @@ public final class AppSearchSession implements Closeable {
             @NonNull AppSearchManager.SearchContext searchContext,
             @NonNull IAppSearchManager service,
             @NonNull UserHandle userHandle,
-            @NonNull String packageName,
+            @NonNull AttributionSource callerAttributionSource,
             @NonNull @CallbackExecutor Executor executor,
             @NonNull Consumer<AppSearchResult<AppSearchSession>> callback) {
         AppSearchSession searchSession =
-                new AppSearchSession(service, userHandle, packageName, searchContext.mDatabaseName);
+                new AppSearchSession(service, userHandle, callerAttributionSource,
+                        searchContext.mDatabaseName);
         searchSession.initialize(executor, callback);
     }
 
@@ -87,7 +89,7 @@ public final class AppSearchSession implements Closeable {
             @NonNull Consumer<AppSearchResult<AppSearchSession>> callback) {
         try {
             mService.initialize(
-                    mPackageName,
+                    mCallerAttributionSource,
                     mUserHandle,
                     /*binderCallStartTimeMillis=*/ SystemClock.elapsedRealtime(),
                     new IAppSearchResultCallback.Stub() {
@@ -111,10 +113,10 @@ public final class AppSearchSession implements Closeable {
     }
 
     private AppSearchSession(@NonNull IAppSearchManager service, @NonNull UserHandle userHandle,
-            @NonNull String packageName, @NonNull String databaseName) {
+            @NonNull AttributionSource callerAttributionSource, @NonNull String databaseName) {
         mService = service;
         mUserHandle = userHandle;
-        mPackageName = packageName;
+        mCallerAttributionSource = callerAttributionSource;
         mDatabaseName = databaseName;
     }
 
@@ -192,8 +194,8 @@ public final class AppSearchSession implements Closeable {
         Preconditions.checkState(!mIsClosed, "AppSearchSession has already been closed");
         try {
             mService.getSchema(
-                    /*callingPackageName=*/mPackageName,
-                    /*packageName=*/mPackageName,
+                    mCallerAttributionSource,
+                    /*targetPackageName=*/mCallerAttributionSource.getPackageName(),
                     mDatabaseName,
                     mUserHandle,
                     new IAppSearchResultCallback.Stub() {
@@ -230,7 +232,7 @@ public final class AppSearchSession implements Closeable {
         Preconditions.checkState(!mIsClosed, "AppSearchSession has already been closed");
         try {
             mService.getNamespaces(
-                    mPackageName,
+                    mCallerAttributionSource,
                     mDatabaseName,
                     mUserHandle,
                     new IAppSearchResultCallback.Stub() {
@@ -285,7 +287,8 @@ public final class AppSearchSession implements Closeable {
             documentBundles.add(documents.get(i).getBundle());
         }
         try {
-            mService.putDocuments(mPackageName, mDatabaseName, documentBundles, mUserHandle,
+            mService.putDocuments(mCallerAttributionSource, mDatabaseName, documentBundles,
+                    mUserHandle,
                     /*binderCallStartTimeMillis=*/ SystemClock.elapsedRealtime(),
                     new IAppSearchBatchResultCallback.Stub() {
                         @Override
@@ -330,8 +333,8 @@ public final class AppSearchSession implements Closeable {
         Preconditions.checkState(!mIsClosed, "AppSearchSession has already been closed");
         try {
             mService.getDocuments(
-                    /*callerPackageName=*/mPackageName,
-                    /*targetPackageName=*/mPackageName,
+                    mCallerAttributionSource,
+                    /*targetPackageName=*/mCallerAttributionSource.getPackageName(),
                     mDatabaseName,
                     request.getNamespace(),
                     new ArrayList<>(request.getIds()),
@@ -408,7 +411,7 @@ public final class AppSearchSession implements Closeable {
         Objects.requireNonNull(queryExpression);
         Objects.requireNonNull(searchSpec);
         Preconditions.checkState(!mIsClosed, "AppSearchSession has already been closed");
-        return new SearchResults(mService, mPackageName, mDatabaseName, queryExpression,
+        return new SearchResults(mService, mCallerAttributionSource, mDatabaseName, queryExpression,
                 searchSpec, mUserHandle);
     }
 
@@ -439,7 +442,8 @@ public final class AppSearchSession implements Closeable {
         Preconditions.checkState(!mIsClosed, "AppSearchSession has already been closed");
         try {
             mService.reportUsage(
-                    mPackageName,
+                    mCallerAttributionSource,
+                    mCallerAttributionSource.getPackageName(),
                     mDatabaseName,
                     request.getNamespace(),
                     request.getDocumentId(),
@@ -490,7 +494,7 @@ public final class AppSearchSession implements Closeable {
         Preconditions.checkState(!mIsClosed, "AppSearchSession has already been closed");
         try {
             mService.removeByDocumentId(
-                    mPackageName,
+                    mCallerAttributionSource,
                     mDatabaseName,
                     request.getNamespace(),
                     new ArrayList<>(request.getIds()),
@@ -545,7 +549,7 @@ public final class AppSearchSession implements Closeable {
         Preconditions.checkState(!mIsClosed, "AppSearchSession has already been closed");
         try {
             mService.removeByQuery(
-                    mPackageName,
+                    mCallerAttributionSource,
                     mDatabaseName,
                     queryExpression,
                     searchSpec.getBundle(),
@@ -580,7 +584,7 @@ public final class AppSearchSession implements Closeable {
         Preconditions.checkState(!mIsClosed, "AppSearchSession has already been closed");
         try {
             mService.getStorageInfo(
-                    mPackageName,
+                    mCallerAttributionSource,
                     mDatabaseName,
                     mUserHandle,
                     new IAppSearchResultCallback.Stub() {
@@ -611,7 +615,7 @@ public final class AppSearchSession implements Closeable {
         if (mIsMutated && !mIsClosed) {
             try {
                 mService.persistToDisk(
-                        mPackageName,
+                        mCallerAttributionSource,
                         mUserHandle,
                         /*binderCallStartTimeMillis=*/ SystemClock.elapsedRealtime());
                 mIsClosed = true;
@@ -635,7 +639,7 @@ public final class AppSearchSession implements Closeable {
             @NonNull Consumer<AppSearchResult<SetSchemaResponse>> callback) {
         try {
             mService.setSchema(
-                    mPackageName,
+                    mCallerAttributionSource,
                     mDatabaseName,
                     schemaBundles,
                     visibilityBundles,
@@ -722,7 +726,7 @@ public final class AppSearchSession implements Closeable {
                 CompletableFuture<AppSearchResult<Bundle>> setSchemaFuture =
                         new CompletableFuture<>();
                 mService.setSchema(
-                        mPackageName,
+                        mCallerAttributionSource,
                         mDatabaseName,
                         schemaBundles,
                         visibilityBundles,
@@ -754,7 +758,8 @@ public final class AppSearchSession implements Closeable {
                 }
 
                 try (AppSearchMigrationHelper migrationHelper = new AppSearchMigrationHelper(
-                        mService, mUserHandle, mPackageName, mDatabaseName, request.getSchemas())) {
+                        mService, mUserHandle, mCallerAttributionSource, mDatabaseName,
+                        request.getSchemas())) {
 
                     // 4. Trigger migration for all migrators.
                     // TODO(b/177266929) trigger migration for all types together rather than
@@ -773,7 +778,7 @@ public final class AppSearchSession implements Closeable {
                                 new CompletableFuture<>();
                         // only trigger second setSchema() call if the first one is fail.
                         mService.setSchema(
-                                mPackageName,
+                                mCallerAttributionSource,
                                 mDatabaseName,
                                 schemaBundles,
                                 visibilityBundles,

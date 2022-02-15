@@ -22,6 +22,7 @@ import android.app.appsearch.aidl.AppSearchResultParcel;
 import android.app.appsearch.aidl.IAppSearchBatchResultCallback;
 import android.app.appsearch.aidl.IAppSearchObserverProxy;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
+import android.content.AttributionSource;
 import android.os.ParcelFileDescriptor;
 
 /** {@hide} */
@@ -29,14 +30,14 @@ interface IAppSearchManager {
     /**
      * Creates and initializes AppSearchImpl for the calling app.
      *
-     * @param packageName The name of the package to initialize for.
+     * @param callerAttributionSource The permission identity of the package to initialize for.
      * @param userHandle Handle of the calling user
      * @param binderCallStartTimeMillis start timestamp of binder call in Millis
      * @param callback {@link IAppSearchResultCallback#onResult} will be called with an
      *     {@link AppSearchResult}&lt;{@link Void}&gt;.
      */
     void initialize(
-        in String packageName,
+        in AttributionSource callerAttributionSource,
         in UserHandle userHandle,
         in long binderCallStartTimeMillis,
         in IAppSearchResultCallback callback);
@@ -44,7 +45,7 @@ interface IAppSearchManager {
     /**
      * Updates the AppSearch schema for this database.
      *
-     * @param packageName The name of the package that owns this schema.
+     * @param callerAttributionSource The permission identity of the package that owns this schema.
      * @param databaseName  The name of the database where this schema lives.
      * @param schemaBundles List of {@link AppSearchSchema} bundles.
      * @param visibilityBundles List of {@link VisibilityDocument} bundles.
@@ -58,7 +59,7 @@ interface IAppSearchManager {
      *     {@link SetSchemaResponse} bundle.
      */
     void setSchema(
-        in String packageName,
+        in AttributionSource callerAttributionSource,
         in String databaseName,
         in List<Bundle> schemaBundles,
         in List<Bundle> visibilityBundles,
@@ -71,16 +72,16 @@ interface IAppSearchManager {
     /**
      * Retrieves the AppSearch schema for this database.
      *
-     * @param callingackageName The name of the package making this call.
-     * @param packageName The name of the package that owns the schema.
+     * @param callerAttributionSource The permission identity of the package making this call.
+     * @param targetPackageName The name of the package that owns the schema.
      * @param databaseName  The name of the database to retrieve.
      * @param userHandle Handle of the calling user
      * @param callback {@link IAppSearchResultCallback#onResult} will be called with an
      *     {@link AppSearchResult}&lt;{@link Bundle}&gt; where the bundle is a GetSchemaResponse.
      */
     void getSchema(
-        in String callingPackageName,
-        in String packageName,
+        in AttributionSource callerAttributionSource,
+        in String targetPackageName,
         in String databaseName,
         in UserHandle userHandle,
         in IAppSearchResultCallback callback);
@@ -88,14 +89,14 @@ interface IAppSearchManager {
     /**
      * Retrieves the set of all namespaces in the current database with at least one document.
      *
-     * @param packageName The name of the package that owns the schema.
+     * @param callerAttributionSource The permission identity of the package that owns the schema.
      * @param databaseName  The name of the database to retrieve.
      * @param userHandle Handle of the calling user
      * @param callback {@link IAppSearchResultCallback#onResult} will be called with an
      *     {@link AppSearchResult}&lt;{@link List}&lt;{@link String}&gt;&gt;.
      */
     void getNamespaces(
-        in String packageName,
+        in AttributionSource callerAttributionSource,
         in String databaseName,
         in UserHandle userHandle,
         in IAppSearchResultCallback callback);
@@ -103,7 +104,8 @@ interface IAppSearchManager {
     /**
      * Inserts documents into the index.
      *
-     * @param packageName The name of the package that owns this document.
+     * @param callerAttributionSource The permission identity of the package that owns this
+     *     document.
      * @param databaseName  The name of the database where this document lives.
      * @param documentBundes List of GenericDocument bundles.
      * @param userHandle Handle of the calling user
@@ -116,7 +118,7 @@ interface IAppSearchManager {
      *     where the keys are document IDs, and the values are {@code null}.
      */
     void putDocuments(
-        in String packageName,
+        in AttributionSource callerAttributionSource,
         in String databaseName,
         in List<Bundle> documentBundles,
         in UserHandle userHandle,
@@ -126,15 +128,16 @@ interface IAppSearchManager {
     /**
      * Retrieves documents from the index.
      *
-     * @param callingPackageName The name of the package that is getting this document.
+     * @param callerAttributionSource The permission identity of the package that is getting this
+     *     document.
      * @param targetPackageName The name of the package that owns this document.
      * @param databaseName  The databaseName this document resides in.
      * @param namespace    The namespace this document resides in.
-     * @param ids The IDs of the documents to retrieve
+     * @param ids The IDs of the documents to retrieve.
      * @param typePropertyPaths A map of schema type to a list of property paths to return in the
      *     result.
-     * @param userHandle Handle of the calling user
-     * @param binderCallStartTimeMillis start timestamp of binder call in Millis
+     * @param userHandle Handle of the calling user.
+     * @param binderCallStartTimeMillis start timestamp of binder call in Millis.
      * @param callback
      *     If the call fails to start, {@link IAppSearchBatchResultCallback#onSystemError}
      *     will be called with the cause throwable. Otherwise,
@@ -143,7 +146,7 @@ interface IAppSearchManager {
      *     where the keys are document IDs, and the values are Document bundles.
      */
     void getDocuments(
-        in String callingPackageName,
+        in AttributionSource callerAttributionSource,
         in String targetPackageName,
         in String databaseName,
         in String namespace,
@@ -156,7 +159,7 @@ interface IAppSearchManager {
     /**
      * Searches a document based on a given specifications.
      *
-     * @param packageName The name of the package to query over.
+     * @param callerAttributionSource The permission identity of the package to query over.
      * @param databaseName The databaseName this query for.
      * @param queryExpression String to search for
      * @param searchSpecBundle SearchSpec bundle
@@ -166,7 +169,7 @@ interface IAppSearchManager {
      *         operation.
      */
     void query(
-        in String packageName,
+        in AttributionSource callerAttributionSource,
         in String databaseName,
         in String queryExpression,
         in Bundle searchSpecBundle,
@@ -178,7 +181,7 @@ interface IAppSearchManager {
      * Executes a global query, i.e. over all permitted databases, against the AppSearch index and
      * returns results.
      *
-     * @param packageName The name of the package making the query.
+     * @param callerAttributionSource The permission identity of the package making the query.
      * @param queryExpression String to search for
      * @param searchSpecBundle SearchSpec bundle
      * @param userHandle Handle of the calling user
@@ -187,7 +190,7 @@ interface IAppSearchManager {
      *         operation.
      */
     void globalQuery(
-        in String packageName,
+        in AttributionSource callerAttributionSource,
         in String queryExpression,
         in Bundle searchSpecBundle,
         in UserHandle userHandle,
@@ -198,14 +201,15 @@ interface IAppSearchManager {
      * Fetches the next page of results of a previously executed query. Results can be empty if
      * next-page token is invalid or all pages have been returned.
      *
-     * @param packageName The name of the package to persist to disk for.
+     * @param callerAttributionSource The permission identity of the package to persist to disk
+     *     for.
      * @param nextPageToken The token of pre-loaded results of previously executed query.
      * @param userHandle Handle of the calling user
      * @param callback {@link AppSearchResult}&lt;{@link Bundle}&gt; of performing this
      *                  operation.
      */
     void getNextPage(
-        in String packageName,
+        in AttributionSource callerAttributionSource,
         in long nextPageToken,
         in UserHandle userHandle,
         in IAppSearchResultCallback callback);
@@ -213,13 +217,14 @@ interface IAppSearchManager {
     /**
      * Invalidates the next-page token so that no more results of the related query can be returned.
      *
-     * @param packageName The name of the package to persist to disk for.
+     * @param callerAttributionSource The permission identity of the package to persist to disk
+     *     for.
      * @param nextPageToken The token of pre-loaded results of previously executed query to be
      *                      Invalidated.
      * @param userHandle Handle of the calling user
      */
     void invalidateNextPageToken(
-        in String packageName,
+        in AttributionSource callerAttributionSource,
         in long nextPageToken,
         in UserHandle userHandle);
 
@@ -228,7 +233,7 @@ interface IAppSearchManager {
     *
     * <p>Documents will be save to the given ParcelFileDescriptor
     *
-    * @param packageName The name of the package to query over.
+    * @param callerAttributionSource The permission identity of the package to query over.
     * @param databaseName The databaseName this query for.
     * @param fileDescriptor The ParcelFileDescriptor where documents should be written to.
     * @param queryExpression String to search for.
@@ -238,7 +243,7 @@ interface IAppSearchManager {
     *        {@link AppSearchResult}&lt;{@code Void}&gt;.
     */
     void writeQueryResultsToFile(
-        in String packageName,
+        in AttributionSource callerAttributionSource,
         in String databaseName,
         in ParcelFileDescriptor fileDescriptor,
         in String queryExpression,
@@ -249,7 +254,8 @@ interface IAppSearchManager {
     /**
     * Inserts documents from the given file into the index.
     *
-    * @param packageName The name of the package that owns this document.
+    * @param callerAttributionSource The permission identity of the package that owns this
+    *     document.
     * @param databaseName  The name of the database where this document lives.
     * @param fileDescriptor The ParcelFileDescriptor where documents should be read from.
     * @param userHandle Handle of the calling user.
@@ -258,7 +264,7 @@ interface IAppSearchManager {
     *     MigrationFailure bundles.
     */
     void putDocumentsFromFile(
-        in String packageName,
+        in AttributionSource callerAttributionSource,
         in String databaseName,
         in ParcelFileDescriptor fileDescriptor,
         in UserHandle userHandle,
@@ -276,7 +282,9 @@ interface IAppSearchManager {
      *
      * <p>Reporting usage of a document is optional.
      *
-     * @param packageName The name of the package that owns this document.
+     * @param callerAttributionSource The permission identity of the package that owns this
+     *     document.
+     * @param targetPackageName The name of the package that owns this document.
      * @param databaseName  The name of the database to report usage against.
      * @param namespace Namespace the document being used belongs to.
      * @param id ID of the document being used.
@@ -286,20 +294,21 @@ interface IAppSearchManager {
      * @param callback {@link IAppSearchResultCallback#onResult} will be called with an
      *     {@link AppSearchResult}&lt;{@link Void}&gt;.
      */
-     void reportUsage(
-         in String packageName,
-         in String databaseName,
-         in String namespace,
-         in String id,
-         in long usageTimestampMillis,
-         in boolean systemUsage,
-         in UserHandle userHandle,
-         in IAppSearchResultCallback callback);
+    void reportUsage(
+        in AttributionSource callerAttributionSource,
+        in String targetPackageName,
+        in String databaseName,
+        in String namespace,
+        in String id,
+        in long usageTimestampMillis,
+        in boolean systemUsage,
+        in UserHandle userHandle,
+        in IAppSearchResultCallback callback);
 
     /**
      * Removes documents by ID.
      *
-     * @param packageName The name of the package the document is in.
+     * @param callerAttributionSource The permission identity of the package the document is in.
      * @param databaseName The databaseName the document is in.
      * @param namespace    Namespace of the document to remove.
      * @param ids The IDs of the documents to delete
@@ -314,7 +323,7 @@ interface IAppSearchManager {
      *     failure where the {@code throwable} is {@code null}.
      */
     void removeByDocumentId(
-        in String packageName,
+        in AttributionSource callerAttributionSource,
         in String databaseName,
         in String namespace,
         in List<String> ids,
@@ -325,7 +334,7 @@ interface IAppSearchManager {
     /**
      * Removes documents by given query.
      *
-     * @param packageName The name of the package to query over.
+     * @param callerAttributionSource The permission identity of the package to query over.
      * @param databaseName The databaseName this query for.
      * @param queryExpression String to search for
      * @param searchSpecBundle SearchSpec bundle
@@ -335,7 +344,7 @@ interface IAppSearchManager {
      *     {@link AppSearchResult}&lt;{@link Void}&gt;.
      */
     void removeByQuery(
-        in String packageName,
+        in AttributionSource callerAttributionSource,
         in String databaseName,
         in String queryExpression,
         in Bundle searchSpecBundle,
@@ -346,7 +355,8 @@ interface IAppSearchManager {
     /**
      * Gets the storage info.
      *
-     * @param packageName The name of the package to get the storage info for.
+     * @param callerAttributionSource The permission identity of the package to get the storage
+     *     info for.
      * @param databaseName The databaseName to get the storage info for.
      * @param userHandle Handle of the calling user
      * @param callback {@link IAppSearchResultCallback#onResult} will be called with an
@@ -354,7 +364,7 @@ interface IAppSearchManager {
      *     {@link StorageInfo}.
      */
     void getStorageInfo(
-        in String packageName,
+        in AttributionSource callerAttributionSource,
         in String databaseName,
         in UserHandle userHandle,
         in IAppSearchResultCallback callback);
@@ -362,12 +372,12 @@ interface IAppSearchManager {
     /**
      * Persists all update/delete requests to the disk.
      *
-     * @param packageName The name of the package to persist to disk for.
+     * @param callerAttributionSource The permission identity of the package to persist to disk for
      * @param userHandle Handle of the calling user
      * @param binderCallStartTimeMillis start timestamp of binder call in Millis
      */
     void persistToDisk(
-        in String packageName,
+        in AttributionSource callerAttributionSource,
         in UserHandle userHandle,
         in long binderCallStartTimeMillis);
 
@@ -375,7 +385,8 @@ interface IAppSearchManager {
      * Adds an observer to monitor changes within the databases owned by {@code observedPackage} if
      * they match the given ObserverSpec.
      *
-     * @param callingPackage The name of the package which is registering an observer.
+     * @param callerAttributionSource The permission identity of the package which is registering
+     *     an observer.
      * @param targetPackageName Package whose changes to monitor
      * @param observerSpecBundle Bundle of ObserverSpec showing what types of changes to listen for
      * @param userHandle Handle of the calling user
@@ -383,7 +394,7 @@ interface IAppSearchManager {
      * @return the success or failure of this operation
      */
     AppSearchResultParcel addObserver(
-        in String callingPackage,
+        in AttributionSource callerAttributionSource,
         in String targetPackageName,
         in Bundle observerSpecBundle,
         in UserHandle userHandle,
@@ -392,14 +403,14 @@ interface IAppSearchManager {
     /**
      * Removes previously registered {@link AppSearchObserverCallback} instances from the system.
      *
-     * @param callingPackage The name of the package that owns the observer.
+     * @param callerAttributionSource The permission identity of the package that owns the observer
      * @param observedPackage Package whose changes are being monitored
      * @param userHandle Handle of the calling user
      * @param observerProxy Observer callback to remove
      * @return the success or failure of this operation
      */
     AppSearchResultParcel removeObserver(
-        in String callingPackage,
+        in AttributionSource callerAttributionSource,
         in String observedPackage,
         in UserHandle userHandle,
         in IAppSearchObserverProxy observerProxy);
