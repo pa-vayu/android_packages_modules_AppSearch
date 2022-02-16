@@ -22,9 +22,6 @@ import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.UserHandle;
-import android.util.Log;
-
-import com.android.internal.util.Preconditions;
 
 import java.util.Collection;
 import java.util.Objects;
