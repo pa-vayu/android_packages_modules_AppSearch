@@ -70,6 +70,11 @@ public final class ContactDataHandler {
         mNeededColumns = Collections.unmodifiableSet(neededColumns);
     }
 
+    /** Returns an unmodifiable set of columns this {@link ContactDataHandler} is asking for. */
+    public Set<String> getNeededColumns() {
+        return mNeededColumns;
+    }
+
     /**
      * Adds the information of the current row from {@link ContactsContract.Data} table
      * into the {@link PersonBuilderHelper}.
@@ -330,7 +335,7 @@ public final class ContactDataHandler {
     }
 
     private static final class NicknameDataHandler extends SingleColumnDataHandler {
-        protected NicknameDataHandler() {
+        public NicknameDataHandler() {
             super(Nickname.NAME);
         }
 

@@ -88,7 +88,8 @@ public final class ContactPoint extends GenericDocument {
             .build();
 
     /** Constructs a {@link ContactPoint}. */
-    ContactPoint(@NonNull GenericDocument document) {
+    @VisibleForTesting
+    public ContactPoint(@NonNull GenericDocument document) {
         super(document);
     }
 

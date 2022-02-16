@@ -27,20 +27,22 @@ import java.util.Collection;
 import java.util.Objects;
 
 /**
- * ContentObserver for {@link ContactsIndexerManagerService} to listen on the contact changes from
+ * ContentObserver for {@link ContactsIndexerManager} to listen on the contact changes from
  * CP2.
+ *
+ * @hide
  */
 final class ContactsContentObserver extends ContentObserver {
     private static final String TAG = "ContactsContentObserver";
-    private final ContactsIndexerManagerService mContactsIndexerManagerService;
+    private final ContactsIndexerManager mContactsIndexerManager;
 
     /** Constructs a {@link ContactsContentObserver}. */
     public ContactsContentObserver(
             @Nullable Handler handler,
-            @NonNull ContactsIndexerManagerService contactsIndexerManagerService) {
+            @NonNull ContactsIndexerManager contactsIndexerManager) {
         super(handler);
 
-        mContactsIndexerManagerService = Objects.requireNonNull(contactsIndexerManagerService);
+        mContactsIndexerManager = Objects.requireNonNull(contactsIndexerManager);
     }
 
     @Override
@@ -57,6 +59,6 @@ final class ContactsContentObserver extends ContentObserver {
             return;
         }
 
-        mContactsIndexerManagerService.handleContactChange(userHandle);
+        mContactsIndexerManager.handleContactChange(userHandle);
     }
 }

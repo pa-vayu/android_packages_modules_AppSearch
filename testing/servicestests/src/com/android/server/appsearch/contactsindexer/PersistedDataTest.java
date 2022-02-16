@@ -23,10 +23,10 @@ import static com.google.common.truth.Truth.assertThat;
 public class PersistedDataTest {
     @Test
     public void testPersistedData_toAndFromString() {
-        ContactsPerUserIndexer.PersistedData persistedData =
-                new ContactsPerUserIndexer.PersistedData();
-        ContactsPerUserIndexer.PersistedData persistedDataCopy =
-                new ContactsPerUserIndexer.PersistedData();
+        PerUserContactsIndexer.PersistedData persistedData =
+                new PerUserContactsIndexer.PersistedData();
+        PerUserContactsIndexer.PersistedData persistedDataCopy =
+                new PerUserContactsIndexer.PersistedData();
         persistedData.mLastDeltaUpdateTimestampMillis = 3;
         persistedData.mLastDeltaUpdateTimestampMillis = 5;
 

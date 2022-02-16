@@ -14,13 +14,11 @@
  * limitations under the License.
  */
 
-package src.com.android.server.appsearch.contactsindexer.appsearchtypes;
-
-import com.android.server.appsearch.contactsindexer.appsearchtypes.ContactPoint;
-
-import com.google.common.collect.ImmutableList;
+package com.android.server.appsearch.contactsindexer.appsearchtypes;
 
 import static com.google.common.truth.Truth.assertThat;
+
+import com.google.common.collect.ImmutableList;
 
 import org.junit.Test;
 
@@ -55,9 +53,9 @@ public class ContactPointTest {
 
         assertThat(contactPoint.getId()).isEqualTo(id);
         assertThat(contactPoint.getLabel()).isEqualTo(label);
-        assertThat(contactPoint.getEmails()).isEqualTo(emails.toArray(new String[0]));
-        assertThat(contactPoint.getAddresses()).isEqualTo(addresses.toArray(new String[0]));
-        assertThat(contactPoint.getPhones()).isEqualTo(telephones.toArray(new String[0]));
-        assertThat(contactPoint.getAppIds()).isEqualTo(appIds.toArray(new String[0]));
+        assertThat(contactPoint.getEmails()).asList().isEqualTo(emails);
+        assertThat(contactPoint.getAddresses()).asList().isEqualTo(addresses);
+        assertThat(contactPoint.getPhones()).asList().isEqualTo(telephones);
+        assertThat(contactPoint.getAppIds()).asList().isEqualTo(appIds);
     }
 }

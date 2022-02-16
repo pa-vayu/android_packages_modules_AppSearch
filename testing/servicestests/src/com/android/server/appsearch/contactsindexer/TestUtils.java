@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package src.com.android.server.appsearch.contactsindexer;
+package com.android.server.appsearch.contactsindexer;
 
 import static com.google.common.truth.Truth.assertThat;
 
@@ -35,6 +35,8 @@ class TestUtils {
             return;
         }
 
+        // TODO(b/203605504) use toBuilder to reset creationTimestamp so we can directly compare
+        //  two GenericDocuments. This way, we won't miss adding any new properties in the future.
         assertThat(actual.getId()).isEqualTo(expected.getId());
         assertThat(actual.getLabel()).isEqualTo(expected.getLabel());
         assertThat(actual.getAppIds()).isEqualTo(expected.getAppIds());
@@ -61,6 +63,8 @@ class TestUtils {
         assertThat(actual.isImportant()).isEqualTo(expected.isImportant());
         assertThat(actual.isBot()).isEqualTo(expected.isBot());
         assertThat(actual.getAdditionalNames()).isEqualTo(expected.getAdditionalNames());
+        // TODO(b/203605504) use toBuilder to reset creationTimestamp so we can directly compare
+        //  two GenericDocuments. This way, we won't miss adding any new properties in the future.
         // Compare two contact point arrays. We can't directly use assert(genericDoc1).isEqualTo
         // (genericDoc2) since the creationTimestamps are different, and they can't easily be
         // reset to 0.

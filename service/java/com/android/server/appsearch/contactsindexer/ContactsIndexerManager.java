@@ -35,14 +35,18 @@ import java.util.concurrent.TimeUnit;
 /**
  * Service to sync contacts data from CP2 to Person corpus in AppSearch.
  *
- * <p>It manages one {@link ContactsPerUserIndexer} for each user to sync the data.
+ * <p>It manages one {@link PerUserContactsIndexer} for each user to sync the data.
+ *
+ * <p>This class is thread-safe.
+ *
+ * @hide
  */
-public final class ContactsIndexerManagerService {
+public final class ContactsIndexerManager {
     static final String TAG = "ContactsIndexerManagerService";
 
     /**
      * Executor to dispatch the contact change notifications to different {@link
-     * ContactsPerUserIndexer}.
+     * PerUserContactsIndexer}.
      */
     private final ThreadPoolExecutor mSingleThreadExecutor;
 
@@ -50,15 +54,15 @@ public final class ContactsIndexerManagerService {
     private final ContactsContentObserver mContactsContentObserver;
     private final Object mLock = new Object();
     @GuardedBy("mLock")
-    private final Map<UserHandle, ContactsPerUserIndexer> mContactsIndexersLocked =
+    private final Map<UserHandle, PerUserContactsIndexer> mContactsIndexersLocked =
             new ArrayMap<>();
 
     /** Whether {@link ContactsContentObserver} is registered. */
     @GuardedBy("mLock")
     private boolean mObserverRegisteredLocked = false;
 
-    /** Constructs a {@link ContactsIndexerManagerService}. */
-    public ContactsIndexerManagerService(@NonNull Context context) {
+    /** Constructs a {@link ContactsIndexerManager}. */
+    public ContactsIndexerManager(@NonNull Context context) {
         mContext = Objects.requireNonNull(context);
         Handler handler = new Handler(mContext.getMainLooper());
         mContactsContentObserver = new ContactsContentObserver(handler, this);
@@ -115,11 +119,11 @@ public final class ContactsIndexerManagerService {
 
                 // Create context as the user for which the notification is targeted
                 Context userContext = mContext.createContextAsUser(userHandle, /*flags=*/ 0);
-                ContactsPerUserIndexer indexer = null;
+                PerUserContactsIndexer indexer = null;
                 synchronized (mLock) {
                     indexer = mContactsIndexersLocked.get(userContext.getUser());
                     if (indexer == null) {
-                        indexer = new ContactsPerUserIndexer(userContext);
+                        indexer = new PerUserContactsIndexer(userContext);
                         indexer.initialize();
                         mContactsIndexersLocked.put(userContext.getUser(), indexer);
                         Log.d(TAG, "Create a new ContactIndexerPerUser for user "
