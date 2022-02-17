@@ -19,7 +19,7 @@ package android.app.appsearch.testutil;
 import android.annotation.NonNull;
 import android.app.appsearch.AppSearchManager;
 import android.app.appsearch.AppSearchResult;
-import android.app.appsearch.Capabilities;
+import android.app.appsearch.Features;
 import android.app.appsearch.GlobalSearchSession;
 import android.app.appsearch.GlobalSearchSessionShim;
 import android.app.appsearch.ReportSystemUsageRequest;
@@ -27,17 +27,20 @@ import android.app.appsearch.SearchResults;
 import android.app.appsearch.SearchResultsShim;
 import android.app.appsearch.SearchSpec;
 import android.app.appsearch.exceptions.AppSearchException;
+import android.app.appsearch.observer.AppSearchObserverCallback;
+import android.app.appsearch.observer.ObserverSpec;
 import android.content.Context;
 
 import androidx.test.core.app.ApplicationProvider;
 
-import com.android.server.appsearch.external.localstorage.AlwaysSupportedCapabilities;
+import com.android.server.appsearch.external.localstorage.AlwaysSupportedFeatures;
 
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 
 import java.util.Objects;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -92,10 +95,25 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
         return Futures.transformAsync(future, this::transformResult, mExecutor);
     }
 
+    @Override
+    public void addObserver(
+            @NonNull String observedPackage,
+            @NonNull ObserverSpec spec,
+            @NonNull Executor executor,
+            @NonNull AppSearchObserverCallback observer) throws AppSearchException {
+        mGlobalSearchSession.addObserver(observedPackage, spec, mExecutor, observer);
+    }
+
+    @Override
+    public void removeObserver(
+            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer) {
+        // TODO(b/193494000): Implement removeObserver
+    }
+
     @NonNull
     @Override
-    public Capabilities getCapabilities() {
-        return new AlwaysSupportedCapabilities();
+    public Features getFeatures() {
+        return new AlwaysSupportedFeatures();
     }
 
     @Override

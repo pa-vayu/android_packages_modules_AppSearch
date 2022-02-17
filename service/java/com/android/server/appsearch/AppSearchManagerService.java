@@ -21,6 +21,7 @@ import static android.os.Process.INVALID_UID;
 import android.Manifest;
 import android.annotation.ElapsedRealtimeLong;
 import android.annotation.NonNull;
+import android.annotation.WorkerThread;
 import android.app.appsearch.AppSearchBatchResult;
 import android.app.appsearch.AppSearchMigrationHelper;
 import android.app.appsearch.AppSearchResult;
@@ -36,8 +37,13 @@ import android.app.appsearch.aidl.AppSearchBatchResultParcel;
 import android.app.appsearch.aidl.AppSearchResultParcel;
 import android.app.appsearch.aidl.IAppSearchBatchResultCallback;
 import android.app.appsearch.aidl.IAppSearchManager;
+import android.app.appsearch.aidl.IAppSearchObserverProxy;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
 import android.app.appsearch.exceptions.AppSearchException;
+import android.app.appsearch.observer.AppSearchObserverCallback;
+import android.app.appsearch.observer.DocumentChangeInfo;
+import android.app.appsearch.observer.ObserverSpec;
+import android.app.appsearch.observer.SchemaChangeInfo;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -62,6 +68,7 @@ import com.android.server.SystemService;
 import com.android.server.appsearch.external.localstorage.stats.CallStats;
 import com.android.server.appsearch.external.localstorage.stats.OptimizeStats;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
+import com.android.server.appsearch.observer.AppSearchObserverProxy;
 import com.android.server.appsearch.stats.StatsCollector;
 import com.android.server.appsearch.util.PackageUtil;
 import com.android.server.usage.StorageStatsManagerLocal;
@@ -538,6 +545,10 @@ public class AppSearchManagerService extends SystemService {
                     // Now that the batch has been written. Persist the newly written data.
                     instance.getAppSearchImpl().persistToDisk(PersistType.Code.LITE);
                     invokeCallbackOnResult(callback, resultBuilder.build());
+
+                    // Schedule a task to dispatch change notifications. See requirements for where
+                    // the method is called documented in the method description.
+                    dispatchChangeNotifications(instance);
 
                     // The existing documents with same ID will be deleted, so there may be some
                     // resources that could be released after optimize().
@@ -1100,6 +1111,10 @@ public class AppSearchManagerService extends SystemService {
                     instance.getAppSearchImpl().persistToDisk(PersistType.Code.LITE);
                     invokeCallbackOnResult(callback, resultBuilder.build());
 
+                    // Schedule a task to dispatch change notifications. See requirements for where
+                    // the method is called documented in the method description.
+                    dispatchChangeNotifications(instance);
+
                     checkForOptimize(instance, ids.size());
                 } catch (Throwable t) {
                     ++operationFailureCount;
@@ -1174,6 +1189,10 @@ public class AppSearchManagerService extends SystemService {
                     instance.getAppSearchImpl().persistToDisk(PersistType.Code.LITE);
                     ++operationSuccessCount;
                     invokeCallbackOnResult(callback, AppSearchResult.newSuccessfulResult(null));
+
+                    // Schedule a task to dispatch change notifications. See requirements for where
+                    // the method is called documented in the method description.
+                    dispatchChangeNotifications(instance);
 
                     checkForOptimize(instance);
                 } catch (Throwable t) {
@@ -1292,6 +1311,44 @@ public class AppSearchManagerService extends SystemService {
                     }
                 }
             });
+        }
+
+        @Override
+        public AppSearchResultParcel<Void> addObserver(
+                @NonNull String callingPackage,
+                @NonNull String observedPackage,
+                @NonNull Bundle observerSpecBundle,
+                @NonNull UserHandle userHandle,
+                @NonNull IAppSearchObserverProxy observerProxyStub) {
+            Objects.requireNonNull(callingPackage);
+            Objects.requireNonNull(observedPackage);
+            Objects.requireNonNull(observerSpecBundle);
+            Objects.requireNonNull(userHandle);
+            Objects.requireNonNull(observerProxyStub);
+
+            int callingPid = Binder.getCallingPid();
+            int callingUid = Binder.getCallingUid();
+            long callingIdentity = Binder.clearCallingIdentity();
+
+            // Note: addObserver is performed on the binder thread, unlike most AppSearch APIs
+            try {
+                verifyCaller(callingUid, callingPackage);
+                UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
+                verifyUserUnlocked(targetUser);
+
+                AppSearchUserInstance instance =
+                        mAppSearchUserInstanceManager.getUserInstance(targetUser);
+                instance.getAppSearchImpl().addObserver(
+                        observedPackage,
+                        new ObserverSpec(observerSpecBundle),
+                        EXECUTOR,
+                        new AppSearchObserverProxy(observerProxyStub));
+                return new AppSearchResultParcel<>(AppSearchResult.newSuccessfulResult(null));
+            } catch (Throwable t) {
+                return new AppSearchResultParcel<>(throwableToFailedResult(t));
+            } finally {
+                Binder.restoreCallingIdentity(callingIdentity);
+            }
         }
 
         @Override
@@ -1603,6 +1660,21 @@ public class AppSearchManagerService extends SystemService {
         }
     }
 
+    /**
+     * Dispatches change notifications if there are any to dispatch.
+     *
+     * <p>This method is async; notifications are dispatched onto their own registered executors.
+     *
+     * <p>IMPORTANT: You must always call this within the background task that contains the
+     * operation that mutated the index. If you called it outside of that task, it could start
+     * before the task completes, causing notifications to be missed.
+     */
+    @WorkerThread
+    private void dispatchChangeNotifications(@NonNull AppSearchUserInstance instance) {
+        instance.getAppSearchImpl().dispatchAndClearChangeNotifications();
+    }
+
+    @WorkerThread
     private void checkForOptimize(AppSearchUserInstance instance, int mutateBatchSize) {
         EXECUTOR.execute(() -> {
             long totalLatencyStartMillis = SystemClock.elapsedRealtime();
@@ -1624,6 +1696,7 @@ public class AppSearchManagerService extends SystemService {
         });
     }
 
+    @WorkerThread
     private void checkForOptimize(AppSearchUserInstance instance) {
         EXECUTOR.execute(() -> {
             long totalLatencyStartMillis = SystemClock.elapsedRealtime();
