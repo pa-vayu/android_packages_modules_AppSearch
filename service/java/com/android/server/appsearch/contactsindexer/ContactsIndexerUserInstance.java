@@ -18,6 +18,10 @@ package com.android.server.appsearch.contactsindexer;
 
 import android.annotation.NonNull;
 import android.content.Context;
+import android.database.ContentObserver;
+import android.net.Uri;
+import android.os.CancellationSignal;
+import android.provider.ContactsContract;
 import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
@@ -31,6 +35,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.Objects;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -42,15 +47,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>It reads the updated/newly-inserted/deleted contacts from CP2, and sync the changes into
  * AppSearch.
  *
- * <p>This class is NOT thread-safe.
+ * <p>This class is NOT thread safe.
  *
  * @hide
  */
-public final class PerUserContactsIndexer {
-    static final String TAG = "ContactsPerUserIndexer";
+public final class ContactsIndexerUserInstance {
+    static final String TAG = "ContactsIndexerUserInstance";
     static final String CONTACTS_INDEXER_STATE = "contacts_indexer_state";
 
     private final Context mContext;
+    private final ContactsObserver mContactsObserver;
     private PersistedData mPersistedData;
     // Used for batching/throttling the contact change notification so we won't schedule too many
     // delta updates.
@@ -59,7 +65,7 @@ public final class PerUserContactsIndexer {
 
     /**
      * Single executor to make sure there is only one active sync for this {@link
-     * PerUserContactsIndexer}
+     * ContactsIndexerUserInstance}
      */
     private final ScheduledThreadPoolExecutor mSingleScheduledExecutor;
     /**
@@ -137,13 +143,14 @@ public final class PerUserContactsIndexer {
     }
 
     /**
-     * Constructs a {@link PerUserContactsIndexer}.
+     * Constructs a {@link ContactsIndexerUserInstance}.
      *
      * @param context              Context object passed from
      *                             {@link com.android.server.appsearch.AppSearchManagerService}
      */
-    public PerUserContactsIndexer(@NonNull Context context) {
+    public ContactsIndexerUserInstance(@NonNull Context context) {
         mContext = Objects.requireNonNull(context);
+        mContactsObserver = new ContactsObserver();
         mUpdateScheduled = new AtomicBoolean(/*initialValue=*/ false);
         mSingleScheduledExecutor = new ScheduledThreadPoolExecutor(/*corePoolSize=*/ 1);
         mSingleScheduledExecutor.setMaximumPoolSize(1);
@@ -152,7 +159,42 @@ public final class PerUserContactsIndexer {
         mSingleScheduledExecutor.setRemoveOnCancelPolicy(true);
     }
 
-    /** Initializes this {@link PerUserContactsIndexer}. */
+    public void onStart() {
+        mContext.getContentResolver()
+                .registerContentObserver(
+                        ContactsContract.Contacts.CONTENT_URI,
+                        /*notifyForDescendants=*/ true,
+                        mContactsObserver);
+        // If this contacts indexer instance hasn't synced any CP2 changes into AppSearch,
+        // schedule a one-off task to do a full update. That is, sync all CP2 contacts into
+        // AppSearch.
+        // TODO(b/203605504): rely on last full update timestmp instead.
+        if (mPersistedData.mLastDeltaUpdateTimestampMillis == 0) {
+            ContactsIndexerMaintenanceService.scheduleOneOffFullUpdateJob(
+                    mContext, mContext.getUser().getIdentifier());
+        }
+    }
+
+    public void onStop() {
+        mContext.getContentResolver().unregisterContentObserver(mContactsObserver);
+    }
+
+    private class ContactsObserver extends ContentObserver {
+
+        public ContactsObserver() {
+            super(/*handler=*/ null);
+        }
+
+        @Override
+        public void onChange(boolean selfChange, @NonNull Collection<Uri> uris, int flags) {
+            if (!selfChange) {
+                // TODO(b/203605504): make delay configurable
+                doDeltaUpdate(/*delaySec=*/ 2);
+            }
+        }
+    }
+
+    /** Initializes this {@link ContactsIndexerUserInstance}. */
     public void initialize() {
         synchronized (mLock) {
             mPersistedData = loadPersistedDataLocked(
@@ -210,6 +252,19 @@ public final class PerUserContactsIndexer {
                 }
             }, delaySec, TimeUnit.SECONDS);
         }
+    }
+
+    /**
+     * Performs a full sync of CP2 contacts to AppSearch builtin:Person corpus.
+     *
+     * @param signal Used to indicate if the full update task should be cancelled.
+     *
+     * TODO(b/203605504): handle cancellation signal to abort the job
+     */
+    public void doFullUpdate(CancellationSignal signal) {
+        mPersistedData.reset();
+        mUpdateScheduled.set(false);
+        doDeltaUpdate(/*delaySec=*/ 0);
     }
 
     /** Loads the persisted data from disk. */
