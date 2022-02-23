@@ -31,6 +31,8 @@ import java.util.Objects;
 /**
  * Manages the per device-user ContactsIndexer instance to index CP2 contacts into AppSearch.
  *
+ * <p>This class is thread safe.
+ *
  * @hide
  */
 public final class ContactsIndexerManagerService extends SystemService {

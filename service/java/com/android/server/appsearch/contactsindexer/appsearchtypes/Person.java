@@ -34,24 +34,24 @@ import java.util.Objects;
  * @hide
  */
 public class Person extends GenericDocument {
-    static final String SCHEMA_TYPE = "builtin:Person";
+    public static final String SCHEMA_TYPE = "builtin:Person";
 
     // Properties
-    static final String PERSON_PROPERTY_NAME = "name";
-    static final String PERSON_PROPERTY_GIVEN_NAME = "givenName";
-    static final String PERSON_PROPERTY_MIDDLE_NAME = "middleName";
-    static final String PERSON_PROPERTY_FAMILY_NAME = "familyName";
-    static final String PERSON_PROPERTY_EXTERNAL_URI = "externalUri";
-    static final String PERSON_PROPERTY_ADDITIONAL_NAME = "additionalName";
-    static final String PERSON_PROPERTY_IS_IMPORTANT = "isImportant";
-    static final String PERSON_PROPERTY_IS_BOT = "isBot";
-    static final String PERSON_PROPERTY_IMAGE_URI = "imageUri";
+    public static final String PERSON_PROPERTY_NAME = "name";
+    public static final String PERSON_PROPERTY_GIVEN_NAME = "givenName";
+    public static final String PERSON_PROPERTY_MIDDLE_NAME = "middleName";
+    public static final String PERSON_PROPERTY_FAMILY_NAME = "familyName";
+    public static final String PERSON_PROPERTY_EXTERNAL_URI = "externalUri";
+    public static final String PERSON_PROPERTY_ADDITIONAL_NAME = "additionalName";
+    public static final String PERSON_PROPERTY_IS_IMPORTANT = "isImportant";
+    public static final String PERSON_PROPERTY_IS_BOT = "isBot";
+    public static final String PERSON_PROPERTY_IMAGE_URI = "imageUri";
 
     // Right now for nested document types, we need to expose the value for the tests to compare.
     @VisibleForTesting
     public static final String PERSON_PROPERTY_CONTACT_POINT = "contactPoint";
 
-    static final AppSearchSchema SCHEMA = new AppSearchSchema.Builder(SCHEMA_TYPE)
+    public static final AppSearchSchema SCHEMA = new AppSearchSchema.Builder(SCHEMA_TYPE)
             // full display name
             .addProperty(new AppSearchSchema.StringPropertyConfig.Builder(PERSON_PROPERTY_NAME)
                     .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_OPTIONAL)

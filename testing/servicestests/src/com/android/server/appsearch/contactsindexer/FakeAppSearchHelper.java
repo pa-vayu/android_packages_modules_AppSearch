@@ -23,7 +23,9 @@ import com.android.server.appsearch.contactsindexer.appsearchtypes.Person;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
 public final class FakeAppSearchHelper extends AppSearchHelper {
@@ -40,12 +42,20 @@ public final class FakeAppSearchHelper extends AppSearchHelper {
     }
 
     @Override
-    void indexContacts(@NonNull Executor executor, @NonNull Person... contacts) {
-        mIndexedContacts.addAll(Arrays.asList(contacts));
+    public CompletableFuture<Void> indexContactsAsync(@NonNull Collection<Person> contacts,
+            @NonNull Executor executor) {
+        mIndexedContacts.addAll(contacts);
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        future.complete(null);
+        return future;
     }
 
     @Override
-    void removeContactsById(@NonNull Executor executor, @NonNull String... ids) {
-        mRemovedIds.addAll(Arrays.asList(ids));
+    public CompletableFuture<Void> removeContactsByIdAsync(@NonNull Collection<String> ids,
+            @NonNull Executor executor) {
+        mRemovedIds.addAll(ids);
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        future.complete(null);
+        return future;
     }
 }

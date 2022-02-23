@@ -136,8 +136,7 @@ public final class ContactsIndexerImpl {
             int endIndex = Math.min(startIndex + NUM_DELETED_CONTACTS_PER_BATCH_FOR_APPSEARCH,
                     unWantedSize);
             Collection<String> currentContactIds = unWantedIdList.subList(startIndex, endIndex);
-            mAppSearchHelper.removeContactsById(mExecutorForAppSearch,
-                    currentContactIds.toArray(new String[0]));
+            mAppSearchHelper.removeContactsByIdAsync(currentContactIds, mExecutorForAppSearch);
             startIndex = endIndex;
         }
     }
@@ -228,7 +227,7 @@ public final class ContactsIndexerImpl {
                     // New set of builder and builderHelper for the new contact.
                     currentContactId = contactId;
                     personBuilder = new Person.Builder(
-                            AppSearchHelper.NAMESPACE,
+                            AppSearchHelper.NAMESPACE_NAME,
                             String.valueOf(contactId),
                             cursor.getString(displayNameIndex));
                     // TODO(b/203605504) add a helper to make those lines below cleaner.
@@ -314,9 +313,8 @@ public final class ContactsIndexerImpl {
                 return;
             }
 
-            Person[] contacts = mBatchedContacts.toArray(new Person[0]);
+            mAppSearchHelper.indexContactsAsync(mBatchedContacts, mExecutorForAppSearch);
             mBatchedContacts.clear();
-            mAppSearchHelper.indexContacts(mExecutorForAppSearch, contacts);
         }
     };
 }

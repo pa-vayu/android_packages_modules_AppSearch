@@ -43,6 +43,8 @@ import java.util.Set;
  * Helper Class to handle data for different MIME types from CP2, and build {@link Person} from
  * them.
  *
+ * <p>This class is not thread safe.
+ *
  * @hide
  */
 public final class ContactDataHandler {

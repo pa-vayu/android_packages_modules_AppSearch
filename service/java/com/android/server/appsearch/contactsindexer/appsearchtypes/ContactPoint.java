@@ -47,7 +47,7 @@ public final class ContactPoint extends GenericDocument {
     public static final String CONTACT_POINT_PROPERTY_TELEPHONE = "telephone";
 
     // Schema
-    static final AppSearchSchema SCHEMA = new AppSearchSchema.Builder(
+    public static final AppSearchSchema SCHEMA = new AppSearchSchema.Builder(
             SCHEMA_TYPE)
             .addProperty(new AppSearchSchema.StringPropertyConfig.Builder(
                     CONTACT_POINT_PROPERTY_LABEL)
@@ -128,8 +128,9 @@ public final class ContactPoint extends GenericDocument {
         /**
          * Creates a new {@link Builder}
          *
-         * @param namespace The namespace of the Email.
-         * @param id        The ID of the Email.
+         * @param namespace The namespace for this document.
+         * @param id        The id of this {@link ContactPoint}. It doesn't matter if it is used as
+         *                  a nested documents in {@link Person}.
          * @param label     The label for this {@link ContactPoint}.
          */
         public Builder(@NonNull String namespace, @NonNull String id, @NonNull String label) {
