@@ -18,7 +18,9 @@ package com.android.server.appsearch;
 import static android.app.appsearch.AppSearchResult.throwableToFailedResult;
 import static android.os.Process.INVALID_UID;
 
-import android.Manifest;
+import static com.android.server.appsearch.util.ServiceImplHelper.invokeCallbackOnError;
+import static com.android.server.appsearch.util.ServiceImplHelper.invokeCallbackOnResult;
+
 import android.annotation.ElapsedRealtimeLong;
 import android.annotation.NonNull;
 import android.annotation.WorkerThread;
@@ -33,7 +35,6 @@ import android.app.appsearch.SearchSpec;
 import android.app.appsearch.SetSchemaResponse;
 import android.app.appsearch.StorageInfo;
 import android.app.appsearch.VisibilityDocument;
-import android.app.appsearch.aidl.AppSearchBatchResultParcel;
 import android.app.appsearch.aidl.AppSearchResultParcel;
 import android.app.appsearch.aidl.IAppSearchBatchResultCallback;
 import android.app.appsearch.aidl.IAppSearchManager;
@@ -52,14 +53,11 @@ import android.content.pm.PackageStats;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
-import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.UserHandle;
-import android.os.UserManager;
 import android.util.ArraySet;
 import android.util.Log;
 
-import com.android.internal.annotations.GuardedBy;
 import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
 import com.android.server.appsearch.external.localstorage.stats.CallStats;
@@ -67,7 +65,8 @@ import com.android.server.appsearch.external.localstorage.stats.OptimizeStats;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
 import com.android.server.appsearch.observer.AppSearchObserverProxy;
 import com.android.server.appsearch.stats.StatsCollector;
-import com.android.server.appsearch.util.PackageUtil;
+import com.android.server.appsearch.util.ExecutorManager;
+import com.android.server.appsearch.util.ServiceImplHelper;
 import com.android.server.appsearch.visibilitystore.FrameworkCallerAccess;
 import com.android.server.usage.StorageStatsManagerLocal;
 import com.android.server.usage.StorageStatsManagerLocal.StorageStatsAugmenter;
@@ -85,9 +84,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
 /**
  * The main service implementation which contains AppSearch's platform functionality.
@@ -96,24 +92,22 @@ import java.util.concurrent.TimeUnit;
  */
 public class AppSearchManagerService extends SystemService {
     private static final String TAG = "AppSearchManagerService";
+
+    /**
+     * An executor for system activity not tied to any particular user.
+     *
+     * <p>NOTE: Never call shutdownNow(). AppSearchManagerService persists forever even as
+     * individual users are added and removed -- without this pool the service will be broken. And,
+     * clients waiting for callbacks will never receive anything and will hang.
+     */
+    private static final Executor SHARED_EXECUTOR = ExecutorManager.createDefaultExecutorService();
+
     private final Context mContext;
+    private final ExecutorManager mExecutorManager = new ExecutorManager();
+
     private PackageManager mPackageManager;
-    private UserManager mUserManager;
+    private ServiceImplHelper mServiceImplHelper;
     private AppSearchUserInstanceManager mAppSearchUserInstanceManager;
-
-    // Never call shutdownNow(). It will cancel the futures it's returned. And since
-    // Executor#execute won't return anything, we will hang forever waiting for the execution.
-    // AppSearch multi-thread execution is guarded by Read & Write Lock in AppSearchImpl, all
-    // mutate requests will need to gain write lock and query requests need to gain read lock.
-    private static final Executor EXECUTOR = new ThreadPoolExecutor(/*corePoolSize=*/1,
-            Runtime.getRuntime().availableProcessors(), /*keepAliveTime*/ 60L, TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>());
-
-    // Cache of unlocked users so we don't have to query UserManager service each time. The "locked"
-    // suffix refers to the fact that access to the field should be locked; unrelated to the
-    // unlocked status of users.
-    @GuardedBy("mUnlockedUsersLocked")
-    private final Set<UserHandle> mUnlockedUsersLocked = new ArraySet<>();
 
     public AppSearchManagerService(Context context) {
         super(context);
@@ -124,8 +118,8 @@ public class AppSearchManagerService extends SystemService {
     public void onStart() {
         publishBinderService(Context.APP_SEARCH_SERVICE, new Stub());
         mPackageManager = getContext().getPackageManager();
+        mServiceImplHelper = new ServiceImplHelper(mContext, mExecutorManager);
         mAppSearchUserInstanceManager = AppSearchUserInstanceManager.getInstance();
-        mUserManager = mContext.getSystemService(UserManager.class);
         registerReceivers();
         LocalManagerRegistry.getManager(StorageStatsManagerLocal.class)
                 .registerStorageStatsAugmenter(new AppSearchStorageStatsAugmenter(), TAG);
@@ -134,7 +128,7 @@ public class AppSearchManagerService extends SystemService {
     @Override
     public void onBootPhase(/* @BootPhase */ int phase) {
         if (phase == PHASE_BOOT_COMPLETED) {
-            StatsCollector.getInstance(mContext, EXECUTOR);
+            StatsCollector.getInstance(mContext, SHARED_EXECUTOR);
         }
     }
 
@@ -164,39 +158,21 @@ public class AppSearchManagerService extends SystemService {
         public void onReceive(@NonNull Context context, @NonNull Intent intent) {
             Objects.requireNonNull(context);
             Objects.requireNonNull(intent);
-
-            switch (intent.getAction()) {
-                case Intent.ACTION_USER_REMOVED:
-                    UserHandle userHandle = intent.getParcelableExtra(Intent.EXTRA_USER);
-                    if (userHandle == null) {
-                        Log.e(TAG, "Extra "
-                                + Intent.EXTRA_USER + " is missing in the intent: " + intent);
-                        return;
-                    }
-                    handleUserRemoved(userHandle);
-                    break;
-                default:
-                    Log.e(TAG, "Received unknown intent: " + intent);
+            if (Intent.ACTION_USER_REMOVED.equals(intent.getAction())) {
+                UserHandle userHandle = intent.getParcelableExtra(Intent.EXTRA_USER);
+                if (userHandle == null) {
+                    Log.e(TAG,
+                            "Extra " + Intent.EXTRA_USER + " is missing in the intent: " + intent);
+                    return;
+                }
+                // We can handle user removal the same way as user stopping: shut down the executor
+                // and close icing. The data of AppSearch is saved in the "credential encrypted"
+                // system directory of each user. That directory will be auto-deleted when a user is
+                // removed, so we don't need it handle it specially.
+                onUserStopping(userHandle);
+            } else {
+                Log.e(TAG, "Received unknown intent: " + intent);
             }
-        }
-    }
-
-    /**
-     * Handles user removed action.
-     *
-     * <p>Only need to clear the AppSearchImpl instance. The data of AppSearch is saved in the
-     * "credential encrypted" system directory of each user. That directory will be auto-deleted
-     * when a user is removed.
-     *
-     * @param userHandle The multi-user handle of the user that need to be removed.
-     * @see android.os.Environment#getDataSystemCeDirectory
-     */
-    private void handleUserRemoved(@NonNull UserHandle userHandle) {
-        try {
-            mAppSearchUserInstanceManager.closeAndRemoveUserInstance(userHandle);
-            Log.i(TAG, "Removed AppSearchImpl instance for: " + userHandle);
-        } catch (Throwable t) {
-            Log.e(TAG, "Unable to remove data for: " + userHandle, t);
         }
     }
 
@@ -230,8 +206,8 @@ public class AppSearchManagerService extends SystemService {
     private void handlePackageRemoved(@NonNull String packageName, int uid) {
         UserHandle userHandle = UserHandle.getUserHandleForUid(uid);
         try {
-            if (isUserLocked(userHandle)) {
-                // We cannot access a locked user's directry and remove package data from it.
+            if (mServiceImplHelper.isUserLocked(userHandle)) {
+                // We cannot access a locked user's directory and remove package data from it.
                 // We should remove those uninstalled package data when the user is unlocking.
                 return;
             }
@@ -240,7 +216,9 @@ public class AppSearchManagerService extends SystemService {
                 Context userContext = mContext.createContextAsUser(userHandle, /*flags=*/ 0);
                 AppSearchUserInstance instance =
                         mAppSearchUserInstanceManager.getOrCreateUserInstance(
-                                userContext, userHandle, AppSearchConfig.getInstance(EXECUTOR));
+                                userContext,
+                                userHandle,
+                                AppSearchConfig.getInstance(SHARED_EXECUTOR));
                 //TODO(b/145759910) clear visibility setting for package.
                 instance.getAppSearchImpl().clearPackageData(packageName);
                 dispatchChangeNotifications(instance);
@@ -255,17 +233,17 @@ public class AppSearchManagerService extends SystemService {
     public void onUserUnlocking(@NonNull TargetUser user) {
         Objects.requireNonNull(user);
         UserHandle userHandle = user.getUserHandle();
-        synchronized (mUnlockedUsersLocked) {
-            mUnlockedUsersLocked.add(userHandle);
-        }
-        EXECUTOR.execute(() -> {
+        mServiceImplHelper.setUserIsLocked(userHandle, false);
+        mExecutorManager.getOrCreateUserExecutor(userHandle).execute(() -> {
             try {
                 // Only clear the package's data if AppSearch exists for this user.
                 if (AppSearchUserInstanceManager.getAppSearchDir(userHandle).exists()) {
                     Context userContext = mContext.createContextAsUser(userHandle, /*flags=*/ 0);
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getOrCreateUserInstance(
-                                    userContext, userHandle, AppSearchConfig.getInstance(EXECUTOR));
+                                    userContext,
+                                    userHandle,
+                                    AppSearchConfig.getInstance(SHARED_EXECUTOR));
                     List<PackageInfo> installedPackageInfos = userContext
                             .getPackageManager()
                             .getInstalledPackages(/*flags=*/0);
@@ -286,33 +264,19 @@ public class AppSearchManagerService extends SystemService {
     @Override
     public void onUserStopping(@NonNull TargetUser user) {
         Objects.requireNonNull(user);
-
-        synchronized (mUnlockedUsersLocked) {
-            UserHandle userHandle = user.getUserHandle();
-            mUnlockedUsersLocked.remove(userHandle);
-            try {
-                mAppSearchUserInstanceManager.closeAndRemoveUserInstance(userHandle);
-            } catch (Throwable t) {
-                Log.e(TAG, "Error handling user stopping.", t);
-            }
-        }
+        onUserStopping(user.getUserHandle());
     }
 
-    private void verifyUserUnlocked(@NonNull UserHandle callingUser) {
-        if (isUserLocked(callingUser)) {
-            throw new IllegalStateException(callingUser + " is locked or not running.");
-        }
-    }
-
-    private boolean isUserLocked(@NonNull UserHandle callingUser) {
-        synchronized (mUnlockedUsersLocked) {
-            // First, check the local copy.
-            if (mUnlockedUsersLocked.contains(callingUser)) {
-                return false;
-            }
-            // If the local copy says the user is locked, check with UM for the actual state,
-            // since the user might just have been unlocked.
-            return !mUserManager.isUserUnlockingOrUnlocked(callingUser);
+    private void onUserStopping(@NonNull UserHandle userHandle) {
+        Objects.requireNonNull(userHandle);
+        Log.i(TAG, "Shutting down AppSearch for user " + userHandle);
+        try {
+            mExecutorManager.shutDownAndRemoveUserExecutor(userHandle);
+            mAppSearchUserInstanceManager.closeAndRemoveUserInstance(userHandle);
+            mServiceImplHelper.setUserIsLocked(userHandle, true);
+            Log.i(TAG, "Removed AppSearchImpl instance for: " + userHandle);
+        } catch (Throwable t) {
+            Log.e(TAG, "Unable to remove data for: " + userHandle, t);
         }
     }
 
@@ -336,22 +300,17 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(callback);
 
             long totalLatencyStartTimeMillis = SystemClock.elapsedRealtime();
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 @AppSearchResult.ResultCode int statusCode = AppSearchResult.RESULT_OK;
                 AppSearchUserInstance instance = null;
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     List<AppSearchSchema> schemas = new ArrayList<>(schemaBundles.size());
                     for (int i = 0; i < schemaBundles.size(); i++) {
                         schemas.add(new AppSearchSchema(schemaBundles.get(i)));
@@ -384,11 +343,11 @@ public class AppSearchManagerService extends SystemService {
                     // schemas which  is not included in the request will be delete if we force
                     // override incompatible schemas. And all documents of these types will be
                     // deleted as well. We should checkForOptimize for these deletion.
-                    checkForOptimize(instance);
+                    checkForOptimize(targetUser, instance);
                 } catch (Throwable t) {
                     ++operationFailureCount;
                     statusCode = throwableToFailedResult(t).getResultCode();
-                    invokeCallbackOnError(callback, t);
+                    invokeCallbackOnResult(callback, throwableToFailedResult(t));
                 } finally {
                     if (instance != null) {
                         int estimatedBinderLatencyMillis =
@@ -426,18 +385,13 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
 
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
 
@@ -453,7 +407,7 @@ public class AppSearchManagerService extends SystemService {
                             callback,
                             AppSearchResult.newSuccessfulResult(response.getBundle()));
                 } catch (Throwable t) {
-                    invokeCallbackOnError(callback, t);
+                    invokeCallbackOnResult(callback, throwableToFailedResult(t));
                 }
             });
         }
@@ -469,18 +423,13 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
 
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     List<String> namespaces =
@@ -489,7 +438,7 @@ public class AppSearchManagerService extends SystemService {
                     invokeCallbackOnResult(
                             callback, AppSearchResult.newSuccessfulResult(namespaces));
                 } catch (Throwable t) {
-                    invokeCallbackOnError(callback, t);
+                    invokeCallbackOnResult(callback, throwableToFailedResult(t));
                 }
             });
         }
@@ -509,22 +458,17 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(callback);
 
             long totalLatencyStartTimeMillis = SystemClock.elapsedRealtime();
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 @AppSearchResult.ResultCode int statusCode = AppSearchResult.RESULT_OK;
                 AppSearchUserInstance instance = null;
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     AppSearchBatchResult.Builder<String, Void> resultBuilder =
                             new AppSearchBatchResult.Builder<>();
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
@@ -558,7 +502,8 @@ public class AppSearchManagerService extends SystemService {
 
                     // The existing documents with same ID will be deleted, so there may be some
                     // resources that could be released after optimize().
-                    checkForOptimize(instance, /*mutateBatchSize=*/ documentBundles.size());
+                    checkForOptimize(
+                            targetUser, instance, /*mutateBatchSize=*/ documentBundles.size());
                 } catch (Throwable t) {
                     ++operationFailureCount;
                     statusCode = throwableToFailedResult(t).getResultCode();
@@ -608,24 +553,19 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(callback);
 
             long totalLatencyStartTimeMillis = SystemClock.elapsedRealtime();
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-
-            boolean global = !callerAttributionSource.getPackageName().equals(targetPackageName);
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 @AppSearchResult.ResultCode int statusCode = AppSearchResult.RESULT_OK;
                 AppSearchUserInstance instance = null;
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
+                boolean global =
+                        !callerAttributionSource.getPackageName().equals(targetPackageName);
                 try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     AppSearchBatchResult.Builder<String, Bundle> resultBuilder =
                             new AppSearchBatchResult.Builder<>();
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
@@ -713,22 +653,17 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(callback);
 
             long totalLatencyStartTimeMillis = SystemClock.elapsedRealtime();
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 @AppSearchResult.ResultCode int statusCode = AppSearchResult.RESULT_OK;
                 AppSearchUserInstance instance = null;
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     SearchResultPage searchResultPage = instance.getAppSearchImpl().query(
                             callerAttributionSource.getPackageName(),
@@ -743,7 +678,7 @@ public class AppSearchManagerService extends SystemService {
                 } catch (Throwable t) {
                     ++operationFailureCount;
                     statusCode = throwableToFailedResult(t).getResultCode();
-                    invokeCallbackOnError(callback, t);
+                    invokeCallbackOnResult(callback, throwableToFailedResult(t));
                 } finally {
                     if (instance != null) {
                         int estimatedBinderLatencyMillis =
@@ -783,22 +718,17 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(callback);
 
             long totalLatencyStartTimeMillis = SystemClock.elapsedRealtime();
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 @AppSearchResult.ResultCode int statusCode = AppSearchResult.RESULT_OK;
                 AppSearchUserInstance instance = null;
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
 
                     boolean callerHasSystemAccess = instance.getVisibilityChecker()
@@ -817,7 +747,7 @@ public class AppSearchManagerService extends SystemService {
                 } catch (Throwable t) {
                     ++operationFailureCount;
                     statusCode = throwableToFailedResult(t).getResultCode();
-                    invokeCallbackOnError(callback, t);
+                    invokeCallbackOnResult(callback, throwableToFailedResult(t));
                 } finally {
                     if (instance != null) {
                         int estimatedBinderLatencyMillis =
@@ -851,18 +781,13 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
 
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     // TODO(b/173532925): Implement logging for statsBuilder
@@ -874,7 +799,7 @@ public class AppSearchManagerService extends SystemService {
                             callback,
                             AppSearchResult.newSuccessfulResult(searchResultPage.getBundle()));
                 } catch (Throwable t) {
-                    invokeCallbackOnError(callback, t);
+                    invokeCallbackOnResult(callback, throwableToFailedResult(t));
                 }
             });
         }
@@ -887,26 +812,22 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(userHandle);
 
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
-                try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
-                    AppSearchUserInstance instance =
-                            mAppSearchUserInstanceManager.getUserInstance(targetUser);
-                    instance.getAppSearchImpl().invalidateNextPageToken(
-                            callerAttributionSource.getPackageName(), nextPageToken);
-                } catch (Throwable t) {
-                    Log.e(TAG, "Unable to invalidate the query page token", t);
-                }
-            });
+            try {
+                UserHandle targetUser = mServiceImplHelper.verifyIncomingCall(
+                        callerAttributionSource, userHandle);
+                mExecutorManager.getOrCreateUserExecutor(targetUser).execute(() -> {
+                    try {
+                        AppSearchUserInstance instance =
+                                mAppSearchUserInstanceManager.getUserInstance(targetUser);
+                        instance.getAppSearchImpl().invalidateNextPageToken(
+                                callerAttributionSource.getPackageName(), nextPageToken);
+                    } catch (Throwable t) {
+                        Log.e(TAG, "Unable to invalidate the query page token", t);
+                    }
+                });
+            } catch (Throwable t) {
+                Log.e(TAG, "Unable to invalidate the query page token", t);
+            }
         }
 
         @Override
@@ -926,18 +847,13 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
 
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     // we don't need to append the file. The file is always brand new.
@@ -964,7 +880,7 @@ public class AppSearchManagerService extends SystemService {
                     }
                     invokeCallbackOnResult(callback, AppSearchResult.newSuccessfulResult(null));
                 } catch (Throwable t) {
-                    invokeCallbackOnError(callback, t);
+                    invokeCallbackOnResult(callback, throwableToFailedResult(t));
                 }
             });
         }
@@ -982,18 +898,13 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
 
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
 
@@ -1029,7 +940,7 @@ public class AppSearchManagerService extends SystemService {
                     invokeCallbackOnResult(callback,
                             AppSearchResult.newSuccessfulResult(migrationFailureBundles));
                 } catch (Throwable t) {
-                    invokeCallbackOnError(callback, t);
+                    invokeCallbackOnResult(callback, throwableToFailedResult(t));
                 }
             });
         }
@@ -1053,19 +964,14 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
 
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 try {
                     String callingPackageName = callerAttributionSource.getPackageName();
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     if (systemUsage) {
@@ -1089,7 +995,7 @@ public class AppSearchManagerService extends SystemService {
                     invokeCallbackOnResult(
                             callback, AppSearchResult.newSuccessfulResult(/*value=*/ null));
                 } catch (Throwable t) {
-                    invokeCallbackOnError(callback, t);
+                    invokeCallbackOnResult(callback, throwableToFailedResult(t));
                 }
             });
         }
@@ -1111,22 +1017,17 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(callback);
 
             long totalLatencyStartTimeMillis = SystemClock.elapsedRealtime();
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 @AppSearchResult.ResultCode int statusCode = AppSearchResult.RESULT_OK;
                 AppSearchUserInstance instance = null;
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     AppSearchBatchResult.Builder<String, Void> resultBuilder =
                             new AppSearchBatchResult.Builder<>();
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
@@ -1158,7 +1059,7 @@ public class AppSearchManagerService extends SystemService {
                     // the method is called documented in the method description.
                     dispatchChangeNotifications(instance);
 
-                    checkForOptimize(instance, ids.size());
+                    checkForOptimize(targetUser, instance, ids.size());
                 } catch (Throwable t) {
                     ++operationFailureCount;
                     statusCode = throwableToFailedResult(t).getResultCode();
@@ -1205,22 +1106,17 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(callback);
 
             long totalLatencyStartTimeMillis = SystemClock.elapsedRealtime();
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 @AppSearchResult.ResultCode int statusCode = AppSearchResult.RESULT_OK;
                 AppSearchUserInstance instance = null;
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     instance.getAppSearchImpl().removeByQuery(
                             callerAttributionSource.getPackageName(),
@@ -1237,11 +1133,11 @@ public class AppSearchManagerService extends SystemService {
                     // the method is called documented in the method description.
                     dispatchChangeNotifications(instance);
 
-                    checkForOptimize(instance);
+                    checkForOptimize(targetUser, instance);
                 } catch (Throwable t) {
                     ++operationFailureCount;
                     statusCode = throwableToFailedResult(t).getResultCode();
-                    invokeCallbackOnError(callback, t);
+                    invokeCallbackOnResult(callback, throwableToFailedResult(t));
                 } finally {
                     if (instance != null) {
                         int estimatedBinderLatencyMillis =
@@ -1277,18 +1173,13 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
 
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     StorageInfo storageInfo = instance.getAppSearchImpl().getStorageInfoForDatabase(
@@ -1297,7 +1188,7 @@ public class AppSearchManagerService extends SystemService {
                     invokeCallbackOnResult(
                             callback, AppSearchResult.newSuccessfulResult(storageInfoBundle));
                 } catch (Throwable t) {
-                    invokeCallbackOnError(callback, t);
+                    invokeCallbackOnResult(callback, throwableToFailedResult(t));
                 }
             });
         }
@@ -1311,49 +1202,47 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(userHandle);
 
             long totalLatencyStartTimeMillis = SystemClock.elapsedRealtime();
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            EXECUTOR.execute(() -> {
-                @AppSearchResult.ResultCode int statusCode = AppSearchResult.RESULT_OK;
-                AppSearchUserInstance instance = null;
-                int operationSuccessCount = 0;
-                int operationFailureCount = 0;
-                try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
-                    instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
-                    instance.getAppSearchImpl().persistToDisk(PersistType.Code.FULL);
-                    ++operationSuccessCount;
-                } catch (Throwable t) {
-                    ++operationFailureCount;
-                    statusCode = throwableToFailedResult(t).getResultCode();
-                    Log.e(TAG, "Unable to persist the data to disk", t);
-                } finally {
-                    if (instance != null) {
-                        int estimatedBinderLatencyMillis =
-                                2 * (int) (totalLatencyStartTimeMillis - binderCallStartTimeMillis);
-                        int totalLatencyMillis =
-                                (int) (SystemClock.elapsedRealtime() - totalLatencyStartTimeMillis);
-                        instance.getLogger().logStats(new CallStats.Builder()
-                                .setStatusCode(statusCode)
-                                .setTotalLatencyMillis(totalLatencyMillis)
-                                .setCallType(CallStats.CALL_TYPE_FLUSH)
-                                // TODO(b/173532925) check the existing binder call latency chart
-                                // is good enough for us:
-                                // http://dashboards/view/_72c98f9a_91d9_41d4_ab9a_bc14f79742b4
-                                .setEstimatedBinderLatencyMillis(estimatedBinderLatencyMillis)
-                                .setNumOperationsSucceeded(operationSuccessCount)
-                                .setNumOperationsFailed(operationFailureCount)
-                                .build());
+            try {
+                UserHandle targetUser = mServiceImplHelper.verifyIncomingCall(
+                        callerAttributionSource, userHandle);
+                mExecutorManager.getOrCreateUserExecutor(targetUser).execute(() -> {
+                    @AppSearchResult.ResultCode int statusCode = AppSearchResult.RESULT_OK;
+                    AppSearchUserInstance instance = null;
+                    int operationSuccessCount = 0;
+                    int operationFailureCount = 0;
+                    try {
+                        instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
+                        instance.getAppSearchImpl().persistToDisk(PersistType.Code.FULL);
+                        ++operationSuccessCount;
+                    } catch (Throwable t) {
+                        ++operationFailureCount;
+                        statusCode = throwableToFailedResult(t).getResultCode();
+                        Log.e(TAG, "Unable to persist the data to disk", t);
+                    } finally {
+                        if (instance != null) {
+                            int estimatedBinderLatencyMillis =
+                                    2 * (int) (totalLatencyStartTimeMillis
+                                            - binderCallStartTimeMillis);
+                            int totalLatencyMillis =
+                                    (int) (SystemClock.elapsedRealtime()
+                                            - totalLatencyStartTimeMillis);
+                            instance.getLogger().logStats(new CallStats.Builder()
+                                    .setStatusCode(statusCode)
+                                    .setTotalLatencyMillis(totalLatencyMillis)
+                                    .setCallType(CallStats.CALL_TYPE_FLUSH)
+                                    // TODO(b/173532925) check the existing binder call latency
+                                    // chart is good enough for us:
+                                    // http://dashboards/view/_72c98f9a_91d9_41d4_ab9a_bc14f79742b4
+                                    .setEstimatedBinderLatencyMillis(estimatedBinderLatencyMillis)
+                                    .setNumOperationsSucceeded(operationSuccessCount)
+                                    .setNumOperationsFailed(operationFailureCount)
+                                    .build());
+                        }
                     }
-                }
-            });
+                });
+            } catch (Throwable t) {
+                Log.e(TAG, "Unable to persist the data to disk", t);
+            }
         }
 
         @Override
@@ -1369,31 +1258,29 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(observerProxyStub);
 
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            long callingIdentity = Binder.clearCallingIdentity();
-
             // Note: addObserver is performed on the binder thread, unlike most AppSearch APIs
             try {
-                verifyCaller(callingUid, callerAttributionSource);
-                UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                verifyUserUnlocked(targetUser);
-
-                AppSearchUserInstance instance =
-                        mAppSearchUserInstanceManager.getUserInstance(targetUser);
-                boolean callerHasSystemAccess = instance.getVisibilityChecker()
-                        .doesCallerHaveSystemAccess(callerAttributionSource.getPackageName());
-                instance.getAppSearchImpl().addObserver(
-                        new FrameworkCallerAccess(callerAttributionSource, callerHasSystemAccess),
-                        targetPackageName,
-                        new ObserverSpec(observerSpecBundle),
-                        EXECUTOR,
-                        new AppSearchObserverProxy(observerProxyStub));
-                return new AppSearchResultParcel<>(AppSearchResult.newSuccessfulResult(null));
+                UserHandle targetUser = mServiceImplHelper.verifyIncomingCall(
+                        callerAttributionSource, userHandle);
+                long callingIdentity = Binder.clearCallingIdentity();
+                try {
+                    AppSearchUserInstance instance =
+                            mAppSearchUserInstanceManager.getUserInstance(targetUser);
+                    boolean callerHasSystemAccess = instance.getVisibilityChecker()
+                            .doesCallerHaveSystemAccess(callerAttributionSource.getPackageName());
+                    instance.getAppSearchImpl().addObserver(
+                            new FrameworkCallerAccess(
+                                    callerAttributionSource, callerHasSystemAccess),
+                            targetPackageName,
+                            new ObserverSpec(observerSpecBundle),
+                            mExecutorManager.getOrCreateUserExecutor(targetUser),
+                            new AppSearchObserverProxy(observerProxyStub));
+                    return new AppSearchResultParcel<>(AppSearchResult.newSuccessfulResult(null));
+                } finally {
+                    Binder.restoreCallingIdentity(callingIdentity);
+                }
             } catch (Throwable t) {
                 return new AppSearchResultParcel<>(throwableToFailedResult(t));
-            } finally {
-                Binder.restoreCallingIdentity(callingIdentity);
             }
         }
 
@@ -1408,26 +1295,23 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(observerProxyStub);
 
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-            long callingIdentity = Binder.clearCallingIdentity();
-
             // Note: removeObserver is performed on the binder thread, unlike most AppSearch APIs
             try {
-                verifyCaller(callingUid, callerAttributionSource);
-                UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                verifyUserUnlocked(targetUser);
-
-                AppSearchUserInstance instance =
-                        mAppSearchUserInstanceManager.getUserInstance(targetUser);
-                instance.getAppSearchImpl().removeObserver(
-                        observedPackage,
-                        new AppSearchObserverProxy(observerProxyStub));
-                return new AppSearchResultParcel<>(AppSearchResult.newSuccessfulResult(null));
+                UserHandle targetUser = mServiceImplHelper.verifyIncomingCall(
+                        callerAttributionSource, userHandle);
+                long callingIdentity = Binder.clearCallingIdentity();
+                try {
+                    AppSearchUserInstance instance =
+                            mAppSearchUserInstanceManager.getUserInstance(targetUser);
+                    instance.getAppSearchImpl().removeObserver(
+                            observedPackage,
+                            new AppSearchObserverProxy(observerProxyStub));
+                    return new AppSearchResultParcel<>(AppSearchResult.newSuccessfulResult(null));
+                } finally {
+                    Binder.restoreCallingIdentity(callingIdentity);
+                }
             } catch (Throwable t) {
                 return new AppSearchResultParcel<>(throwableToFailedResult(t));
-            } finally {
-                Binder.restoreCallingIdentity(callingIdentity);
             }
         }
 
@@ -1442,33 +1326,29 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(callback);
 
             long totalLatencyStartTimeMillis = SystemClock.elapsedRealtime();
-            int callingPid = Binder.getCallingPid();
-            int callingUid = Binder.getCallingUid();
-
-            EXECUTOR.execute(() -> {
+            UserHandle targetUser = mServiceImplHelper.verifyIncomingCallWithCallback(
+                    callerAttributionSource, userHandle, callback);
+            if (targetUser == null) {
+                return;  // Verification failed; verifyIncomingCall triggered callback.
+            }
+            mServiceImplHelper.executeLambdaForUserAsync(targetUser, callback, () -> {
                 @AppSearchResult.ResultCode int statusCode = AppSearchResult.RESULT_OK;
                 AppSearchUserInstance instance = null;
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, callerAttributionSource);
-
-                    // Obtain the user where the client wants to run the operations in. This should
-                    // end up being the same as userHandle, assuming it is not a special user and
-                    // the client is allowed to run operations in that user.
-                    UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
-                    verifyUserUnlocked(targetUser);
-
                     Context targetUserContext = mContext.createContextAsUser(targetUser,
                             /*flags=*/ 0);
                     instance = mAppSearchUserInstanceManager.getOrCreateUserInstance(
-                            targetUserContext, targetUser, AppSearchConfig.getInstance(EXECUTOR));
+                            targetUserContext,
+                            targetUser,
+                            AppSearchConfig.getInstance(SHARED_EXECUTOR));
                     ++operationSuccessCount;
                     invokeCallbackOnResult(callback, AppSearchResult.newSuccessfulResult(null));
                 } catch (Throwable t) {
                     ++operationFailureCount;
                     statusCode = throwableToFailedResult(t).getResultCode();
-                    invokeCallbackOnError(callback, t);
+                    invokeCallbackOnResult(callback, throwableToFailedResult(t));
                 } finally {
                     if (instance != null) {
                         int estimatedBinderLatencyMillis =
@@ -1490,149 +1370,6 @@ public class AppSearchManagerService extends SystemService {
                 }
             });
         }
-
-        /** Invokes the {@link IAppSearchResultCallback} with the result. */
-        private void invokeCallbackOnResult(
-                IAppSearchResultCallback callback, AppSearchResult<?> result) {
-            try {
-                callback.onResult(new AppSearchResultParcel<>(result));
-            } catch (RemoteException e) {
-                Log.e(TAG, "Unable to send result to the callback", e);
-            }
-        }
-
-        /** Invokes the {@link IAppSearchBatchResultCallback} with the result. */
-        private void invokeCallbackOnResult(
-                IAppSearchBatchResultCallback callback, AppSearchBatchResult<String, ?> result) {
-            try {
-                callback.onResult(new AppSearchBatchResultParcel<>(result));
-            } catch (RemoteException e) {
-                Log.e(TAG, "Unable to send result to the callback", e);
-            }
-        }
-
-        /**
-         * Invokes the {@link IAppSearchResultCallback} with an throwable.
-         *
-         * <p>The throwable is convert to a {@link AppSearchResult};
-         */
-        private void invokeCallbackOnError(IAppSearchResultCallback callback, Throwable throwable) {
-            AppSearchResult<?> result = throwableToFailedResult(throwable);
-            try {
-                callback.onResult(new AppSearchResultParcel<>(result));
-            } catch (RemoteException e) {
-                Log.e(TAG, "Unable to send result to the callback", e);
-            }
-        }
-
-        /**
-         * Invokes the {@link IAppSearchBatchResultCallback} with an unexpected internal throwable.
-         *
-         * <p>The throwable is converted to {@link AppSearchResult}.
-         */
-        private void invokeCallbackOnError(
-                @NonNull IAppSearchBatchResultCallback callback, @NonNull Throwable throwable) {
-            AppSearchResult<?> result = throwableToFailedResult(throwable);
-            try {
-                callback.onSystemError(new AppSearchResultParcel<>(result));
-            } catch (RemoteException e) {
-                Log.e(TAG, "Unable to send error to the callback", e);
-            }
-        }
-    }
-
-    /**
-     * Helper for dealing with incoming user arguments to system service calls.
-     *
-     * <p>Takes care of checking permissions and if the target is special user, this method will
-     * simply throw.
-     *
-     * @param targetUserHandle The user which the caller is requesting to execute as.
-     * @param callingPid The actual pid of the caller as determined by Binder.
-     * @param callingUid The actual uid of the caller as determined by Binder.
-     *
-     * @return the user handle that the call should run as. Will always be a concrete user.
-     *
-     * @throws IllegalArgumentException if the target user is a special user.
-     * @throws SecurityException if caller trying to interact across user without
-     * {@link Manifest.permission#INTERACT_ACROSS_USERS_FULL}
-     */
-    @NonNull
-    private UserHandle handleIncomingUser(@NonNull UserHandle targetUserHandle, int callingPid,
-            int callingUid) {
-        UserHandle callingUserHandle = UserHandle.getUserHandleForUid(callingUid);
-        if (callingUserHandle.equals(targetUserHandle)) {
-            return targetUserHandle;
-        }
-
-        // Duplicates UserController#ensureNotSpecialUser
-        if (targetUserHandle.getIdentifier() < 0) {
-            throw new IllegalArgumentException(
-                    "Call does not support special user " + targetUserHandle);
-        }
-
-        if (mContext.checkPermission(
-                Manifest.permission.INTERACT_ACROSS_USERS_FULL,
-                callingPid,
-                callingUid) == PackageManager.PERMISSION_GRANTED) {
-            return targetUserHandle;
-        }
-        throw new SecurityException(
-                "Permission denied while calling from uid " + callingUid
-                        + " with " + targetUserHandle + "; Requires permission: "
-                        + Manifest.permission.INTERACT_ACROSS_USERS_FULL);
-    }
-
-    /**
-     * Verify various aspects of the calling user.
-     * @param callingUid Uid of the caller, usually retrieved from Binder for authenticity.
-     * @param callerAttributionSource The permission identity of the caller
-     */
-    private void verifyCaller(int callingUid, @NonNull AttributionSource callerAttributionSource) {
-        // Check does the attribution source is one for the calling app.
-        callerAttributionSource.enforceCallingUid();
-        // Obtain the user where the client is running in. Note that this could be different from
-        // the userHandle where the client wants to run the AppSearch operation in.
-        UserHandle callingUserHandle = UserHandle.getUserHandleForUid(callingUid);
-        Context callingUserContext = mContext.createContextAsUser(callingUserHandle,
-                /*flags=*/ 0);
-
-        verifyCallingPackage(callingUserContext, callingUid,
-                callerAttributionSource.getPackageName());
-        verifyNotInstantApp(callingUserContext, callerAttributionSource.getPackageName());
-    }
-
-    /**
-     * Check that the caller's supposed package name matches the uid making the call.
-     *
-     * @throws SecurityException if the package name and uid don't match.
-     */
-    private void verifyCallingPackage(
-            @NonNull Context actualCallingUserContext,
-            int actualCallingUid,
-            @NonNull String claimedCallingPackage) {
-        int claimedCallingUid = PackageUtil.getPackageUid(
-                actualCallingUserContext, claimedCallingPackage);
-        if (claimedCallingUid != actualCallingUid) {
-            throw new SecurityException(
-                    "Specified calling package ["
-                            + claimedCallingPackage
-                            + "] does not match the calling uid "
-                            + actualCallingUid);
-        }
-    }
-
-    /**
-     * Ensure instant apps can't make calls to AppSearch.
-     *
-     * @throws SecurityException if the caller is an instant app.
-     */
-    private void verifyNotInstantApp(@NonNull Context userContext, @NonNull String packageName) {
-        PackageManager callingPackageManager = userContext.getPackageManager();
-        if (callingPackageManager.isInstantApp(packageName)) {
-            throw new SecurityException("Caller not allowed to create AppSearch session"
-                    + "; userHandle=" + userContext.getUser() + ", callingPackage=" + packageName);
-        }
     }
 
     private class AppSearchStorageStatsAugmenter implements StorageStatsAugmenter {
@@ -1647,7 +1384,7 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(userHandle);
 
             try {
-                verifyUserUnlocked(userHandle);
+                mServiceImplHelper.verifyUserUnlocked(userHandle);
                 AppSearchUserInstance instance =
                         mAppSearchUserInstanceManager.getUserInstanceOrNull(userHandle);
                 if (instance == null) {
@@ -1679,7 +1416,7 @@ public class AppSearchManagerService extends SystemService {
 
             UserHandle userHandle = UserHandle.getUserHandleForUid(uid);
             try {
-                verifyUserUnlocked(userHandle);
+                mServiceImplHelper.verifyUserUnlocked(userHandle);
                 String[] packagesForUid = mPackageManager.getPackagesForUid(uid);
                 if (packagesForUid == null) {
                     return;
@@ -1716,7 +1453,7 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(userHandle);
 
             try {
-                verifyUserUnlocked(userHandle);
+                mServiceImplHelper.verifyUserUnlocked(userHandle);
                 AppSearchUserInstance instance =
                         mAppSearchUserInstanceManager.getUserInstanceOrNull(userHandle);
                 if (instance == null) {
@@ -1757,8 +1494,11 @@ public class AppSearchManagerService extends SystemService {
     }
 
     @WorkerThread
-    private void checkForOptimize(AppSearchUserInstance instance, int mutateBatchSize) {
-        EXECUTOR.execute(() -> {
+    private void checkForOptimize(
+            @NonNull UserHandle targetUser,
+            @NonNull AppSearchUserInstance instance,
+            int mutateBatchSize) {
+        mExecutorManager.getOrCreateUserExecutor(targetUser).execute(() -> {
             long totalLatencyStartMillis = SystemClock.elapsedRealtime();
             OptimizeStats.Builder builder = new OptimizeStats.Builder();
             try {
@@ -1779,8 +1519,10 @@ public class AppSearchManagerService extends SystemService {
     }
 
     @WorkerThread
-    private void checkForOptimize(AppSearchUserInstance instance) {
-        EXECUTOR.execute(() -> {
+    private void checkForOptimize(
+            @NonNull UserHandle targetUser,
+            @NonNull AppSearchUserInstance instance) {
+        mExecutorManager.getOrCreateUserExecutor(targetUser).execute(() -> {
             long totalLatencyStartMillis = SystemClock.elapsedRealtime();
             OptimizeStats.Builder builder = new OptimizeStats.Builder();
             try {
