@@ -30,7 +30,7 @@ import java.util.concurrent.Executor;
 
 public final class FakeAppSearchHelper extends AppSearchHelper {
     public FakeAppSearchHelper(@NonNull Context context) {
-        super(context);
+        super(context, Runnable::run);
     }
 
     List<String> mRemovedIds = new ArrayList<>();
@@ -42,8 +42,7 @@ public final class FakeAppSearchHelper extends AppSearchHelper {
     }
 
     @Override
-    public CompletableFuture<Void> indexContactsAsync(@NonNull Collection<Person> contacts,
-            @NonNull Executor executor) {
+    public CompletableFuture<Void> indexContactsAsync(@NonNull Collection<Person> contacts) {
         mIndexedContacts.addAll(contacts);
         CompletableFuture<Void> future = new CompletableFuture<>();
         future.complete(null);
@@ -51,8 +50,7 @@ public final class FakeAppSearchHelper extends AppSearchHelper {
     }
 
     @Override
-    public CompletableFuture<Void> removeContactsByIdAsync(@NonNull Collection<String> ids,
-            @NonNull Executor executor) {
+    public CompletableFuture<Void> removeContactsByIdAsync(@NonNull Collection<String> ids) {
         mRemovedIds.addAll(ids);
         CompletableFuture<Void> future = new CompletableFuture<>();
         future.complete(null);

@@ -254,9 +254,8 @@ public final class ContactDataHandler {
         @NonNull
         @Override
         protected String getTypeLabel(@NonNull Resources resources, int type,
-                @NonNull String label) {
+                @Nullable String label) {
             Objects.requireNonNull(resources);
-            Objects.requireNonNull(label);
             return Email.getTypeLabel(resources, type, label).toString();
         }
     }
@@ -289,9 +288,8 @@ public final class ContactDataHandler {
         @NonNull
         @Override
         protected String getTypeLabel(@NonNull Resources resources, int type,
-                @NonNull String label) {
+                @Nullable String label) {
             Objects.requireNonNull(resources);
-            Objects.requireNonNull(label);
             return Phone.getTypeLabel(resources, type, label).toString();
         }
     }
@@ -329,9 +327,8 @@ public final class ContactDataHandler {
         @NonNull
         @Override
         protected String getTypeLabel(@NonNull Resources resources, int type,
-                @NonNull String label) {
+                @Nullable String label) {
             Objects.requireNonNull(resources);
-            Objects.requireNonNull(label);
             return StructuredPostal.getTypeLabel(resources, type, label).toString();
         }
     }

@@ -212,7 +212,7 @@ public class AppSearchManagerService extends SystemService {
                 return;
             }
             // Only clear the package's data if AppSearch exists for this user.
-            if (AppSearchUserInstanceManager.getAppSearchDir(userHandle).exists()) {
+            if (AppSearchModule.getAppSearchDir(userHandle).exists()) {
                 Context userContext = mContext.createContextAsUser(userHandle, /*flags=*/ 0);
                 AppSearchUserInstance instance =
                         mAppSearchUserInstanceManager.getOrCreateUserInstance(
@@ -237,7 +237,7 @@ public class AppSearchManagerService extends SystemService {
         mExecutorManager.getOrCreateUserExecutor(userHandle).execute(() -> {
             try {
                 // Only clear the package's data if AppSearch exists for this user.
-                if (AppSearchUserInstanceManager.getAppSearchDir(userHandle).exists()) {
+                if (AppSearchModule.getAppSearchDir(userHandle).exists()) {
                     Context userContext = mContext.createContextAsUser(userHandle, /*flags=*/ 0);
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getOrCreateUserInstance(

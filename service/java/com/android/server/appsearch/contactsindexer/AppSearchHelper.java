@@ -60,6 +60,7 @@ public class AppSearchHelper {
     public static final String NAMESPACE_NAME = "";
 
     private final Context mContext;
+    private final Executor mExecutor;
     private volatile AppSearchSession mAppSearchSession;
 
     /**
@@ -71,22 +72,22 @@ public class AppSearchHelper {
     @NonNull
     public static AppSearchHelper createAppSearchHelper(@NonNull Context context,
             @NonNull Executor executor) throws InterruptedException, ExecutionException {
-        AppSearchHelper appSearchHelper = new AppSearchHelper(Objects.requireNonNull(context));
-        appSearchHelper.initialize(Objects.requireNonNull(executor));
+        AppSearchHelper appSearchHelper = new AppSearchHelper(Objects.requireNonNull(context),
+                Objects.requireNonNull(executor));
+        appSearchHelper.initialize();
         return appSearchHelper;
     }
 
     @VisibleForTesting
-    AppSearchHelper(@NonNull Context context) {
+    AppSearchHelper(@NonNull Context context, @NonNull Executor executor) {
         mContext = Objects.requireNonNull(context);
+        mExecutor = Objects.requireNonNull(executor);
     }
 
     /** Initializes the {@link AppSearchHelper}. */
     @WorkerThread
-    private void initialize(@NonNull Executor executor)
+    private void initialize()
             throws InterruptedException, ExecutionException {
-        Objects.requireNonNull(executor);
-
         AppSearchManager appSearchManager = mContext.getSystemService(AppSearchManager.class);
         if (appSearchManager == null) {
             throw new AndroidRuntimeException(
@@ -94,12 +95,12 @@ public class AppSearchHelper {
         }
 
         try {
-            mAppSearchSession = createAppSearchSessionAsync(appSearchManager, executor).get();
+            mAppSearchSession = createAppSearchSessionAsync(appSearchManager).get();
             // Always force set the schema. We are at the 1st version, so it should be fine for
             // doing it.
             // For future schema changes, we could also force set it, and rely on a full update
             // to bring back wiped data.
-            setPersonSchemaAsync(mAppSearchSession, /*forceOverride=*/ true, executor).get();
+            setPersonSchemaAsync(mAppSearchSession, /*forceOverride=*/ true).get();
         } catch (InterruptedException | ExecutionException | RuntimeException e) {
             Log.e(TAG, "Failed to create or config a AppSearchSession during initialization.", e);
             mAppSearchSession = null;
@@ -114,15 +115,13 @@ public class AppSearchHelper {
      * created, which must be done before ContactsIndexer starts handling CP2 changes.
      */
     private CompletableFuture<AppSearchSession> createAppSearchSessionAsync(
-            @NonNull AppSearchManager appSearchManager,
-            @NonNull Executor executor) {
-        Objects.requireNonNull(executor);
+            @NonNull AppSearchManager appSearchManager) {
         Objects.requireNonNull(appSearchManager);
 
         CompletableFuture<AppSearchSession> future = new CompletableFuture<>();
         final AppSearchManager.SearchContext searchContext =
                 new AppSearchManager.SearchContext.Builder(DATABASE_NAME).build();
-        appSearchManager.createSearchSession(searchContext, executor, result -> {
+        appSearchManager.createSearchSession(searchContext, mExecutor, result -> {
             if (result.isSuccess()) {
                 future.complete(result.getResultValue());
             } else {
@@ -147,9 +146,8 @@ public class AppSearchHelper {
      */
     @NonNull
     private CompletableFuture<Void> setPersonSchemaAsync(@NonNull AppSearchSession session,
-            boolean forceOverride, @NonNull Executor executor) {
+            boolean forceOverride) {
         Objects.requireNonNull(session);
-        Objects.requireNonNull(executor);
 
         CompletableFuture<Void> future = new CompletableFuture<>();
         SetSchemaRequest.Builder schemaBuilder = new SetSchemaRequest.Builder()
@@ -157,7 +155,7 @@ public class AppSearchHelper {
                 .addRequiredPermissionsForSchemaTypeVisibility(Person.SCHEMA_TYPE,
                         Collections.singleton(SetSchemaRequest.READ_CONTACTS))
                 .setForceOverride(forceOverride);
-        session.setSchema(schemaBuilder.build(), executor, executor,
+        session.setSchema(schemaBuilder.build(), mExecutor, mExecutor,
                 result -> {
                     if (result.isSuccess()) {
                         future.complete(null);
@@ -186,17 +184,15 @@ public class AppSearchHelper {
      *                 be thrown.
      */
     @NonNull
-    public CompletableFuture<Void> indexContactsAsync(@NonNull Collection<Person> contacts,
-            @NonNull Executor executor) {
+    public CompletableFuture<Void> indexContactsAsync(@NonNull Collection<Person> contacts) {
         Objects.requireNonNull(contacts);
-        Objects.requireNonNull(executor);
 
         // Get the size before doing an async call.
         int size = contacts.size();
         CompletableFuture<Void> future = new CompletableFuture<>();
         PutDocumentsRequest request = new PutDocumentsRequest.Builder().addGenericDocuments(
                 contacts).build();
-        mAppSearchSession.put(request, executor, new BatchResultCallback<String, Void>() {
+        mAppSearchSession.put(request, mExecutor, new BatchResultCallback<String, Void>() {
             @Override
             public void onResult(AppSearchBatchResult<String, Void> result) {
                 if (result.isSuccess()) {
@@ -230,15 +226,13 @@ public class AppSearchHelper {
      *            be thrown.
      */
     @NonNull
-    public CompletableFuture<Void> removeContactsByIdAsync(@NonNull Collection<String> ids,
-            @NonNull Executor executor) {
+    public CompletableFuture<Void> removeContactsByIdAsync(@NonNull Collection<String> ids) {
         Objects.requireNonNull(ids);
-        Objects.requireNonNull(executor);
 
         CompletableFuture<Void> future = new CompletableFuture<>();
         RemoveByDocumentIdRequest request = new RemoveByDocumentIdRequest.Builder(
                 NAMESPACE_NAME).addIds(ids).build();
-        mAppSearchSession.remove(request, executor, new BatchResultCallback<String, Void>() {
+        mAppSearchSession.remove(request, mExecutor, new BatchResultCallback<String, Void>() {
             @Override
             public void onResult(AppSearchBatchResult<String, Void> result) {
                 if (result.isSuccess()) {

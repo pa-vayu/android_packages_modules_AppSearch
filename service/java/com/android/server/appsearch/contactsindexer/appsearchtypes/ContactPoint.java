@@ -35,15 +35,10 @@ public final class ContactPoint extends GenericDocument {
     public static final String SCHEMA_TYPE = "builtin:ContactPoint";
 
     // Properties
-    @VisibleForTesting
     public static final String CONTACT_POINT_PROPERTY_LABEL = "label";
-    @VisibleForTesting
     public static final String CONTACT_POINT_PROPERTY_APP_ID = "appId";
-    @VisibleForTesting
     public static final String CONTACT_POINT_PROPERTY_ADDRESS = "address";
-    @VisibleForTesting
     public static final String CONTACT_POINT_PROPERTY_EMAIL = "email";
-    @VisibleForTesting
     public static final String CONTACT_POINT_PROPERTY_TELEPHONE = "telephone";
 
     // Schema

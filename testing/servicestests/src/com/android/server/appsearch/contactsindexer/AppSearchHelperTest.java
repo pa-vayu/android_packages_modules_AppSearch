@@ -102,7 +102,7 @@ public class AppSearchHelperTest {
             ids.add(String.valueOf(i));
         }
 
-        mAppSearchHelper.indexContactsAsync(Arrays.asList(contactData), Runnable::run).get();
+        mAppSearchHelper.indexContactsAsync(Arrays.asList(contactData)).get();
 
         AppSearchBatchResult<String, GenericDocument> result = TestUtils.getDocsByIdAsync(
                 mAppSearchHelper.getSession(),
@@ -125,11 +125,11 @@ public class AppSearchHelperTest {
         for (int i = 1; i <= contactsExisted; ++i) {
             ids.add(String.valueOf(i));
         }
-        mAppSearchHelper.indexContactsAsync(Arrays.asList(contactData), Runnable::run).get();
+        mAppSearchHelper.indexContactsAsync(Arrays.asList(contactData)).get();
         AppSearchBatchResult<String, GenericDocument> resultBeforeRemove =
                 TestUtils.getDocsByIdAsync(mAppSearchHelper.getSession(), ids, Runnable::run).get();
 
-        mAppSearchHelper.removeContactsByIdAsync(ids, Runnable::run).get();
+        mAppSearchHelper.removeContactsByIdAsync(ids).get();
 
         AppSearchBatchResult<String, GenericDocument> resultAfterRemove =
                 TestUtils.getDocsByIdAsync(mAppSearchHelper.getSession(), ids, Runnable::run).get();

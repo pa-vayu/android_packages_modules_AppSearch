@@ -20,7 +20,6 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.app.appsearch.exceptions.AppSearchException;
 import android.content.Context;
-import android.os.Environment;
 import android.os.SystemClock;
 import android.os.UserHandle;
 import android.util.ArrayMap;
@@ -72,19 +71,6 @@ public final class AppSearchUserInstanceManager {
             }
         }
         return sAppSearchUserInstanceManager;
-    }
-
-    /**
-     * Returns AppSearch directory in the credential encrypted system directory for the given user.
-     *
-     * <p>This folder should only be accessed after unlock.
-     */
-    public static File getAppSearchDir(@NonNull UserHandle userHandle) {
-        // Duplicates the implementation of Environment#getDataSystemCeDirectory
-        // TODO(b/191059409): Unhide Environment#getDataSystemCeDirectory and switch to it.
-        File systemCeDir = new File(Environment.getDataDirectory(), "system_ce");
-        File systemCeUserDir = new File(systemCeDir, String.valueOf(userHandle.getIdentifier()));
-        return new File(systemCeUserDir, "appsearch");
     }
 
     /**
@@ -191,7 +177,7 @@ public final class AppSearchUserInstanceManager {
         synchronized (mStorageInfoLocked) {
             UserStorageInfo userStorageInfo = mStorageInfoLocked.get(userHandle);
             if (userStorageInfo == null) {
-                userStorageInfo = new UserStorageInfo(getAppSearchDir(userHandle));
+                userStorageInfo = new UserStorageInfo(AppSearchModule.getAppSearchDir(userHandle));
                 mStorageInfoLocked.put(userHandle, userStorageInfo);
             }
             return userStorageInfo;
@@ -222,7 +208,7 @@ public final class AppSearchUserInstanceManager {
         // Initialize the classes that make up AppSearchUserInstance
         PlatformLogger logger = new PlatformLogger(userContext, config);
 
-        File appSearchDir = getAppSearchDir(userHandle);
+        File appSearchDir = AppSearchModule.getAppSearchDir(userHandle);
         File icingDir = new File(appSearchDir, "icing");
         Log.i(TAG, "Creating new AppSearch instance at: " + icingDir);
         VisibilityCheckerImpl visibilityCheckerImpl = new VisibilityCheckerImpl(userContext);

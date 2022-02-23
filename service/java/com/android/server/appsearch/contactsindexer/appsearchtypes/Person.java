@@ -46,9 +46,6 @@ public class Person extends GenericDocument {
     public static final String PERSON_PROPERTY_IS_IMPORTANT = "isImportant";
     public static final String PERSON_PROPERTY_IS_BOT = "isBot";
     public static final String PERSON_PROPERTY_IMAGE_URI = "imageUri";
-
-    // Right now for nested document types, we need to expose the value for the tests to compare.
-    @VisibleForTesting
     public static final String PERSON_PROPERTY_CONTACT_POINT = "contactPoint";
 
     public static final AppSearchSchema SCHEMA = new AppSearchSchema.Builder(SCHEMA_TYPE)
@@ -267,6 +264,7 @@ public class Person extends GenericDocument {
                     mAdditionalNames.toArray(new String[0]));
             setPropertyDocument(PERSON_PROPERTY_CONTACT_POINT,
                     mContactPoints.toArray(new ContactPoint[0]));
+            // TODO(b/203605504) calculate score here.
             return new Person(super.build());
         }
     }
