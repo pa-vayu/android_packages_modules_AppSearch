@@ -41,8 +41,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <p>It reads the updated/newly-inserted/deleted contacts from CP2, and sync the changes into
  * AppSearch.
+ *
+ * <p>This class is NOT thread-safe.
+ *
+ * @hide
  */
-public final class ContactsPerUserIndexer {
+public final class PerUserContactsIndexer {
     static final String TAG = "ContactsPerUserIndexer";
     static final String CONTACTS_INDEXER_STATE = "contacts_indexer_state";
 
@@ -55,7 +59,7 @@ public final class ContactsPerUserIndexer {
 
     /**
      * Single executor to make sure there is only one active sync for this {@link
-     * ContactsPerUserIndexer}
+     * PerUserContactsIndexer}
      */
     private final ScheduledThreadPoolExecutor mSingleScheduledExecutor;
     /**
@@ -133,12 +137,12 @@ public final class ContactsPerUserIndexer {
     }
 
     /**
-     * Constructs a {@link ContactsPerUserIndexer}.
+     * Constructs a {@link PerUserContactsIndexer}.
      *
      * @param context              Context object passed from
      *                             {@link com.android.server.appsearch.AppSearchManagerService}
      */
-    public ContactsPerUserIndexer(@NonNull Context context) {
+    public PerUserContactsIndexer(@NonNull Context context) {
         mContext = Objects.requireNonNull(context);
         mUpdateScheduled = new AtomicBoolean(/*initialValue=*/ false);
         mSingleScheduledExecutor = new ScheduledThreadPoolExecutor(/*corePoolSize=*/ 1);
@@ -148,7 +152,7 @@ public final class ContactsPerUserIndexer {
         mSingleScheduledExecutor.setRemoveOnCancelPolicy(true);
     }
 
-    /** Initializes this {@link ContactsPerUserIndexer}. */
+    /** Initializes this {@link PerUserContactsIndexer}. */
     public void initialize() {
         synchronized (mLock) {
             mPersistedData = loadPersistedDataLocked(

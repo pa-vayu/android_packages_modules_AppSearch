@@ -22,6 +22,8 @@ import android.app.appsearch.AppSearchSchema;
 import android.app.appsearch.GenericDocument;
 import android.net.Uri;
 
+import com.android.internal.annotations.VisibleForTesting;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -44,7 +46,10 @@ public class Person extends GenericDocument {
     static final String PERSON_PROPERTY_IS_IMPORTANT = "isImportant";
     static final String PERSON_PROPERTY_IS_BOT = "isBot";
     static final String PERSON_PROPERTY_IMAGE_URI = "imageUri";
-    static final String PERSON_PROPERTY_CONTACT_POINT = "contactPoint";
+
+    // Right now for nested document types, we need to expose the value for the tests to compare.
+    @VisibleForTesting
+    public static final String PERSON_PROPERTY_CONTACT_POINT = "contactPoint";
 
     static final AppSearchSchema SCHEMA = new AppSearchSchema.Builder(SCHEMA_TYPE)
             // full display name
@@ -107,7 +112,8 @@ public class Person extends GenericDocument {
             .build();
 
     /** Constructs a {@link Person}. */
-    Person(@NonNull GenericDocument document) {
+    @VisibleForTesting
+    public Person(@NonNull GenericDocument document) {
         super(document);
     }
 

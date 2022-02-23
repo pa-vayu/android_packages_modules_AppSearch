@@ -16,6 +16,14 @@
 
 package com.android.server.appsearch.contactsindexer;
 
+import android.annotation.NonNull;
+import android.content.Context;
+
+import com.android.server.appsearch.contactsindexer.appsearchtypes.Person;
+
+import java.util.Objects;
+import java.util.concurrent.Executor;
+
 /**
  * Helper class to manage the Person corpus in AppSearch.
  *
@@ -25,4 +33,24 @@ public class AppSearchHelper {
     public static final int BASE_SCORE = 1;
     // Namespace needed to be used for ContactsIndexer to index the contacts
     public static final String NAMESPACE = "";
+
+    private final Context mContext;
+
+    AppSearchHelper(@NonNull Context context) {
+        mContext = Objects.requireNonNull(context);
+    }
+
+    void indexContacts(@NonNull Executor executor, @NonNull Person... contacts) {
+        Objects.requireNonNull(executor);
+        Objects.requireNonNull(contacts);
+
+        throw new UnsupportedOperationException("indexContact not implemented.");
+    }
+
+    void removeContactsById(@NonNull Executor executor, @NonNull String... ids) {
+        Objects.requireNonNull(executor);
+        Objects.requireNonNull(ids);
+
+        throw new UnsupportedOperationException("removeContactsById not implemented.");
+    }
 }

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package src.com.android.server.appsearch.contactsindexer.appsearchtypes;
+package com.android.server.appsearch.contactsindexer.appsearchtypes;
 
 import static com.google.common.truth.Truth.assertThat;
 
@@ -75,11 +75,7 @@ public class PersonTest {
         assertThat(person.getFamilyName()).isEqualTo(lastName);
         assertThat(person.getExternalUri().toString()).isEqualTo(externalUri.toString());
         assertThat(person.getImageUri().toString()).isEqualTo(imageUri.toString());
-        assertThat(person.getAdditionalNames().length).isEqualTo(2);
-        assertThat(person.getAdditionalNames()[0]).isEqualTo(additionalNames.get(0));
-        assertThat(person.getAdditionalNames()[1]).isEqualTo(additionalNames.get(1));
-        assertThat(person.getContactPoints().length).isEqualTo(2);
-        assertThat(person.getContactPoints()[0]).isEqualTo(contact1);
-        assertThat(person.getContactPoints()[1]).isEqualTo(contact2);
+        assertThat(person.getAdditionalNames()).asList().isEqualTo(additionalNames);
+        assertThat(person.getContactPoints()).asList().containsExactly(contact1, contact2);
     }
 }

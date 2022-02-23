@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package src.com.android.server.appsearch.contactsindexer;
+package com.android.server.appsearch.contactsindexer;
 
 import static com.google.common.truth.Truth.assertThat;
 
@@ -29,8 +29,6 @@ import android.provider.ContactsContract.Data;
 
 import androidx.test.core.app.ApplicationProvider;
 
-import com.android.server.appsearch.contactsindexer.ContactDataHandler;
-import com.android.server.appsearch.contactsindexer.PersonBuilderHelper;
 import com.android.server.appsearch.contactsindexer.appsearchtypes.ContactPoint;
 import com.android.server.appsearch.contactsindexer.appsearchtypes.Person;
 
@@ -110,8 +108,7 @@ public class ContactDataHandlerTest {
         ContactPoint[] contactPoints = personTested.getContactPoints();
         assertThat(contactPoints.length).isEqualTo(1);
         assertThat(contactPoints[0].getLabel()).isEqualTo(label);
-        assertThat(contactPoints[0].getEmails().length).isEqualTo(1);
-        assertThat(contactPoints[0].getEmails()[0]).isEqualTo(address);
+        assertThat(contactPoints[0].getEmails()).asList().containsExactly(address);
         TestUtils.assertEquals(personTested, personExpected);
     }
 
@@ -135,9 +132,7 @@ public class ContactDataHandlerTest {
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
-        String[] additionalNames = personTested.getAdditionalNames();
-        assertThat(additionalNames.length).isEqualTo(1);
-        assertThat(additionalNames[0]).isEqualTo(nick);
+        assertThat(personTested.getAdditionalNames()).asList().containsExactly(nick);
         TestUtils.assertEquals(personTested, personExpected);
     }
 
@@ -169,8 +164,7 @@ public class ContactDataHandlerTest {
         ContactPoint[] contactPoints = personTested.getContactPoints();
         assertThat(contactPoints.length).isEqualTo(1);
         assertThat(contactPoints[0].getLabel()).isEqualTo(label);
-        assertThat(contactPoints[0].getPhones().length).isEqualTo(1);
-        assertThat(contactPoints[0].getPhones()[0]).isEqualTo(number);
+        assertThat(contactPoints[0].getPhones()).asList().containsExactly(number);
         TestUtils.assertEquals(personTested, personExpected);
     }
 
@@ -202,8 +196,7 @@ public class ContactDataHandlerTest {
         ContactPoint[] contactPoints = personTested.getContactPoints();
         assertThat(contactPoints.length).isEqualTo(1);
         assertThat(contactPoints[0].getLabel()).isEqualTo(label);
-        assertThat(contactPoints[0].getAddresses().length).isEqualTo(1);
-        assertThat(contactPoints[0].getAddresses()[0]).isEqualTo(postal);
+        assertThat(contactPoints[0].getAddresses()).asList().containsExactly(postal);
         TestUtils.assertEquals(personTested, personExpected);
     }
 

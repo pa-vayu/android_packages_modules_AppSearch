@@ -29,9 +29,13 @@ import java.util.Objects;
  * Helper class to help build the {@link Person}.
  *
  * <p>It takes a {@link Person.Builder} with a map to help handle and aggregate {@link
- * ContactPoint}s.
+ * ContactPoint}s, and put them in the {@link Person} during the build.
+ *
+ * @hide
  */
-public class PersonBuilderHelper {
+// TODO(b/203605504) We can also make it only generates a list of contact points. And move the
+//  building of a Person out to the caller.
+public final class PersonBuilderHelper {
     final private Person.Builder mBuilder;
     private Map<String, ContactPoint.Builder> mContactPointBuilders = new ArrayMap<>();
 
