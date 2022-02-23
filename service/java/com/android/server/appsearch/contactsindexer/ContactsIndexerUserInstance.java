@@ -38,6 +38,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -79,14 +80,15 @@ public final class ContactsIndexerUserInstance {
     /**
      * Class to hold the persisted data.
      */
-    public final static class PersistedData {
+    public static final class PersistedData {
         static final String DELIMITER = ",";
-        private static final int NUMBER_OF_SERIALIZED_FIELDS = 3;
+        private static final int NUMBER_OF_SERIALIZED_FIELDS = 4;
 
         // Fields need to be serialized.
         private static final int PERSISTED_DATA_VERSION = 1;
         volatile long mLastDeltaUpdateTimestampMillis = 0;
         volatile long mLastDeltaDeleteTimestampMillis = 0;
+        volatile long mLastFullUpdateTimestampMillis = 0;
 
         /**
          * Serializes the fields into a {@link String}.
@@ -99,7 +101,8 @@ public final class ContactsIndexerUserInstance {
         public String toString() {
             return PERSISTED_DATA_VERSION + DELIMITER
                     + mLastDeltaUpdateTimestampMillis + DELIMITER
-                    + mLastDeltaDeleteTimestampMillis;
+                    + mLastDeltaDeleteTimestampMillis + DELIMITER
+                    + mLastFullUpdateTimestampMillis;
         }
 
         /**
@@ -138,6 +141,7 @@ public final class ContactsIndexerUserInstance {
             try {
                 mLastDeltaUpdateTimestampMillis = Long.parseLong(fields[1]);
                 mLastDeltaDeleteTimestampMillis = Long.parseLong(fields[2]);
+                mLastFullUpdateTimestampMillis = Long.parseLong(fields[3]);
             } catch (NumberFormatException e) {
                 throw new IllegalArgumentException("Failed to parse the timestamps", e);
             }
@@ -147,6 +151,7 @@ public final class ContactsIndexerUserInstance {
         public void reset() {
             mLastDeltaUpdateTimestampMillis = 0;
             mLastDeltaDeleteTimestampMillis = 0;
+            mLastFullUpdateTimestampMillis = 0;
         }
     }
 
@@ -219,9 +224,7 @@ public final class ContactsIndexerUserInstance {
         // If this contacts indexer instance hasn't synced any CP2 changes into AppSearch,
         // schedule a one-off task to do a full update. That is, sync all CP2 contacts into
         // AppSearch.
-        // TODO(b/203605504): Right now this is not thread-safe, and it may read out-dated value.
-        //  But we will rely on last full update timestamp instead anyway in follow-up cls.
-        if (mPersistedData.mLastDeltaUpdateTimestampMillis == 0) {
+        if (mPersistedData.mLastFullUpdateTimestampMillis == 0) {
             ContactsIndexerMaintenanceService.scheduleOneOffFullUpdateJob(
                     mContext, mContext.getUser().getIdentifier());
         }
@@ -264,24 +267,27 @@ public final class ContactsIndexerUserInstance {
      * Performs a full sync of CP2 contacts to AppSearch builtin:Person corpus.
      *
      * @param signal Used to indicate if the full update task should be cancelled.
-     *
-     * TODO(b/203605504):
-     *  1) handle cancellation signal to abort the job
-     *  2) delta update can't delete contacts in AppSearch, which doesn't exist in CP2. A full
-     *               diff might be needed.
      */
     public void doFullUpdate(CancellationSignal signal) {
-        // reset the timestamp using singleScheduledExecutor so we don't need a lock for this
-        // non-thread-safe class.
         mSingleScheduledExecutor.schedule(() -> {
-            mPersistedData.reset();
+            // TODO(b/203605504)
+            // 1. Handle cancellation signal to abort the job.
+            // 2. Clear AppSearch Person corpus first.
+            Log.d(TAG, "Performing a full update of CP2 contacts in AppSearch");
+            long currentTimeMillis = System.currentTimeMillis();
+            Set<String> allContactIds = new ArraySet<>();
+            // Get a list of all contact IDs from CP2. Ignore the return value which denotes the
+            // most recent updated timestamp. TODO(b/203605504): reconsider whether the most recent
+            //  updated and deleted timestamps are useful.
+            ContactsProviderUtil.getUpdatedContactIds(mContext, /*sinceFilter=*/ 0, allContactIds);
+            mContactsIndexerImpl.updatePersonCorpus(allContactIds,
+                    /*unWantedContactIds=*/ Collections.emptySet());
+            Log.d(TAG, "Indexed " + allContactIds.size() + " contacts into AppSearch");
+            persistTimestamps(mPath,
+                    /*lastDeltaUpdateTimestampMillis=*/ currentTimeMillis,
+                    /*lastDeltaDeleteTimestampMillis=*/ currentTimeMillis,
+                    /*lastFullUpdateTimestampMillis=*/ currentTimeMillis);
         }, /*delay=*/ 0, TimeUnit.SECONDS);
-
-        // Instead of calling doDeltaUpdate directly, we can just schedule a delta update
-        // normally, so mUpdateScheduled can be used to remove unnecessary tasks. If currently
-        // there is a delta update running, this full update might not be run, but next delta update
-        // will run a full update since timestamps are reset above.
-        scheduleDeltaUpdate(/*delay=*/0);
     }
 
     /**
@@ -295,6 +301,12 @@ public final class ContactsIndexerUserInstance {
      * running.
      */
     public void scheduleDeltaUpdate(int delaySec) {
+        // Schedule delta updates only if a full update has been performed at least once to sync
+        // all of CP2 contacts into AppSearch.
+        if (mPersistedData.mLastFullUpdateTimestampMillis == 0) {
+            return;
+        }
+
         // We want to batch (trigger only one update) on all Contact Updates for the associated
         // user within the time window(delaySec). And we hope the query to CP2 "Give me all the
         // contacts from timestamp T" would catch all the unhandled contact change notifications.
@@ -350,7 +362,8 @@ public final class ContactsIndexerUserInstance {
 
         // Persist the timestamps.
         persistTimestamps(mPath, mPersistedData.mLastDeltaUpdateTimestampMillis,
-                mPersistedData.mLastDeltaDeleteTimestampMillis);
+                mPersistedData.mLastDeltaDeleteTimestampMillis,
+                mPersistedData.mLastFullUpdateTimestampMillis);
     }
 
     /**
@@ -384,21 +397,21 @@ public final class ContactsIndexerUserInstance {
             }
         }
 
-        Log.d(TAG, "Load timestamps from disk: update: "
-                + mPersistedData.mLastDeltaUpdateTimestampMillis
-                + ", deletion: " + mPersistedData.mLastDeltaDeleteTimestampMillis);
+        Log.d(TAG, "Load timestamps from disk: "
+                + "delta-update: " + mPersistedData.mLastDeltaUpdateTimestampMillis
+                + ", delta-delete: " + mPersistedData.mLastDeltaDeleteTimestampMillis
+                + ", full-update: " + mPersistedData.mLastFullUpdateTimestampMillis);
     }
 
     /** Persists the timestamps to disk. */
     private void persistTimestamps(@NonNull Path path, long lastDeltaUpdateTimestampMillis,
-            long lastDeltaDeleteTimestampMillis) {
+            long lastDeltaDeleteTimestampMillis, long lastFullUpdateTimestampMillis) {
         Objects.requireNonNull(path);
         Objects.requireNonNull(mPersistedData);
 
-        mPersistedData.mLastDeltaUpdateTimestampMillis =
-                lastDeltaUpdateTimestampMillis;
-        mPersistedData.mLastDeltaDeleteTimestampMillis =
-                lastDeltaDeleteTimestampMillis;
+        mPersistedData.mLastDeltaUpdateTimestampMillis = lastDeltaUpdateTimestampMillis;
+        mPersistedData.mLastDeltaDeleteTimestampMillis = lastDeltaDeleteTimestampMillis;
+        mPersistedData.mLastFullUpdateTimestampMillis = lastFullUpdateTimestampMillis;
         try (
                 BufferedWriter writer = Files.newBufferedWriter(
                         path,
@@ -423,6 +436,7 @@ public final class ContactsIndexerUserInstance {
         PersistedData data = new PersistedData();
         data.mLastDeltaUpdateTimestampMillis = mPersistedData.mLastDeltaUpdateTimestampMillis;
         data.mLastDeltaDeleteTimestampMillis = mPersistedData.mLastDeltaDeleteTimestampMillis;
+        data.mLastFullUpdateTimestampMillis = mPersistedData.mLastFullUpdateTimestampMillis;
         return data;
     }
 }

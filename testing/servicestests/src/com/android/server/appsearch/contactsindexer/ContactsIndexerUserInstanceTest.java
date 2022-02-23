@@ -106,7 +106,7 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
     }
 
     @Test
-    public void testDeltaUpdate_initialLastTimestamps_zero()
+    public void testCreateInstance_initialLastTimestamps_zero()
             throws Exception {
         ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(
                 mContext, mDataFilePath.getParent().toFile());
@@ -115,12 +115,14 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
 
         assertThat(data.mLastDeltaUpdateTimestampMillis).isEqualTo(0);
         assertThat(data.mLastDeltaDeleteTimestampMillis).isEqualTo(0);
+        assertThat(data.mLastFullUpdateTimestampMillis).isEqualTo(0);
     }
 
     @Test
-    public void testDeltaUpdate_lastTimestamps_readFromDiskCorrectly()
+    public void testCreateInstance_lastTimestamps_readFromDiskCorrectly()
             throws Exception {
         PersistedData newData = new PersistedData();
+        newData.mLastDeltaUpdateTimestampMillis = 0;
         newData.mLastDeltaUpdateTimestampMillis = 1;
         newData.mLastDeltaDeleteTimestampMillis = 2;
         clearAndWriteDataToTempFile(newData.toString(), mDataFilePath);
@@ -133,10 +135,12 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
                 newData.mLastDeltaUpdateTimestampMillis);
         assertThat(loadedData.mLastDeltaDeleteTimestampMillis).isEqualTo(
                 newData.mLastDeltaDeleteTimestampMillis);
+        assertThat(loadedData.mLastFullUpdateTimestampMillis).isEqualTo(
+                newData.mLastFullUpdateTimestampMillis);
     }
 
     @Test
-    public void testPerUserContactsIndexer_lastTimestamps_writeToDiskCorrectly() throws Exception {
+    public void testContactsIndexerUserInstance_lastTimestamps_writeToDiskCorrectly() throws Exception {
         // In FakeContactsIndexer, we have contacts array [1, 2, ... NUM_TOTAL_CONTACTS], among
         // them, [1, NUM_EXISTED_CONTACTS] is for updated contacts, and [NUM_EXISTED_CONTACTS +
         // 1, NUM_TOTAL_CONTACTS] is for deleted contacts.
@@ -168,7 +172,7 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
     }
 
     @Test
-    public void testPerUserContactsIndexer_deltaUpdate_firstTime() throws Exception {
+    public void testContactsIndexerUserInstance_deltaUpdate_firstTime() throws Exception {
         // In FakeContactsIndexer, we have contacts array [1, 2, ... NUM_TOTAL_CONTACTS], among
         // them, [1, NUM_EXISTED_CONTACTS] is for updated contacts, and [NUM_EXISTED_CONTACTS +
         // 1, NUM_TOTAL_CONTACTS] is for deleted contacts.
@@ -208,7 +212,7 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
     }
 
     @Test
-    public void testPerUserContactsIndexer_deltaUpdate() throws Exception {
+    public void testContactsIndexerUserInstance_deltaUpdate() throws Exception {
         // In FakeContactsIndexer, we have contacts array [1, 2, ... NUM_TOTAL_CONTACTS], among
         // them, [1, NUM_EXISTED_CONTACTS] is for updated contacts, and [NUM_EXISTED_CONTACTS +
         // 1, NUM_TOTAL_CONTACTS] is for deleted contacts.
