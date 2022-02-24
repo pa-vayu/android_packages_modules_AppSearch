@@ -35,7 +35,7 @@ public final class AppSearchUserInstance {
     AppSearchUserInstance(
             @NonNull PlatformLogger logger,
             @NonNull AppSearchImpl appSearchImpl,
-            VisibilityCheckerImpl visibilityCheckerImpl) {
+            @NonNull VisibilityCheckerImpl visibilityCheckerImpl) {
         mLogger = Objects.requireNonNull(logger);
         mAppSearchImpl = Objects.requireNonNull(appSearchImpl);
         mVisibilityCheckerImpl = Objects.requireNonNull(visibilityCheckerImpl);
