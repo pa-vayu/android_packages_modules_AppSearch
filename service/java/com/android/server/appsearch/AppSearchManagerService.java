@@ -219,7 +219,6 @@ public class AppSearchManagerService extends SystemService {
                                 userContext,
                                 userHandle,
                                 AppSearchConfig.getInstance(SHARED_EXECUTOR));
-                //TODO(b/145759910) clear visibility setting for package.
                 instance.getAppSearchImpl().clearPackageData(packageName);
                 dispatchChangeNotifications(instance);
                 instance.getLogger().removeCachedUidForPackage(packageName);
@@ -252,7 +251,6 @@ public class AppSearchManagerService extends SystemService {
                         packagesToKeep.add(installedPackageInfos.get(i).packageName);
                     }
                     packagesToKeep.add(VisibilityStore.VISIBILITY_PACKAGE_NAME);
-                    //TODO(b/145759910) clear visibility setting for package.
                     instance.getAppSearchImpl().prunePackageData(packagesToKeep);
                 }
             } catch (Throwable t) {
