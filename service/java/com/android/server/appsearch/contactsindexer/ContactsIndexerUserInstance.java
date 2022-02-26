@@ -36,6 +36,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Collections;
@@ -304,6 +305,7 @@ public final class ContactsIndexerUserInstance {
         // Schedule delta updates only if a full update has been performed at least once to sync
         // all of CP2 contacts into AppSearch.
         if (mPersistedData.mLastFullUpdateTimestampMillis == 0) {
+            Log.v(TAG, "Deferring delta updates until the first full update is complete");
             return;
         }
 
@@ -384,6 +386,8 @@ public final class ContactsIndexerUserInstance {
             // right now we store everything in one line. So we just need to read the first line.
             String content = reader.readLine();
             mPersistedData.fromString(content);
+        } catch (NoSuchFileException e) {
+            // ignore bootstrap errors
         } catch (IOException e) {
             Log.e(TAG, "Failed to load persisted data from disk.", e);
             isLoadingDataFailed = true;
