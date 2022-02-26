@@ -43,6 +43,8 @@ import java.util.Set;
  * Helper Class to handle data for different MIME types from CP2, and build {@link Person} from
  * them.
  *
+ * <p>This class is not thread safe.
+ *
  * @hide
  */
 public final class ContactDataHandler {
@@ -252,9 +254,8 @@ public final class ContactDataHandler {
         @NonNull
         @Override
         protected String getTypeLabel(@NonNull Resources resources, int type,
-                @NonNull String label) {
+                @Nullable String label) {
             Objects.requireNonNull(resources);
-            Objects.requireNonNull(label);
             return Email.getTypeLabel(resources, type, label).toString();
         }
     }
@@ -287,9 +288,8 @@ public final class ContactDataHandler {
         @NonNull
         @Override
         protected String getTypeLabel(@NonNull Resources resources, int type,
-                @NonNull String label) {
+                @Nullable String label) {
             Objects.requireNonNull(resources);
-            Objects.requireNonNull(label);
             return Phone.getTypeLabel(resources, type, label).toString();
         }
     }
@@ -327,9 +327,8 @@ public final class ContactDataHandler {
         @NonNull
         @Override
         protected String getTypeLabel(@NonNull Resources resources, int type,
-                @NonNull String label) {
+                @Nullable String label) {
             Objects.requireNonNull(resources);
-            Objects.requireNonNull(label);
             return StructuredPostal.getTypeLabel(resources, type, label).toString();
         }
     }

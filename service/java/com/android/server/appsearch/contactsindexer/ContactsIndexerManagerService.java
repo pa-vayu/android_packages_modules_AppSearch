@@ -21,15 +21,20 @@ import android.annotation.UserIdInt;
 import android.content.Context;
 import android.os.CancellationSignal;
 import android.os.UserHandle;
+import android.util.Log;
 import android.util.SparseArray;
 
 import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
+import com.android.server.appsearch.AppSearchModule;
 
+import java.io.File;
 import java.util.Objects;
 
 /**
  * Manages the per device-user ContactsIndexer instance to index CP2 contacts into AppSearch.
+ *
+ * <p>This class is thread-safe.
  *
  * @hide
  */
@@ -53,7 +58,7 @@ public final class ContactsIndexerManagerService extends SystemService {
     }
 
     @Override
-    public void onUserStarting(@NonNull TargetUser user) {
+    public void onUserUnlocking(@NonNull TargetUser user) {
         Objects.requireNonNull(user);
         UserHandle userHandle = user.getUserHandle();
         int userId = userHandle.getIdentifier();
@@ -61,8 +66,17 @@ public final class ContactsIndexerManagerService extends SystemService {
         synchronized (mContactsIndexersLocked) {
             ContactsIndexerUserInstance instance = mContactsIndexersLocked.get(userId);
             if (instance == null) {
-                instance = new ContactsIndexerUserInstance(userContext);
-                instance.initialize();
+                File appSearchDir = AppSearchModule.getAppSearchDir(userHandle);
+                File contactsDir = new File(appSearchDir, "contacts");
+                try {
+                    instance = ContactsIndexerUserInstance.createInstance(userContext, contactsDir);
+                    Log.d(TAG,
+                            "Created Contacts Indexer instance for user " + userHandle.toString());
+                } catch (Throwable t) {
+                    Log.e(TAG, "Failed to create Contacts Indexer instance for user "
+                            + userHandle.toString(), t);
+                    return;
+                }
                 mContactsIndexersLocked.put(userId, instance);
             }
             instance.onStart();

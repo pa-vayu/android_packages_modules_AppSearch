@@ -76,6 +76,9 @@ public final class ContactsProviderUtil {
         long newTimestamp = sinceFilter;
         Cursor cursor = null;
         try {
+            // TODO(b/203605504) We could optimize the query by setting the sortOrder:
+            //  LAST_DELETED_TIMESTAMP DESC. This way the 1st contact would have the last deleted
+            //  timestamp.
             cursor =
                     context.getContentResolver().query(
                             DeletedContacts.CONTENT_URI,
@@ -197,6 +200,9 @@ public final class ContactsProviderUtil {
         Cursor cursor = null;
         int rows = 0;
         try {
+            // TODO(b/203605504) We could optimize the query by setting the sortOrder:
+            //  LAST_UPDATED_TIMESTAMP DESC. This way the 1st contact would have the last updated
+            //  timestamp.
             cursor =
                     context.getContentResolver().query(
                             contactsUri,

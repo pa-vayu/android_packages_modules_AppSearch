@@ -81,6 +81,97 @@ public class ContactDataHandlerTest {
     }
 
     @Test
+    public void testConvertCurrentRowToPerson_labelCustom_typeCustom() {
+        int type = 0; // Custom
+        String name = "name";
+        String address = "emailAddress@google.com";
+        String label = "CustomLabel";
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Email.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Email.ADDRESS, address);
+        values.put(CommonDataKinds.Email.TYPE, type);
+        values.put(CommonDataKinds.Email.LABEL, label);
+        Cursor cursor = makeCursorFromContentValues(values);
+        Person personExpected = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
+                        0)).addEmailToPerson(label, address).buildPerson();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+        Person personTested = helperTested.buildPerson();
+
+        // Since the type is 1(Homes), we won't use user provided label. So it is fine to be null.
+        ContactPoint[] contactPoints = personTested.getContactPoints();
+        assertThat(contactPoints.length).isEqualTo(1);
+        assertThat(contactPoints[0].getLabel()).isEqualTo(label);
+        assertThat(contactPoints[0].getEmails()).asList().containsExactly(address);
+        TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
+    public void testConvertCurrentRowToPerson_labelIsNull_typeCustom() {
+        int type = 0; // Custom
+        String name = "name";
+        String address = "emailAddress@google.com";
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Email.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Email.ADDRESS, address);
+        values.put(CommonDataKinds.Email.TYPE, type);
+        // label is not set in the values
+        Cursor cursor = makeCursorFromContentValues(values);
+        // default value for custom label if null is provided by user.
+        String expectedLabel = "Custom";
+        Person personExpected = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
+                        0)).addEmailToPerson(expectedLabel, address).buildPerson();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+        Person personTested = helperTested.buildPerson();
+
+        // Since the type is 1(Homes), we won't use user provided label. So it is fine to be null.
+        ContactPoint[] contactPoints = personTested.getContactPoints();
+        assertThat(contactPoints.length).isEqualTo(1);
+        assertThat(contactPoints[0].getLabel()).isEqualTo(expectedLabel);
+        assertThat(contactPoints[0].getEmails()).asList().containsExactly(address);
+        TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
+    public void testConvertCurrentRowToPerson_labelIsNull_typeHome() {
+        int type = 1; // Home
+        String name = "name";
+        String address = "emailAddress@google.com";
+        String label = "Home";
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Email.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Email.ADDRESS, address);
+        values.put(CommonDataKinds.Email.TYPE, type);
+        // label is not set in the values
+        Cursor cursor = makeCursorFromContentValues(values);
+        Person personExpected = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
+                        0)).addEmailToPerson(label, address).buildPerson();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+        Person personTested = helperTested.buildPerson();
+
+        // Since the type is 1(Homes), we won't use user provided label. So it is fine to be null.
+        ContactPoint[] contactPoints = personTested.getContactPoints();
+        assertThat(contactPoints.length).isEqualTo(1);
+        assertThat(contactPoints[0].getLabel()).isEqualTo(label);
+        assertThat(contactPoints[0].getEmails()).asList().containsExactly(address);
+        TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
     public void testConvertCurrentRowToPerson_email() {
         int type = 1; // Home
         String name = "name";
@@ -92,12 +183,9 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.Email.TYPE, type);
         values.put(CommonDataKinds.Email.LABEL, label);
         Cursor cursor = makeCursorFromContentValues(values);
-
         Person personExpected = new PersonBuilderHelper(
                 new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).addEmailToPerson(
-                CommonDataKinds.Email.getTypeLabel(mResources, type, label).toString(),
-                address).buildPerson();
+                        0)).addEmailToPerson(label, address).buildPerson();
 
         PersonBuilderHelper helperTested = new PersonBuilderHelper(
                 new Person.Builder(TEST_NAMESPACE, TEST_ID,
