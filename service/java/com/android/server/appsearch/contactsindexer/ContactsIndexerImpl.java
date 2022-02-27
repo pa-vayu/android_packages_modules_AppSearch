@@ -17,15 +17,14 @@
 package com.android.server.appsearch.contactsindexer;
 
 import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.content.Context;
-import android.content.res.Resources;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.ContactsContract;
 import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.Log;
-import android.util.Pair;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.appsearch.contactsindexer.appsearchtypes.Person;
@@ -36,7 +35,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.Executor;
 
 /**
  * The class to sync the data from CP2 to AppSearch.
@@ -48,10 +46,10 @@ import java.util.concurrent.Executor;
 public final class ContactsIndexerImpl {
     static final String TAG = "ContactsIndexerImpl";
 
-    static final int NUM_UPDATED_CONTACTS_PER_BATCH_FOR_APPSEARCH = 50;
-    static final int NUM_DELETED_CONTACTS_PER_BATCH_FOR_APPSEARCH = 500;
     // TODO(b/203605504) have and read those flags in/from AppSearchConfig.
     static final int NUM_CONTACTS_PER_BATCH_FOR_CP2 = 100;
+    static final int NUM_UPDATED_CONTACTS_PER_BATCH_FOR_APPSEARCH = 50;
+    static final int NUM_DELETED_CONTACTS_PER_BATCH_FOR_APPSEARCH = 500;
     // Common columns needed for all kinds of mime types
     static final String[] COMMON_NEEDED_COLUMNS = {
             ContactsContract.Data.CONTACT_ID,
@@ -84,45 +82,18 @@ public final class ContactsIndexerImpl {
     private final ContactDataHandler mContactDataHandler;
     private final String[] mProjection;
     private final AppSearchHelper mAppSearchHelper;
-    private final Executor mExecutorForAppSearch;
     private final ContactsBatcher mBatcher;
 
-    ContactsIndexerImpl(@NonNull Context context, @NonNull AppSearchHelper appSearchHelper,
-            @NonNull Executor executorForAppSearch) {
+    public ContactsIndexerImpl(@NonNull Context context, @NonNull AppSearchHelper appSearchHelper) {
         mContext = Objects.requireNonNull(context);
         mAppSearchHelper = Objects.requireNonNull(appSearchHelper);
-        mExecutorForAppSearch = Objects.requireNonNull(executorForAppSearch);
         mContactDataHandler = new ContactDataHandler(mContext.getResources());
 
         Set<String> neededColumns = new ArraySet<>(Arrays.asList(COMMON_NEEDED_COLUMNS));
         neededColumns.addAll(mContactDataHandler.getNeededColumns());
-
         mProjection = neededColumns.toArray(new String[0]);
         mBatcher = new ContactsBatcher(mAppSearchHelper,
-                NUM_UPDATED_CONTACTS_PER_BATCH_FOR_APPSEARCH,
-                mExecutorForAppSearch);
-    }
-
-    /**
-     * Syncs all changed and deleted contacts since the last snapshot into AppSearch Person corpus.
-     *
-     * @param lastUpdatedTimestamp timestamp (millis since epoch) for the contact last updated.
-     * @param lastDeletedTimestamp timestamp (millis since epoch) for the contact last deleted.
-     * @return (updatedLastUpdatedTimestamp, updatedLastDeleteTimestamp)
-     */
-    Pair<Long, Long> doDeltaUpdate(long lastUpdatedTimestamp, long lastDeletedTimestamp) {
-        Set<String> wantedContactIds = new ArraySet<>();
-        Set<String> unWantedContactIds = new ArraySet<>();
-
-        lastUpdatedTimestamp = ContactsProviderUtil.getUpdatedContactIds(mContext,
-                lastUpdatedTimestamp, wantedContactIds);
-        lastDeletedTimestamp = ContactsProviderUtil.getDeletedContactIds(mContext,
-                lastDeletedTimestamp, unWantedContactIds);
-
-        // Updates AppSearch based on those two lists.
-        updatePersonCorpus(mContext.getResources(), wantedContactIds, unWantedContactIds);
-
-        return new Pair<>(lastUpdatedTimestamp, lastDeletedTimestamp);
+                NUM_UPDATED_CONTACTS_PER_BATCH_FOR_APPSEARCH);
     }
 
     @VisibleForTesting
@@ -136,16 +107,19 @@ public final class ContactsIndexerImpl {
             int endIndex = Math.min(startIndex + NUM_DELETED_CONTACTS_PER_BATCH_FOR_APPSEARCH,
                     unWantedSize);
             Collection<String> currentContactIds = unWantedIdList.subList(startIndex, endIndex);
-            mAppSearchHelper.removeContactsById(mExecutorForAppSearch,
-                    currentContactIds.toArray(new String[0]));
+            mAppSearchHelper.removeContactsByIdAsync(currentContactIds);
             startIndex = endIndex;
         }
     }
 
-    /** Updates Person corpus in AppSearch. */
-    private void updatePersonCorpus(@NonNull Resources resources,
-            @NonNull Set<String> wantedContactIds, @NonNull Set<String> unWantedContactIds) {
-        Objects.requireNonNull(resources);
+    /**
+     * Updates Person corpus in AppSearch.
+     *
+     * @param wantedContactIds   ids for contacts to be updated.
+     * @param unWantedContactIds ids for contacts to be deleted.
+     */
+    void updatePersonCorpus(@NonNull Set<String> wantedContactIds,
+            @NonNull Set<String> unWantedContactIds) {
         Objects.requireNonNull(wantedContactIds);
         Objects.requireNonNull(unWantedContactIds);
 
@@ -169,7 +143,6 @@ public final class ContactsIndexerImpl {
             String selection = ContactsContract.Data.CONTACT_ID + " IN (" + TextUtils.join(
                     /*delimiter=*/ ",", currentContactIds) + ")";
             startIndex = endIndex;
-
             Cursor cursor = null;
             try {
                 // For our iteration work, we must sort the result by contact_id first.
@@ -199,21 +172,25 @@ public final class ContactsIndexerImpl {
     }
 
     /**
-     * Reads through cursor, converts the contacts to AppSearch documents, and indexes the documents
-     * into AppSearch.
+     * Reads through cursor, converts the contacts to AppSearch documents, and indexes the
+     * documents into AppSearch.
+     *
+     * @param cursor pointing to the contacts read from CP2.
      */
     private void indexContactsFromCursorToAppSearch(@NonNull Cursor cursor) {
         Objects.requireNonNull(cursor);
 
         int contactIdIndex = cursor.getColumnIndex(ContactsContract.Data.CONTACT_ID);
         int lookupKeyIndex = cursor.getColumnIndex(ContactsContract.Data.LOOKUP_KEY);
-        int thumbnailUriIndex = cursor.getColumnIndex(ContactsContract.Data.PHOTO_THUMBNAIL_URI);
-        int displayNameIndex = cursor.getColumnIndex(ContactsContract.Data.DISPLAY_NAME_PRIMARY);
+        int thumbnailUriIndex = cursor.getColumnIndex(
+                ContactsContract.Data.PHOTO_THUMBNAIL_URI);
+        int displayNameIndex = cursor.getColumnIndex(
+                ContactsContract.Data.DISPLAY_NAME_PRIMARY);
         int phoneticNameIndex = cursor.getColumnIndex(ContactsContract.Data.PHONETIC_NAME);
         int starredIndex = cursor.getColumnIndex(ContactsContract.Data.STARRED);
         long currentContactId = -1;
         Person.Builder personBuilder = null;
-        PersonBuilderHelper personBuilderHlper = null;
+        PersonBuilderHelper personBuilderHelper = null;
         try {
             while (cursor != null && cursor.moveToNext()) {
                 long contactId = cursor.getLong(contactIdIndex);
@@ -223,22 +200,28 @@ public final class ContactsIndexerImpl {
                     if (currentContactId != -1) {
                         // It is the first row for a new contact_id. We can wrap up the
                         // ContactData for the previous contact_id.
-                        mBatcher.add(personBuilderHlper.buildPerson());
+                        mBatcher.add(personBuilderHelper.buildPerson());
                     }
                     // New set of builder and builderHelper for the new contact.
                     currentContactId = contactId;
-                    personBuilder = new Person.Builder(
-                            AppSearchHelper.NAMESPACE,
-                            String.valueOf(contactId),
-                            cursor.getString(displayNameIndex));
-                    // TODO(b/203605504) add a helper to make those lines below cleaner.
-                    //  We could also include those in ContactDataHandler.
-                    String imageUri = cursor.getString(thumbnailUriIndex);
-                    String phoneticName = cursor.getString(phoneticNameIndex);
-                    String lookupKey = cursor.getString(lookupKeyIndex);
-                    boolean starred = cursor.getInt(starredIndex) != 0;
-                    Uri lookupUri = ContactsContract.Contacts.getLookupUri(currentContactId,
-                            lookupKey);
+                    String displayName = getStringFromCursor(cursor, displayNameIndex);
+                    if (displayName == null) {
+                        // For now, we don't abandon the data if displayName is missing. In the
+                        // schema the name is required for building a person. It might look bad
+                        // if there are contacts in CP2, but not in AppSearch, even though the
+                        // name is missing.
+                        displayName = "";
+                    }
+                    personBuilder = new Person.Builder(AppSearchHelper.NAMESPACE_NAME,
+                            String.valueOf(contactId), displayName);
+                    String imageUri = getStringFromCursor(cursor, thumbnailUriIndex);
+                    String phoneticName = getStringFromCursor(cursor, phoneticNameIndex);
+                    String lookupKey = getStringFromCursor(cursor, lookupKeyIndex);
+                    boolean starred = starredIndex != -1 ?
+                            cursor.getInt(starredIndex) != 0 : false;
+                    Uri lookupUri = lookupKey != null ?
+                            ContactsContract.Contacts.getLookupUri(currentContactId, lookupKey)
+                            : null;
                     personBuilder.setIsImportant(starred);
                     if (lookupUri != null) {
                         personBuilder.setExternalUri(lookupUri);
@@ -250,10 +233,10 @@ public final class ContactsIndexerImpl {
                         personBuilder.addAdditionalName(phoneticName);
                     }
 
-                    personBuilderHlper = new PersonBuilderHelper(personBuilder);
+                    personBuilderHelper = new PersonBuilderHelper(personBuilder);
                 }
-                if (personBuilderHlper != null) {
-                    mContactDataHandler.convertCursorToPerson(cursor, personBuilderHlper);
+                if (personBuilderHelper != null) {
+                    mContactDataHandler.convertCursorToPerson(cursor, personBuilderHelper);
                 }
             }
         } catch (Throwable t) {
@@ -264,13 +247,27 @@ public final class ContactsIndexerImpl {
         if (cursor.isAfterLast() && currentContactId != -1) {
             // The ContactData for the last contact has not been handled yet. So we need to
             // build and index it.
-            if (personBuilderHlper != null) {
-                mBatcher.add(personBuilderHlper.buildPerson());
+            if (personBuilderHelper != null) {
+                mBatcher.add(personBuilderHelper.buildPerson());
             }
         }
 
         // finally force flush all the remaining batched contacts.
         mBatcher.flush();
+    }
+
+    /**
+     * Helper method to read the value from a {@link Cursor} for {@code index}.
+     *
+     * @return A string value, or {@code null} if the value is missing, or {@code index} is -1.
+     */
+    @Nullable
+    private static String getStringFromCursor(@NonNull Cursor cursor, int index) {
+        Objects.requireNonNull(cursor);
+        if (index != -1) {
+            return cursor.getString(index);
+        }
+        return null;
     }
 
     /**
@@ -280,12 +277,9 @@ public final class ContactsIndexerImpl {
         private final List<Person> mBatchedContacts;
         private final int mBatchSize;
         private final AppSearchHelper mAppSearchHelper;
-        private final Executor mExecutorForAppSearch;
 
-        ContactsBatcher(@NonNull AppSearchHelper appSearchHelper, int batchSize,
-                @NonNull Executor appSearchExecutor) {
+        ContactsBatcher(@NonNull AppSearchHelper appSearchHelper, int batchSize) {
             mAppSearchHelper = Objects.requireNonNull(appSearchHelper);
-            mExecutorForAppSearch = Objects.requireNonNull(appSearchExecutor);
             mBatchSize = batchSize;
             mBatchedContacts = new ArrayList<>(mBatchSize);
         }
@@ -314,9 +308,8 @@ public final class ContactsIndexerImpl {
                 return;
             }
 
-            Person[] contacts = mBatchedContacts.toArray(new Person[0]);
+            mAppSearchHelper.indexContactsAsync(mBatchedContacts);
             mBatchedContacts.clear();
-            mAppSearchHelper.indexContacts(mExecutorForAppSearch, contacts);
         }
-    };
+    }
 }

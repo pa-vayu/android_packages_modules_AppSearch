@@ -25,6 +25,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.CancellationSignal;
+import android.util.Log;
 
 import com.android.server.LocalManagerRegistry;
 
@@ -34,6 +35,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 public class ContactsIndexerMaintenanceService extends JobService {
+    private static final String TAG = "ContactsIndexerMaintenanceService";
 
     /** This job ID must be unique within the system server. */
     private static final int ONE_OFF_FULL_UPDATE_JOB_ID = 0x1B7DED30; // 461237552
@@ -50,6 +52,8 @@ public class ContactsIndexerMaintenanceService extends JobService {
      * Schedules a one-off full update job for the given device-user.
      */
     static void scheduleOneOffFullUpdateJob(Context context, @UserIdInt int userId) {
+        Log.v(TAG, "One off full updated job scheduled for " + userId);
+
         JobScheduler jobScheduler = context.getSystemService(JobScheduler.class);
         ComponentName component =
                 new ComponentName(context, ContactsIndexerMaintenanceService.class);
@@ -70,6 +74,8 @@ public class ContactsIndexerMaintenanceService extends JobService {
         if (userId == -1) {
             return false;
         }
+
+        Log.v(TAG, "One off full updated job started for " + userId);
         mSignal = new CancellationSignal();
         EXECUTOR.execute(() -> {
             ContactsIndexerManagerService.LocalService service =
