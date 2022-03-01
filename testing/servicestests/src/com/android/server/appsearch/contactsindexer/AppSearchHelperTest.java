@@ -154,4 +154,37 @@ public class AppSearchHelperTest {
         assertThat(resultBeforeRemove.getSuccesses()).hasSize(contactsExisted);
         assertThat(resultAfterRemove.getSuccesses()).hasSize(0);
     }
+
+    @Test
+    public void testGetAllContactIds() throws Exception {
+        int numDeletedContacts = 250;
+        int numAvailableContacts = 2500;
+        int numTotalContactsIds = numAvailableContacts + numDeletedContacts;
+
+        FakeContactsProvider contactsProvider = new FakeContactsProvider(mContext.getResources(),
+                numAvailableContacts, numTotalContactsIds);
+        ArrayList<Person> contacts = new ArrayList<>(
+                Arrays.asList(contactsProvider.getAllContactData()));
+        indexContactsInBatchesAsync(contacts).get();
+
+        List<String> appSearchContactIds = mAppSearchHelper.getAllContactIdsAsync().get();
+
+        assertThat(appSearchContactIds.size()).isEqualTo(numAvailableContacts);
+    }
+
+    private CompletableFuture<Void> indexContactsInBatchesAsync(List<Person> contacts) {
+        CompletableFuture<Void> indexContactsInBatchesFuture =
+                CompletableFuture.completedFuture(null);
+        int startIndex = 0;
+        while (startIndex < contacts.size()) {
+            int batchEndIndex = Math.min(
+                    startIndex + ContactsIndexerImpl.NUM_UPDATED_CONTACTS_PER_BATCH_FOR_APPSEARCH,
+                    contacts.size());
+            List<Person> batchedContacts = contacts.subList(startIndex, batchEndIndex);
+            indexContactsInBatchesFuture = indexContactsInBatchesFuture
+                    .thenCompose(x -> mAppSearchHelper.indexContactsAsync(batchedContacts));
+            startIndex = batchEndIndex;
+        }
+        return indexContactsInBatchesFuture;
+    }
 }
