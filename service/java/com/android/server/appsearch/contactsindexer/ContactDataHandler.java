@@ -202,7 +202,7 @@ public final class ContactDataHandler {
             Objects.requireNonNull(cursor);
 
             String data = getColumnString(cursor, mDataColumn);
-            if (!TextUtils.isEmpty(mDataColumn)) {
+            if (!TextUtils.isEmpty(data)) {
                 // get the corresponding label to the type.
                 int type = getColumnInt(cursor, mTypeColumn);
                 String label = getTypeLabel(mResources, type,
