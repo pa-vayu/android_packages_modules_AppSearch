@@ -41,6 +41,7 @@ android_test {
         "device-tests",
         "mts-appsearch",
     ],
+    compile_multilib: "both",
     // TODO(b/203690505): Remove the platform certificate when tests no longer
     //  need READ_DEVICE_CONFIG permission.
     certificate: "platform",
