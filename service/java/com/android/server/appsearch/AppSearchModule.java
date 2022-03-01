@@ -72,7 +72,7 @@ public class AppSearchModule {
             if (DeviceConfig.getBoolean(
                     DeviceConfig.NAMESPACE_APPSEARCH,
                     ContactsIndexerConfig.CONTACTS_INDEXER_ENABLED,
-                    /*defaultValue=*/ true)) {
+                    /*defaultValue=*/ false)) {
                 mContactsIndexerManagerService = new ContactsIndexerManagerService(getContext());
                 try {
                     mContactsIndexerManagerService.onStart();
