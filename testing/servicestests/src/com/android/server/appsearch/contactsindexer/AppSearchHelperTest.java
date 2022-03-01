@@ -41,6 +41,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -92,7 +93,7 @@ public class AppSearchHelperTest {
     }
 
     @Test
-    public void testAppSearchHelper_indexContacts() throws Exception {
+    public void testIndexContacts() throws Exception {
         int contactsExisted = 10;
         int contactsDeleted = 10;
         Person[] contactData = new FakeContactsProvider(mContext.getResources(),
@@ -113,6 +114,23 @@ public class AppSearchHelperTest {
             TestUtils.assertEquals(new Person(result.getSuccesses().get(contactId)),
                     contactData[i - 1]);
         }
+    }
+
+    @Test
+    public void testIndexContacts_clearAfterIndex() throws Exception {
+        int numAvailableContacts = 50;
+        List<Person> contacts = new ArrayList<>(Arrays.asList(
+                new FakeContactsProvider(mContext.getResources(), numAvailableContacts,
+                        /*contactsTotal=*/ numAvailableContacts).getAllContactData()));
+
+        CompletableFuture<Void> indexContactsFuture = mAppSearchHelper.indexContactsAsync(contacts);
+        contacts.clear();
+        indexContactsFuture.get();
+
+        Set<String> appSearchIds = TestUtils.getDocIdsByQuery(mAppSearchHelper.getSession(),
+                /*query=*/ "", new SearchSpec.Builder().build(), Runnable::run);
+        assertThat(appSearchIds.size()).isEqualTo(numAvailableContacts);
+
     }
 
     @Test

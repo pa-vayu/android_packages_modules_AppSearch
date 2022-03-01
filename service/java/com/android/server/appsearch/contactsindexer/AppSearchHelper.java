@@ -61,20 +61,21 @@ public class AppSearchHelper {
 
     private final Context mContext;
     private final Executor mExecutor;
-    private volatile AppSearchSession mAppSearchSession;
+    // Holds the result of an asynchronous operation to create an AppSearchSession
+    // and set the builtin:Person schema in it.
+    private volatile CompletableFuture<AppSearchSession> mAppSearchSessionFuture;
 
     /**
      * Creates an initialized {@link AppSearchHelper}.
      *
      * @param executor Executor used to handle result callbacks from AppSearch.
      */
-    @WorkerThread
     @NonNull
     public static AppSearchHelper createAppSearchHelper(@NonNull Context context,
-            @NonNull Executor executor) throws InterruptedException, ExecutionException {
+            @NonNull Executor executor) {
         AppSearchHelper appSearchHelper = new AppSearchHelper(Objects.requireNonNull(context),
                 Objects.requireNonNull(executor));
-        appSearchHelper.initialize();
+        appSearchHelper.initializeAsync();
         return appSearchHelper;
     }
 
@@ -84,28 +85,27 @@ public class AppSearchHelper {
         mExecutor = Objects.requireNonNull(executor);
     }
 
-    /** Initializes the {@link AppSearchHelper}. */
-    @WorkerThread
-    private void initialize()
-            throws InterruptedException, ExecutionException {
+    /** Initializes {@link AppSearchHelper} asynchronously.
+     *
+     * <p>Chains {@link CompletableFuture}s to create an {@link AppSearchSession} and
+     * set builtin:Person schema.
+     */
+    private void initializeAsync() {
         AppSearchManager appSearchManager = mContext.getSystemService(AppSearchManager.class);
         if (appSearchManager == null) {
             throw new AndroidRuntimeException(
                     "Can't get AppSearchManager to initialize AppSearchHelper.");
         }
 
-        try {
-            mAppSearchSession = createAppSearchSessionAsync(appSearchManager).get();
+        CompletableFuture<AppSearchSession> createSessionFuture =
+                createAppSearchSessionAsync(appSearchManager);
+        mAppSearchSessionFuture = createSessionFuture.thenCompose(appSearchSession -> {
             // Always force set the schema. We are at the 1st version, so it should be fine for
             // doing it.
             // For future schema changes, we could also force set it, and rely on a full update
             // to bring back wiped data.
-            setPersonSchemaAsync(mAppSearchSession, /*forceOverride=*/ true).get();
-        } catch (InterruptedException | ExecutionException | RuntimeException e) {
-            Log.e(TAG, "Failed to create or config a AppSearchSession during initialization.", e);
-            mAppSearchSession = null;
-            throw e;
-        }
+            return setPersonSchemaAsync(appSearchSession, /*forceOverride=*/ true);
+        });
     }
 
     /**
@@ -145,11 +145,11 @@ public class AppSearchHelper {
      * @param forceOverride whether the incompatible schemas should be overridden.
      */
     @NonNull
-    private CompletableFuture<Void> setPersonSchemaAsync(@NonNull AppSearchSession session,
-            boolean forceOverride) {
+    private CompletableFuture<AppSearchSession> setPersonSchemaAsync(
+            @NonNull AppSearchSession session, boolean forceOverride) {
         Objects.requireNonNull(session);
 
-        CompletableFuture<Void> future = new CompletableFuture<>();
+        CompletableFuture<AppSearchSession> future = new CompletableFuture<>();
         SetSchemaRequest.Builder schemaBuilder = new SetSchemaRequest.Builder()
                 .addSchemas(ContactPoint.SCHEMA, Person.SCHEMA)
                 .addRequiredPermissionsForSchemaTypeVisibility(Person.SCHEMA_TYPE,
@@ -158,7 +158,7 @@ public class AppSearchHelper {
         session.setSchema(schemaBuilder.build(), mExecutor, mExecutor,
                 result -> {
                     if (result.isSuccess()) {
-                        future.complete(null);
+                        future.complete(session);
                     } else {
                         Log.e(TAG, "SetSchema failed: code " + result.getResultCode() + " message:"
                                 + result.getErrorMessage());
@@ -169,10 +169,11 @@ public class AppSearchHelper {
         return future;
     }
 
+    @WorkerThread
     @VisibleForTesting
     @Nullable
-    AppSearchSession getSession() {
-        return mAppSearchSession;
+    AppSearchSession getSession() throws ExecutionException, InterruptedException {
+        return mAppSearchSessionFuture.get();
     }
 
     /**
@@ -187,34 +188,35 @@ public class AppSearchHelper {
     public CompletableFuture<Void> indexContactsAsync(@NonNull Collection<Person> contacts) {
         Objects.requireNonNull(contacts);
 
-        // Get the size before doing an async call.
-        int size = contacts.size();
-        CompletableFuture<Void> future = new CompletableFuture<>();
-        PutDocumentsRequest request = new PutDocumentsRequest.Builder().addGenericDocuments(
-                contacts).build();
-        mAppSearchSession.put(request, mExecutor, new BatchResultCallback<String, Void>() {
-            @Override
-            public void onResult(AppSearchBatchResult<String, Void> result) {
-                if (result.isSuccess()) {
-                    Log.v(TAG, size + " documents successfully added in AppSearch.");
-                    future.complete(null);
-                } else {
-                    // TODO(b/203605504) we can only have 20,000(default) contacts stored. In order
-                    //  to save the latest contacts, we need to remove the oldest ones in this ELSE.
-                    //  RESULT_OUT_OF_SPACE is the error code for this case.
-                    future.completeExceptionally(new AppSearchException(
-                            AppSearchResult.RESULT_INTERNAL_ERROR,
-                            "Not all documented are added: " + result.toString()));
+        PutDocumentsRequest request = new PutDocumentsRequest.Builder()
+                .addGenericDocuments(contacts)
+                .build();
+        return mAppSearchSessionFuture.thenCompose(appSearchSession -> {
+            CompletableFuture<Void> future = new CompletableFuture<>();
+            appSearchSession.put(request, mExecutor, new BatchResultCallback<String, Void>() {
+                @Override
+                public void onResult(AppSearchBatchResult<String, Void> result) {
+                    if (result.isSuccess()) {
+                        int numDocs = result.getSuccesses().size();
+                        Log.v(TAG, numDocs + " documents successfully added in AppSearch.");
+                        future.complete(null);
+                    } else {
+                        // TODO(b/203605504) we can only have 20,000(default) contacts stored.
+                        //  In order to save the latest contacts, we need to remove the oldest ones
+                        //  in this ELSE. RESULT_OUT_OF_SPACE is the error code for this case.
+                        future.completeExceptionally(new AppSearchException(
+                                AppSearchResult.RESULT_INTERNAL_ERROR,
+                                "Not all documented are added: " + result.toString()));
+                    }
                 }
-            }
 
-            @Override
-            public void onSystemError(Throwable throwable) {
-                future.completeExceptionally(throwable);
-            }
+                @Override
+                public void onSystemError(Throwable throwable) {
+                    future.completeExceptionally(throwable);
+                }
+            });
+            return future;
         });
-
-        return future;
     }
 
     /**
@@ -229,29 +231,31 @@ public class AppSearchHelper {
     public CompletableFuture<Void> removeContactsByIdAsync(@NonNull Collection<String> ids) {
         Objects.requireNonNull(ids);
 
-        CompletableFuture<Void> future = new CompletableFuture<>();
-        RemoveByDocumentIdRequest request = new RemoveByDocumentIdRequest.Builder(
-                NAMESPACE_NAME).addIds(ids).build();
-        mAppSearchSession.remove(request, mExecutor, new BatchResultCallback<String, Void>() {
-            @Override
-            public void onResult(AppSearchBatchResult<String, Void> result) {
-                if (result.isSuccess()) {
-                    Log.v(TAG, result.getSuccesses().size()
-                            + " documents successfully deleted from AppSearch.");
-                    future.complete(null);
-                } else {
-                    future.completeExceptionally(new AppSearchException(
-                            AppSearchResult.RESULT_INTERNAL_ERROR,
-                            "Not all documents are deleted: " + result.toString()));
+        RemoveByDocumentIdRequest request = new RemoveByDocumentIdRequest.Builder(NAMESPACE_NAME)
+                .addIds(ids)
+                .build();
+        return mAppSearchSessionFuture.thenCompose(appSearchSession -> {
+            CompletableFuture<Void> future = new CompletableFuture<>();
+            appSearchSession.remove(request, mExecutor, new BatchResultCallback<String, Void>() {
+                @Override
+                public void onResult(AppSearchBatchResult<String, Void> result) {
+                    if (result.isSuccess()) {
+                        int numDocs = result.getSuccesses().size();
+                        Log.v(TAG, numDocs + " documents successfully deleted from AppSearch.");
+                        future.complete(null);
+                    } else {
+                        future.completeExceptionally(new AppSearchException(
+                                AppSearchResult.RESULT_INTERNAL_ERROR,
+                                "Not all documents are deleted: " + result.toString()));
+                    }
                 }
-            }
 
-            @Override
-            public void onSystemError(Throwable throwable) {
-                future.completeExceptionally(throwable);
-            }
+                @Override
+                public void onSystemError(Throwable throwable) {
+                    future.completeExceptionally(throwable);
+                }
+            });
+            return future;
         });
-
-        return future;
     }
 }

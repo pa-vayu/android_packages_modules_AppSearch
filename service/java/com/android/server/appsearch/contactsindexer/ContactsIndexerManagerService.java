@@ -61,37 +61,41 @@ public final class ContactsIndexerManagerService extends SystemService {
     public void onUserUnlocking(@NonNull TargetUser user) {
         Objects.requireNonNull(user);
         UserHandle userHandle = user.getUserHandle();
-        int userId = userHandle.getIdentifier();
-        Context userContext = mContext.createContextAsUser(userHandle, /*flags=*/ 0);
         synchronized (mContactsIndexersLocked) {
+            int userId = userHandle.getIdentifier();
             ContactsIndexerUserInstance instance = mContactsIndexersLocked.get(userId);
             if (instance == null) {
+                Context userContext = mContext.createContextAsUser(userHandle, /*flags=*/ 0);
                 File appSearchDir = AppSearchModule.getAppSearchDir(userHandle);
                 File contactsDir = new File(appSearchDir, "contacts");
                 try {
                     instance = ContactsIndexerUserInstance.createInstance(userContext, contactsDir);
-                    Log.d(TAG,
-                            "Created Contacts Indexer instance for user " + userHandle.toString());
+                    Log.d(TAG, "Created Contacts Indexer instance for user " + userHandle);
                 } catch (Throwable t) {
                     Log.e(TAG, "Failed to create Contacts Indexer instance for user "
-                            + userHandle.toString(), t);
+                            + userHandle, t);
                     return;
                 }
                 mContactsIndexersLocked.put(userId, instance);
             }
-            instance.onStart();
+            instance.startAsync();
         }
     }
 
     @Override
     public void onUserStopping(@NonNull TargetUser user) {
         Objects.requireNonNull(user);
-        int userId = user.getUserHandle().getIdentifier();
+        UserHandle userHandle = user.getUserHandle();
         synchronized (mContactsIndexersLocked) {
+            int userId = userHandle.getIdentifier();
             ContactsIndexerUserInstance instance = mContactsIndexersLocked.get(userId);
             if (instance != null) {
                 mContactsIndexersLocked.delete(userId);
-                instance.onStop();
+                try {
+                    instance.shutdown();
+                } catch (InterruptedException e) {
+                    Log.w(TAG, "Failed to shutdown contacts indexer for " + userHandle, e);
+                }
             }
         }
     }
@@ -101,7 +105,7 @@ public final class ContactsIndexerManagerService extends SystemService {
             synchronized (mContactsIndexersLocked) {
                 ContactsIndexerUserInstance instance = mContactsIndexersLocked.get(userId);
                 if (instance != null) {
-                    instance.doFullUpdate(signal);
+                    instance.doFullUpdateAsync(signal);
                 }
             }
         }
