@@ -52,8 +52,6 @@ public class ContactsIndexerMaintenanceService extends JobService {
      * Schedules a one-off full update job for the given device-user.
      */
     static void scheduleOneOffFullUpdateJob(Context context, @UserIdInt int userId) {
-        Log.v(TAG, "One off full updated job scheduled for " + userId);
-
         JobScheduler jobScheduler = context.getSystemService(JobScheduler.class);
         ComponentName component =
                 new ComponentName(context, ContactsIndexerMaintenanceService.class);
@@ -66,6 +64,7 @@ public class ContactsIndexerMaintenanceService extends JobService {
                         .setRequiresDeviceIdle(true)
                         .build();
         jobScheduler.schedule(jobInfo);
+        Log.v(TAG, "Scheduled one-off full update job for " + userId);
     }
 
     @Override
@@ -75,7 +74,7 @@ public class ContactsIndexerMaintenanceService extends JobService {
             return false;
         }
 
-        Log.v(TAG, "One off full updated job started for " + userId);
+        Log.v(TAG, "One-off full update job started for " + userId);
         mSignal = new CancellationSignal();
         EXECUTOR.execute(() -> {
             ContactsIndexerManagerService.LocalService service =
