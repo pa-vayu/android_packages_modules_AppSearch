@@ -343,4 +343,24 @@ public class ContactDataHandlerTest {
         assertThat(personTested.getGivenName()).isNull();
         TestUtils.assertEquals(personTested, personExpected);
     }
+
+    @Test
+    public void testConvertCurrentRowToPerson_nullEmailAddress_noExceptionThrown() {
+        int type = 0; // Custom
+        String name = "name";
+        String label = "CustomLabel";
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Email.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Email.ADDRESS, /*address=*/ (String) null);
+        values.put(CommonDataKinds.Email.TYPE, type);
+        values.put(CommonDataKinds.Email.LABEL, label);
+        Cursor cursor = makeCursorFromContentValues(values);
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+
+        // no NPE thrown.
+    }
 }
