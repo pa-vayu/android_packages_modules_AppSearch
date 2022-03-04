@@ -156,8 +156,9 @@ public final class GetSchemaResponse {
      * <p>The querier could read the {@link GenericDocument} objects under the {@code schemaType} if
      * they holds ALL required permissions of ANY of the individual value sets.
      *
-     * <p>For example, if the Map contains {{permissionA, PermissionB}, {PermissionC, PermissionD},
-     * {PermissionE}}.
+     * <p>For example, if the Map contains {@code {% verbatim %}{{permissionA,
+     * PermissionB}, {PermissionC, PermissionD},
+     * {PermissionE}}{% endverbatim %}}.
      *
      * <ul>
      *   <li>A querier holds both PermissionA and PermissionB has access.
@@ -330,8 +331,8 @@ public final class GetSchemaResponse {
          * <p>The querier could read the {@link GenericDocument} objects under the {@code
          * schemaType} if they holds ALL required permissions of ANY of the individual value sets.
          *
-         * <p>For example, if the Map contains {{permissionA, PermissionB}, {PermissionC,
-         * PermissionD}, {PermissionE}}.
+         * <p>For example, if the Map contains {@code {% verbatim %}{{permissionA,
+         * PermissionB}, {PermissionC, PermissionD}, {PermissionE}}{% endverbatim %}}.
          *
          * <ul>
          *   <li>A querier holds both PermissionA and PermissionB has access.
