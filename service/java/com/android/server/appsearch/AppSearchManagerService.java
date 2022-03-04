@@ -269,9 +269,9 @@ public class AppSearchManagerService extends SystemService {
         Objects.requireNonNull(userHandle);
         Log.i(TAG, "Shutting down AppSearch for user " + userHandle);
         try {
+            mServiceImplHelper.setUserIsLocked(userHandle, true);
             mExecutorManager.shutDownAndRemoveUserExecutor(userHandle);
             mAppSearchUserInstanceManager.closeAndRemoveUserInstance(userHandle);
-            mServiceImplHelper.setUserIsLocked(userHandle, true);
             Log.i(TAG, "Removed AppSearchImpl instance for: " + userHandle);
         } catch (Throwable t) {
             Log.e(TAG, "Unable to remove data for: " + userHandle, t);
