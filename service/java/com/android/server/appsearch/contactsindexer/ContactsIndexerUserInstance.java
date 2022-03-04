@@ -41,6 +41,7 @@ import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -263,30 +264,39 @@ public final class ContactsIndexerUserInstance {
      *
      * @param signal Used to indicate if the full update task should be cancelled.
      */
-    public void doFullUpdateAsync(CancellationSignal signal) {
-        mSingleThreadedExecutor.execute(() -> {
-            // TODO(b/203605504): handle cancellation signal to abort the job.
-            long currentTimeMillis = System.currentTimeMillis();
-            Set<String> cp2ContactIds = new ArraySet<>();
-            // Get a list of all contact IDs from CP2. Ignore the return value which denotes the
-            // most recent updated timestamp. TODO(b/203605504): reconsider whether the most recent
-            //  updated and deleted timestamps are useful.
-            ContactsProviderUtil.getUpdatedContactIds(mContext, /*sinceFilter=*/ 0, cp2ContactIds);
-            mAppSearchHelper.getAllContactIdsAsync().thenAccept(appsearchContactIds -> {
-                Set<String> unwantedContactIds = new ArraySet<>(appsearchContactIds);
-                unwantedContactIds.removeAll(cp2ContactIds);
-                Log.d(TAG, "Performing a full sync (updated:" + cp2ContactIds.size()
-                        + ", deleted:" + unwantedContactIds.size()
-                        + ") of CP2 contacts in AppSearch");
-                mContactsIndexerImpl.updatePersonCorpus(/*wantedContactIds=*/ cp2ContactIds,
-                        unwantedContactIds);
-                // TODO(b/221892152): persist timestamps after the documents are flush to AppSearch
-                persistTimestamps(mPath,
-                        /*lastDeltaUpdateTimestampMillis=*/ currentTimeMillis,
-                        /*lastDeltaDeleteTimestampMillis=*/ currentTimeMillis,
-                        /*lastFullUpdateTimestampMillis=*/ currentTimeMillis);
-            });
-        });
+    public void doFullUpdateAsync(@NonNull CancellationSignal signal) {
+        Objects.requireNonNull(signal);
+        // TODO(b/222126568): log stats
+        mSingleThreadedExecutor.execute(() -> doFullUpdateInternalAsync(signal).exceptionally(t -> {
+            Log.w("Failed to perform full update", t);
+            return null;
+        }));
+    }
+
+    @VisibleForTesting
+    CompletableFuture<Void> doFullUpdateInternalAsync(@NonNull CancellationSignal signal) {
+        // TODO(b/203605504): handle cancellation signal to abort the job.
+        long currentTimeMillis = System.currentTimeMillis();
+        Set<String> cp2ContactIds = new ArraySet<>();
+        // Get a list of all contact IDs from CP2. Ignore the return value which denotes the
+        // most recent updated timestamp. TODO(b/203605504): reconsider whether the most recent
+        //  updated and deleted timestamps are useful.
+        ContactsProviderUtil.getUpdatedContactIds(mContext, /*sinceFilter=*/ 0, cp2ContactIds);
+        return mAppSearchHelper.getAllContactIdsAsync()
+                .thenCompose(appsearchContactIds -> {
+                    Set<String> unwantedContactIds = new ArraySet<>(appsearchContactIds);
+                    unwantedContactIds.removeAll(cp2ContactIds);
+                    Log.d(TAG, "Performing a full sync (updated:" + cp2ContactIds.size()
+                            + ", deleted:" + unwantedContactIds.size()
+                            + ") of CP2 contacts in AppSearch");
+                    return mContactsIndexerImpl.updatePersonCorpusAsync(
+                            /*wantedContactIds=*/ cp2ContactIds, unwantedContactIds);
+                }).thenAccept(x -> {
+                    persistTimestamps(mPath,
+                            /*lastDeltaUpdateTimestampMillis=*/ currentTimeMillis,
+                            /*lastDeltaDeleteTimestampMillis=*/ currentTimeMillis,
+                            /*lastFullUpdateTimestampMillis=*/ currentTimeMillis);
+                });
     }
 
     /**
@@ -375,7 +385,7 @@ public final class ContactsIndexerUserInstance {
         // reset, so a new task is allowed to catch any new changes in CP2.
         // TODO(b/203605504) report errors here so we can choose not to update the
         //  timestamps.
-        mContactsIndexerImpl.updatePersonCorpus(wantedIds, unWantedIds);
+        mContactsIndexerImpl.updatePersonCorpusAsync(wantedIds, unWantedIds);
 
         // Persist the timestamps.
         // TODO(b/221892152): persist timestamps after the documents are flush to AppSearch

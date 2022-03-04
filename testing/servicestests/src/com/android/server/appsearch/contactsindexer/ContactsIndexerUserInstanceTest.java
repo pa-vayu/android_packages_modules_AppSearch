@@ -28,6 +28,7 @@ import android.app.appsearch.SearchSpec;
 import android.app.appsearch.SetSchemaRequest;
 import android.app.appsearch.SetSchemaResponse;
 import android.content.Context;
+import android.os.CancellationSignal;
 import android.test.ProviderTestCase2;
 
 import static org.junit.Assert.assertThrows;
@@ -52,7 +53,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 
 // TODO(b/203605504) this is a junit3 test(ProviderTestCase2) but we run it with junit4 to use
 //  some utilities like temporary folder. Right now I can't make ProviderTestRule work so we
@@ -236,6 +239,19 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
                 expectedNewLastUpdatedTimestamp);
         assertThat(loadedData.mLastDeltaDeleteTimestampMillis).isEqualTo(
                 expectedNewLastDeletedTimestamp);
+    }
+
+    @Test
+    public void testFullUpdate() throws Exception {
+        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
+                mDataFilePath.getParent().toFile());
+
+        instance.doFullUpdateInternalAsync(new CancellationSignal()).get();
+
+        AppSearchHelper searchHelper = AppSearchHelper.createAppSearchHelper(mContext,
+                Executors.newSingleThreadExecutor());
+        List<String> contactIds = searchHelper.getAllContactIdsAsync().get();
+        assertThat(contactIds.size()).isEqualTo(FakeContactsProvider.NUM_EXISTED_CONTACTS);
     }
 
     private void clearAndWriteDataToTempFile(String data, Path dataFilePath) throws IOException {
