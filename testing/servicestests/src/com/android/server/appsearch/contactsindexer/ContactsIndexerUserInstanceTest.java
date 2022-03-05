@@ -29,7 +29,7 @@ import android.app.appsearch.SetSchemaRequest;
 import android.app.appsearch.SetSchemaResponse;
 import android.content.Context;
 import android.test.ProviderTestCase2;
-import android.util.ArraySet;
+
 import static org.junit.Assert.assertThrows;
 
 import androidx.test.core.app.ApplicationProvider;
@@ -52,7 +52,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 // TODO(b/203605504) this is a junit3 test(ProviderTestCase2) but we run it with junit4 to use
@@ -108,39 +107,45 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
     @Test
     public void testCreateInstance_initialLastTimestamps_zero()
             throws Exception {
-        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(
-                mContext, mDataFilePath.getParent().toFile());
+        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
+                mDataFilePath.getParent().toFile());
 
-        PersistedData data = instance.getPersistedStateCopy();
+        PersistedData data = instance.getPersistedStateForTest();
 
+        assertThat(data.mLastFullUpdateTimestampMillis).isEqualTo(0);
         assertThat(data.mLastDeltaUpdateTimestampMillis).isEqualTo(0);
         assertThat(data.mLastDeltaDeleteTimestampMillis).isEqualTo(0);
-        assertThat(data.mLastFullUpdateTimestampMillis).isEqualTo(0);
     }
 
     @Test
     public void testCreateInstance_lastTimestamps_readFromDiskCorrectly()
             throws Exception {
         PersistedData newData = new PersistedData();
-        newData.mLastDeltaUpdateTimestampMillis = 0;
-        newData.mLastDeltaUpdateTimestampMillis = 1;
-        newData.mLastDeltaDeleteTimestampMillis = 2;
+        newData.mLastFullUpdateTimestampMillis = 1;
+        newData.mLastDeltaUpdateTimestampMillis = 2;
+        newData.mLastDeltaDeleteTimestampMillis = 3;
         clearAndWriteDataToTempFile(newData.toString(), mDataFilePath);
 
-        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(
-                mContext, mDataFilePath.getParent().toFile());
+        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
+                mDataFilePath.getParent().toFile());
 
-        PersistedData loadedData = instance.getPersistedStateCopy();
+        PersistedData loadedData = instance.getPersistedStateForTest();
+        assertThat(loadedData.mLastFullUpdateTimestampMillis).isEqualTo(
+                newData.mLastFullUpdateTimestampMillis);
         assertThat(loadedData.mLastDeltaUpdateTimestampMillis).isEqualTo(
                 newData.mLastDeltaUpdateTimestampMillis);
         assertThat(loadedData.mLastDeltaDeleteTimestampMillis).isEqualTo(
                 newData.mLastDeltaDeleteTimestampMillis);
-        assertThat(loadedData.mLastFullUpdateTimestampMillis).isEqualTo(
-                newData.mLastFullUpdateTimestampMillis);
     }
 
     @Test
-    public void testContactsIndexerUserInstance_lastTimestamps_writeToDiskCorrectly() throws Exception {
+    public void testContactsIndexerUserInstance_lastTimestamps_writeToDiskCorrectly()
+            throws Exception {
+        // Simulate a full update to enable non-deferred delta updates
+        PersistedData newData = new PersistedData();
+        newData.mLastFullUpdateTimestampMillis = 1;
+        clearAndWriteDataToTempFile(newData.toString(), mDataFilePath);
+
         // In FakeContactsIndexer, we have contacts array [1, 2, ... NUM_TOTAL_CONTACTS], among
         // them, [1, NUM_EXISTED_CONTACTS] is for updated contacts, and [NUM_EXISTED_CONTACTS +
         // 1, NUM_TOTAL_CONTACTS] is for deleted contacts.
@@ -150,21 +155,21 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         // [56, 100
         long expectedNewLastUpdatedTimestamp = FakeContactsProvider.NUM_EXISTED_CONTACTS;
         long expectedNewLastDeletedTimestamp = FakeContactsProvider.NUM_TOTAL_CONTACTS;
-        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(
-                mContext, mDataFilePath.getParent().toFile());
+        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
+                mDataFilePath.getParent().toFile());
 
-        instance.doDeltaUpdate();
+        instance.doDeltaUpdateForTest();
 
-        PersistedData loadedData = instance.getPersistedStateCopy();
+        PersistedData loadedData = instance.getPersistedStateForTest();
         assertThat(loadedData.mLastDeltaUpdateTimestampMillis).isEqualTo(
                 expectedNewLastUpdatedTimestamp);
         assertThat(loadedData.mLastDeltaDeleteTimestampMillis).isEqualTo(
                 expectedNewLastDeletedTimestamp);
 
         // Create another indexer to load data from disk.
-        instance = ContactsIndexerUserInstance.createInstance(
-                mContext, mDataFilePath.getParent().toFile());
-        loadedData = instance.getPersistedStateCopy();
+        instance = ContactsIndexerUserInstance.createInstance(mContext,
+                mDataFilePath.getParent().toFile());
+        loadedData = instance.getPersistedStateForTest();
         assertThat(loadedData.mLastDeltaUpdateTimestampMillis).isEqualTo(
                 expectedNewLastUpdatedTimestamp);
         assertThat(loadedData.mLastDeltaDeleteTimestampMillis).isEqualTo(
@@ -173,6 +178,11 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
 
     @Test
     public void testContactsIndexerUserInstance_deltaUpdate_firstTime() throws Exception {
+        // Simulate a full update to enable non-deferred delta updates
+        PersistedData newData = new PersistedData();
+        newData.mLastFullUpdateTimestampMillis = 1;
+        clearAndWriteDataToTempFile(newData.toString(), mDataFilePath);
+
         // In FakeContactsIndexer, we have contacts array [1, 2, ... NUM_TOTAL_CONTACTS], among
         // them, [1, NUM_EXISTED_CONTACTS] is for updated contacts, and [NUM_EXISTED_CONTACTS +
         // 1, NUM_TOTAL_CONTACTS] is for deleted contacts.
@@ -184,31 +194,16 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         int expectedUpdatedContactsLastId = FakeContactsProvider.NUM_EXISTED_CONTACTS;
         long expectedNewLastUpdatedTimestamp = FakeContactsProvider.NUM_EXISTED_CONTACTS;
         long expectedNewLastDeletedTimestamp = FakeContactsProvider.NUM_TOTAL_CONTACTS;
-        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(
-                mContext, mDataFilePath.getParent().toFile());
+        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
+                mDataFilePath.getParent().toFile());
 
-        instance.doDeltaUpdate();
+        instance.doDeltaUpdateForTest();
 
-        PersistedData loadedData = instance.getPersistedStateCopy();
+        PersistedData loadedData = instance.getPersistedStateForTest();
         assertThat(loadedData.mLastDeltaUpdateTimestampMillis).isEqualTo(
                 expectedNewLastUpdatedTimestamp);
         assertThat(loadedData.mLastDeltaDeleteTimestampMillis).isEqualTo(
                 expectedNewLastDeletedTimestamp);
-
-        AppSearchHelper appSearchHelper = AppSearchHelper.createAppSearchHelper(mContext,
-                Runnable::run);
-        Set<String> expectedIds = new ArraySet<>();
-        for (int i = expectedUpdatedContactsFirstId; i <= expectedUpdatedContactsLastId; ++i) {
-            expectedIds.add(String.valueOf(i));
-        }
-
-        Set<String> actualIds = TestUtils.getDocIdsByQuery(
-                appSearchHelper.getSession(),
-                /*query=*/"",
-                mSpecForQueryAllContacts,
-                Runnable::run);
-
-        assertThat(actualIds).isEqualTo(expectedIds);
     }
 
     @Test
@@ -227,34 +222,20 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         long expectedNewLastUpdatedTimestamp = FakeContactsProvider.NUM_EXISTED_CONTACTS;
         long expectedNewLastDeletedTimestamp = FakeContactsProvider.NUM_TOTAL_CONTACTS;
         PersistedData persistedData = new PersistedData();
+        persistedData.mLastFullUpdateTimestampMillis = 1;
         persistedData.mLastDeltaUpdateTimestampMillis = lastUpdatedTimestamp;
         persistedData.mLastDeltaDeleteTimestampMillis = lastDeletedTimestamp;
         clearAndWriteDataToTempFile(persistedData.toString(), mDataFilePath);
-        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(
-                mContext, mDataFilePath.getParent().toFile());
+        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
+                mDataFilePath.getParent().toFile());
 
-        instance.doDeltaUpdate();
+        instance.doDeltaUpdateForTest();
 
-        PersistedData loadedData = instance.getPersistedStateCopy();
+        PersistedData loadedData = instance.getPersistedStateForTest();
         assertThat(loadedData.mLastDeltaUpdateTimestampMillis).isEqualTo(
                 expectedNewLastUpdatedTimestamp);
         assertThat(loadedData.mLastDeltaDeleteTimestampMillis).isEqualTo(
                 expectedNewLastDeletedTimestamp);
-
-        AppSearchHelper appSearchHelper = AppSearchHelper.createAppSearchHelper(mContext,
-                Runnable::run);
-        Set<String> expectedIds = new ArraySet<>();
-        for (int i = expectedUpdatedContactsFirstId; i <= expectedUpdatedContactsLastId; ++i) {
-            expectedIds.add(String.valueOf(i));
-        }
-
-        Set<String> actualIds = TestUtils.getDocIdsByQuery(
-                appSearchHelper.getSession(),
-                /*query=*/ "",
-                mSpecForQueryAllContacts,
-                Runnable::run);
-
-        assertThat(actualIds).isEqualTo(expectedIds);
     }
 
     private void clearAndWriteDataToTempFile(String data, Path dataFilePath) throws IOException {
