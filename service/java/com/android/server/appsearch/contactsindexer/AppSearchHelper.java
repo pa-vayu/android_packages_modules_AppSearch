@@ -26,6 +26,9 @@ import android.app.appsearch.AppSearchSession;
 import android.app.appsearch.BatchResultCallback;
 import android.app.appsearch.PutDocumentsRequest;
 import android.app.appsearch.RemoveByDocumentIdRequest;
+import android.app.appsearch.SearchResult;
+import android.app.appsearch.SearchResults;
+import android.app.appsearch.SearchSpec;
 import android.app.appsearch.SetSchemaRequest;
 import android.app.appsearch.exceptions.AppSearchException;
 import android.content.Context;
@@ -36,8 +39,10 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.appsearch.contactsindexer.appsearchtypes.ContactPoint;
 import com.android.server.appsearch.contactsindexer.appsearchtypes.Person;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -58,6 +63,8 @@ public class AppSearchHelper {
     public static final String DATABASE_NAME = "contacts";
     // Namespace needed to be used for ContactsIndexer to index the contacts
     public static final String NAMESPACE_NAME = "";
+
+    private static final int GET_CONTACT_IDS_PAGE_SIZE = 500;
 
     private final Context mContext;
     private final Executor mExecutor;
@@ -256,6 +263,68 @@ public class AppSearchHelper {
                 }
             });
             return future;
+        });
+    }
+
+    /**
+     * Returns IDs of all contacts indexed in AppSearch
+     *
+     * <p>Issues an empty query with an empty projection and pages through all results, collecting
+     * the document IDs to return to the caller.
+     */
+    @NonNull
+    public CompletableFuture<List<String>> getAllContactIdsAsync() {
+        return mAppSearchSessionFuture.thenCompose(appSearchSession -> {
+            SearchSpec allDocumentIdsSpec = new SearchSpec.Builder()
+                    .addFilterNamespaces(NAMESPACE_NAME)
+                    .addFilterSchemas(Person.SCHEMA_TYPE)
+                    .addProjection(Person.SCHEMA_TYPE, /*propertyPaths=*/ Collections.emptyList())
+                    .setResultCountPerPage(GET_CONTACT_IDS_PAGE_SIZE)
+                    .build();
+            SearchResults results =
+                    appSearchSession.search(/*queryExpression=*/ "", allDocumentIdsSpec);
+            List<String> allContactIds = new ArrayList<>();
+            return collectDocumentIdsFromAllPagesAsync(results, allContactIds)
+                    .thenCompose(unused -> {
+                        results.close();
+                        return CompletableFuture.supplyAsync(() -> allContactIds);
+                    });
+        });
+    }
+
+    /**
+     * Recursively pages through all search results and collects document IDs into given list.
+     *
+     * @param results Iterator for paging through the search results.
+     * @param contactIds List for collecting and returning document IDs.
+     * @return A future indicating if more results might be available.
+     */
+    private CompletableFuture<Boolean> collectDocumentIdsFromAllPagesAsync(
+            @NonNull SearchResults results,
+            @NonNull List<String> contactIds) {
+        Objects.requireNonNull(results);
+        Objects.requireNonNull(contactIds);
+
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        results.getNextPage(mExecutor, callback -> {
+            if (!callback.isSuccess()) {
+                future.completeExceptionally(new AppSearchException(callback.getResultCode(),
+                        callback.getErrorMessage()));
+                return;
+            }
+            List<SearchResult> resultList = callback.getResultValue();
+            for (int i = 0; i < resultList.size(); i++) {
+                SearchResult result = resultList.get(i);
+                contactIds.add(result.getGenericDocument().getId());
+            }
+            future.complete(!resultList.isEmpty());
+        });
+        return future.thenCompose(moreResults -> {
+            // Recurse if there might be more results to page through.
+            if (moreResults) {
+                return collectDocumentIdsFromAllPagesAsync(results, contactIds);
+            }
+            return CompletableFuture.supplyAsync(() -> false);
         });
     }
 }

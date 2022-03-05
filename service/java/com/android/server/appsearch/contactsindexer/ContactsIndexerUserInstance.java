@@ -39,7 +39,6 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -68,6 +67,7 @@ public final class ContactsIndexerUserInstance {
     // Used for batching/throttling the contact change notification so we won't schedule too many
     // delta updates.
     private final AtomicBoolean mDeltaUpdatePending = new AtomicBoolean(/*initialValue=*/ false);
+    private final AppSearchHelper mAppSearchHelper;
     private final ContactsIndexerImpl mContactsIndexerImpl;
 
     // Path to persist timestamp data.
@@ -184,10 +184,8 @@ public final class ContactsIndexerUserInstance {
         ExecutorService singleThreadedExecutor = Executors.newSingleThreadExecutor();
         AppSearchHelper appSearchHelper = AppSearchHelper.createAppSearchHelper(userContext,
                 singleThreadedExecutor);
-        ContactsIndexerImpl contactsIndexerImpl = new ContactsIndexerImpl(userContext,
-                appSearchHelper);
         ContactsIndexerUserInstance indexer = new ContactsIndexerUserInstance(userContext,
-                contactsIndexerImpl, path, singleThreadedExecutor);
+                path, appSearchHelper, singleThreadedExecutor);
         indexer.loadPersistedDataAsync(path);
 
         return indexer;
@@ -195,7 +193,7 @@ public final class ContactsIndexerUserInstance {
 
     /**
      * Constructs a {@link ContactsIndexerUserInstance}.
-     *
+
      * @param context                 Context object passed from
      *                                {@link ContactsIndexerManagerService}
      * @param path                    the path to the file to store the meta data for contacts
@@ -203,14 +201,15 @@ public final class ContactsIndexerUserInstance {
      * @param singleThreadedExecutor  an {@link ExecutorService} with at most one thread to ensure
      *                                the thread safety of this class.
      */
-    private ContactsIndexerUserInstance(@NonNull Context context,
-            @NonNull ContactsIndexerImpl contactsIndexerImpl, @NonNull Path path,
+    private ContactsIndexerUserInstance(@NonNull Context context, @NonNull Path path,
+            @NonNull AppSearchHelper appSearchHelper,
             @NonNull ExecutorService singleThreadedExecutor) {
         mContext = Objects.requireNonNull(context);
-        mContactsIndexerImpl = Objects.requireNonNull(contactsIndexerImpl);
+        mAppSearchHelper = Objects.requireNonNull(appSearchHelper);
         mPath = Objects.requireNonNull(path);
         mSingleThreadedExecutor = Objects.requireNonNull(singleThreadedExecutor);
         mContactsObserver = new ContactsObserver();
+        mContactsIndexerImpl = new ContactsIndexerImpl(context, appSearchHelper);
     }
 
     public void startAsync() {
@@ -223,11 +222,16 @@ public final class ContactsIndexerUserInstance {
 
         mSingleThreadedExecutor.execute(() -> {
             // If this contacts indexer instance hasn't synced any CP2 changes into AppSearch,
-            // schedule a one-off task to do a full update. That is, sync all CP2 contacts into
+            // or a configurable amount of time (default 30 days) has passed since the last
+            // full sync, schedule a task to do a full update. That is, sync all CP2 contacts into
             // AppSearch.
-            if (mPersistedData.mLastFullUpdateTimestampMillis == 0) {
-                ContactsIndexerMaintenanceService.scheduleOneOffFullUpdateJob(mContext,
-                        mContext.getUser().getIdentifier());
+            long fullUpdateIntervalMillis =
+                    ContactsIndexerConfig.getContactsFullUpdateIntervalMillis();
+            if (mPersistedData.mLastFullUpdateTimestampMillis == 0
+                    || mPersistedData.mLastFullUpdateTimestampMillis + fullUpdateIntervalMillis
+                    <= System.currentTimeMillis()) {
+                ContactsIndexerMaintenanceService.scheduleFullUpdateJob(
+                        mContext, mContext.getUser().getIdentifier());
             }
         });
     }
@@ -261,23 +265,27 @@ public final class ContactsIndexerUserInstance {
      */
     public void doFullUpdateAsync(CancellationSignal signal) {
         mSingleThreadedExecutor.execute(() -> {
-            // TODO(b/203605504)
-            // 1. Handle cancellation signal to abort the job.
-            // 2. Clear AppSearch Person corpus first.
-            Log.d(TAG, "Performing a full update of CP2 contacts in AppSearch");
+            // TODO(b/203605504): handle cancellation signal to abort the job.
             long currentTimeMillis = System.currentTimeMillis();
-            Set<String> allContactIds = new ArraySet<>();
+            Set<String> cp2ContactIds = new ArraySet<>();
             // Get a list of all contact IDs from CP2. Ignore the return value which denotes the
             // most recent updated timestamp. TODO(b/203605504): reconsider whether the most recent
             //  updated and deleted timestamps are useful.
-            ContactsProviderUtil.getUpdatedContactIds(mContext, /*sinceFilter=*/ 0, allContactIds);
-            mContactsIndexerImpl.updatePersonCorpus(allContactIds,
-                    /*unWantedContactIds=*/ Collections.emptySet());
-            Log.d(TAG, "Indexed " + allContactIds.size() + " contacts into AppSearch");
-            persistTimestamps(mPath,
-                    /*lastDeltaUpdateTimestampMillis=*/ currentTimeMillis,
-                    /*lastDeltaDeleteTimestampMillis=*/ currentTimeMillis,
-                    /*lastFullUpdateTimestampMillis=*/ currentTimeMillis);
+            ContactsProviderUtil.getUpdatedContactIds(mContext, /*sinceFilter=*/ 0, cp2ContactIds);
+            mAppSearchHelper.getAllContactIdsAsync().thenAccept(appsearchContactIds -> {
+                Set<String> unwantedContactIds = new ArraySet<>(appsearchContactIds);
+                unwantedContactIds.removeAll(cp2ContactIds);
+                Log.d(TAG, "Performing a full sync (updated:" + cp2ContactIds.size()
+                        + ", deleted:" + unwantedContactIds.size()
+                        + ") of CP2 contacts in AppSearch");
+                mContactsIndexerImpl.updatePersonCorpus(/*wantedContactIds=*/ cp2ContactIds,
+                        unwantedContactIds);
+                // TODO(b/221892152): persist timestamps after the documents are flush to AppSearch
+                persistTimestamps(mPath,
+                        /*lastDeltaUpdateTimestampMillis=*/ currentTimeMillis,
+                        /*lastDeltaDeleteTimestampMillis=*/ currentTimeMillis,
+                        /*lastFullUpdateTimestampMillis=*/ currentTimeMillis);
+            });
         });
     }
 
@@ -370,6 +378,7 @@ public final class ContactsIndexerUserInstance {
         mContactsIndexerImpl.updatePersonCorpus(wantedIds, unWantedIds);
 
         // Persist the timestamps.
+        // TODO(b/221892152): persist timestamps after the documents are flush to AppSearch
         persistTimestamps(mPath, mPersistedData.mLastDeltaUpdateTimestampMillis,
                 mPersistedData.mLastDeltaDeleteTimestampMillis,
                 mPersistedData.mLastFullUpdateTimestampMillis);

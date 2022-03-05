@@ -69,10 +69,7 @@ public class AppSearchModule {
 
             // It is safe to check DeviceConfig here, since SettingsProvider, which DeviceConfig
             // uses, starts before AppSearch.
-            if (DeviceConfig.getBoolean(
-                    DeviceConfig.NAMESPACE_APPSEARCH,
-                    ContactsIndexerConfig.CONTACTS_INDEXER_ENABLED,
-                    /*defaultValue=*/ true)) {
+            if (ContactsIndexerConfig.isContactsIndexerEnabled()) {
                 mContactsIndexerManagerService = new ContactsIndexerManagerService(getContext());
                 try {
                     mContactsIndexerManagerService.onStart();
