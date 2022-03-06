@@ -107,6 +107,7 @@ public final class ContactsIndexerImpl {
             int endIndex = Math.min(startIndex + NUM_DELETED_CONTACTS_PER_BATCH_FOR_APPSEARCH,
                     unWantedSize);
             Collection<String> currentContactIds = unWantedIdList.subList(startIndex, endIndex);
+            // TODO(b/221892152): propagate futures up the stack
             mAppSearchHelper.removeContactsByIdAsync(currentContactIds);
             startIndex = endIndex;
         }
@@ -308,6 +309,7 @@ public final class ContactsIndexerImpl {
                 return;
             }
 
+            // TODO(b/221892152): propagate futures up the stack
             mAppSearchHelper.indexContactsAsync(mBatchedContacts);
             mBatchedContacts.clear();
         }

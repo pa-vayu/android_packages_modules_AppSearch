@@ -41,6 +41,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -92,7 +93,7 @@ public class AppSearchHelperTest {
     }
 
     @Test
-    public void testAppSearchHelper_indexContacts() throws Exception {
+    public void testIndexContacts() throws Exception {
         int contactsExisted = 10;
         int contactsDeleted = 10;
         Person[] contactData = new FakeContactsProvider(mContext.getResources(),
@@ -116,6 +117,23 @@ public class AppSearchHelperTest {
     }
 
     @Test
+    public void testIndexContacts_clearAfterIndex() throws Exception {
+        int numAvailableContacts = 50;
+        List<Person> contacts = new ArrayList<>(Arrays.asList(
+                new FakeContactsProvider(mContext.getResources(), numAvailableContacts,
+                        /*contactsTotal=*/ numAvailableContacts).getAllContactData()));
+
+        CompletableFuture<Void> indexContactsFuture = mAppSearchHelper.indexContactsAsync(contacts);
+        contacts.clear();
+        indexContactsFuture.get();
+
+        Set<String> appSearchIds = TestUtils.getDocIdsByQuery(mAppSearchHelper.getSession(),
+                /*query=*/ "", new SearchSpec.Builder().build(), Runnable::run);
+        assertThat(appSearchIds.size()).isEqualTo(numAvailableContacts);
+
+    }
+
+    @Test
     public void testAppSearchHelper_removeContacts() throws Exception {
         int contactsExisted = 10;
         int contactsDeleted = 10;
@@ -135,5 +153,38 @@ public class AppSearchHelperTest {
                 TestUtils.getDocsByIdAsync(mAppSearchHelper.getSession(), ids, Runnable::run).get();
         assertThat(resultBeforeRemove.getSuccesses()).hasSize(contactsExisted);
         assertThat(resultAfterRemove.getSuccesses()).hasSize(0);
+    }
+
+    @Test
+    public void testGetAllContactIds() throws Exception {
+        int numDeletedContacts = 250;
+        int numAvailableContacts = 2500;
+        int numTotalContactsIds = numAvailableContacts + numDeletedContacts;
+
+        FakeContactsProvider contactsProvider = new FakeContactsProvider(mContext.getResources(),
+                numAvailableContacts, numTotalContactsIds);
+        ArrayList<Person> contacts = new ArrayList<>(
+                Arrays.asList(contactsProvider.getAllContactData()));
+        indexContactsInBatchesAsync(contacts).get();
+
+        List<String> appSearchContactIds = mAppSearchHelper.getAllContactIdsAsync().get();
+
+        assertThat(appSearchContactIds.size()).isEqualTo(numAvailableContacts);
+    }
+
+    private CompletableFuture<Void> indexContactsInBatchesAsync(List<Person> contacts) {
+        CompletableFuture<Void> indexContactsInBatchesFuture =
+                CompletableFuture.completedFuture(null);
+        int startIndex = 0;
+        while (startIndex < contacts.size()) {
+            int batchEndIndex = Math.min(
+                    startIndex + ContactsIndexerImpl.NUM_UPDATED_CONTACTS_PER_BATCH_FOR_APPSEARCH,
+                    contacts.size());
+            List<Person> batchedContacts = contacts.subList(startIndex, batchEndIndex);
+            indexContactsInBatchesFuture = indexContactsInBatchesFuture
+                    .thenCompose(x -> mAppSearchHelper.indexContactsAsync(batchedContacts));
+            startIndex = batchEndIndex;
+        }
+        return indexContactsInBatchesFuture;
     }
 }
