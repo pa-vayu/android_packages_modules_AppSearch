@@ -28,11 +28,11 @@ import android.app.appsearch.AppSearchResult;
 import android.app.appsearch.AppSearchSchema;
 import android.app.appsearch.GenericDocument;
 import android.app.appsearch.GetSchemaResponse;
-import android.app.appsearch.PackageIdentifier;
 import android.app.appsearch.SearchResultPage;
 import android.app.appsearch.SearchSpec;
 import android.app.appsearch.SetSchemaResponse;
 import android.app.appsearch.StorageInfo;
+import android.app.appsearch.VisibilityDocument;
 import android.app.appsearch.aidl.AppSearchBatchResultParcel;
 import android.app.appsearch.aidl.AppSearchResultParcel;
 import android.app.appsearch.aidl.IAppSearchBatchResultCallback;
@@ -40,10 +40,7 @@ import android.app.appsearch.aidl.IAppSearchManager;
 import android.app.appsearch.aidl.IAppSearchObserverProxy;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
 import android.app.appsearch.exceptions.AppSearchException;
-import android.app.appsearch.observer.AppSearchObserverCallback;
-import android.app.appsearch.observer.DocumentChangeInfo;
 import android.app.appsearch.observer.ObserverSpec;
-import android.app.appsearch.observer.SchemaChangeInfo;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -58,7 +55,6 @@ import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.UserHandle;
 import android.os.UserManager;
-import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Log;
 
@@ -274,7 +270,7 @@ public class AppSearchManagerService extends SystemService {
                     for (int i = 0; i < installedPackageInfos.size(); i++) {
                         packagesToKeep.add(installedPackageInfos.get(i).packageName);
                     }
-                    packagesToKeep.add(VisibilityStore.PACKAGE_NAME);
+                    packagesToKeep.add(VisibilityStore.VISIBILITY_PACKAGE_NAME);
                     //TODO(b/145759910) clear visibility setting for package.
                     instance.getAppSearchImpl().prunePackageData(packagesToKeep);
                 }
@@ -323,8 +319,7 @@ public class AppSearchManagerService extends SystemService {
                 @NonNull String packageName,
                 @NonNull String databaseName,
                 @NonNull List<Bundle> schemaBundles,
-                @NonNull List<String> schemasNotDisplayedBySystem,
-                @NonNull Map<String, List<Bundle>> schemasVisibleToPackagesBundles,
+                @NonNull List<Bundle> visibilityBundles,
                 boolean forceOverride,
                 int schemaVersion,
                 @NonNull UserHandle userHandle,
@@ -333,8 +328,7 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(packageName);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(schemaBundles);
-            Objects.requireNonNull(schemasNotDisplayedBySystem);
-            Objects.requireNonNull(schemasVisibleToPackagesBundles);
+            Objects.requireNonNull(visibilityBundles);
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
 
@@ -359,17 +353,11 @@ public class AppSearchManagerService extends SystemService {
                     for (int i = 0; i < schemaBundles.size(); i++) {
                         schemas.add(new AppSearchSchema(schemaBundles.get(i)));
                     }
-                    Map<String, List<PackageIdentifier>> schemasVisibleToPackages =
-                            new ArrayMap<>(schemasVisibleToPackagesBundles.size());
-                    for (Map.Entry<String, List<Bundle>> entry :
-                            schemasVisibleToPackagesBundles.entrySet()) {
-                        List<PackageIdentifier> packageIdentifiers =
-                                new ArrayList<>(entry.getValue().size());
-                        for (int i = 0; i < entry.getValue().size(); i++) {
-                            packageIdentifiers.add(
-                                    new PackageIdentifier(entry.getValue().get(i)));
-                        }
-                        schemasVisibleToPackages.put(entry.getKey(), packageIdentifiers);
+                    List<VisibilityDocument> visibilityDocuments =
+                            new ArrayList<>(visibilityBundles.size());
+                    for (int i = 0; i < visibilityBundles.size(); i++) {
+                        visibilityDocuments.add(
+                                new VisibilityDocument(visibilityBundles.get(i)));
                     }
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     // TODO(b/173532925): Implement logging for statsBuilder
@@ -377,9 +365,7 @@ public class AppSearchManagerService extends SystemService {
                             packageName,
                             databaseName,
                             schemas,
-                            instance.getVisibilityStore(),
-                            schemasNotDisplayedBySystem,
-                            schemasVisibleToPackages,
+                            visibilityDocuments,
                             forceOverride,
                             schemaVersion,
                             /*setSchemaStatsBuilder=*/ null);
@@ -422,10 +408,12 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void getSchema(
+                @NonNull String callingPackageName,
                 @NonNull String packageName,
                 @NonNull String databaseName,
                 @NonNull UserHandle userHandle,
                 @NonNull IAppSearchResultCallback callback) {
+            Objects.requireNonNull(callingPackageName);
             Objects.requireNonNull(packageName);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(userHandle);
@@ -435,7 +423,7 @@ public class AppSearchManagerService extends SystemService {
             int callingUid = Binder.getCallingUid();
             EXECUTOR.execute(() -> {
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callingPackageName);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -446,7 +434,13 @@ public class AppSearchManagerService extends SystemService {
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     GetSchemaResponse response =
-                            instance.getAppSearchImpl().getSchema(packageName, databaseName);
+                            instance.getAppSearchImpl().getSchema(
+                                    packageName,
+                                    databaseName,
+                                    callingPackageName,
+                                    callingUid,
+                                    instance.getVisibilityChecker()
+                                            .doesCallerHaveSystemAccess(callingPackageName));
                     invokeCallbackOnResult(
                             callback,
                             AppSearchResult.newSuccessfulResult(response.getBundle()));
@@ -583,15 +577,18 @@ public class AppSearchManagerService extends SystemService {
 
         @Override
         public void getDocuments(
-                @NonNull String packageName,
+                @NonNull String callingPackageName,
+                @NonNull String targetPackageName,
                 @NonNull String databaseName,
                 @NonNull String namespace,
                 @NonNull List<String> ids,
                 @NonNull Map<String, List<String>> typePropertyPaths,
                 @NonNull UserHandle userHandle,
                 @ElapsedRealtimeLong long binderCallStartTimeMillis,
+                boolean global,
                 @NonNull IAppSearchBatchResultCallback callback) {
-            Objects.requireNonNull(packageName);
+            Objects.requireNonNull(callingPackageName);
+            Objects.requireNonNull(targetPackageName);
             Objects.requireNonNull(databaseName);
             Objects.requireNonNull(namespace);
             Objects.requireNonNull(ids);
@@ -608,7 +605,7 @@ public class AppSearchManagerService extends SystemService {
                 int operationSuccessCount = 0;
                 int operationFailureCount = 0;
                 try {
-                    verifyCaller(callingUid, packageName);
+                    verifyCaller(callingUid, callingPackageName);
 
                     // Obtain the user where the client wants to run the operations in. This should
                     // end up being the same as userHandle, assuming it is not a special user and
@@ -622,12 +619,28 @@ public class AppSearchManagerService extends SystemService {
                     for (int i = 0; i < ids.size(); i++) {
                         String id = ids.get(i);
                         try {
-                            GenericDocument document = instance.getAppSearchImpl().getDocument(
-                                    packageName,
-                                    databaseName,
-                                    namespace,
-                                    id,
-                                    typePropertyPaths);
+                            GenericDocument document;
+                            if (global) {
+                                // TODO(b/203819101) add test to try out security by binding
+                                // directly to binder and passing callingpackage param
+                                document = instance.getAppSearchImpl().globalGetDocument(
+                                        targetPackageName,
+                                        databaseName,
+                                        namespace,
+                                        id,
+                                        typePropertyPaths,
+                                        callingPackageName,
+                                        callingUid,
+                                        instance.getVisibilityChecker()
+                                                .doesCallerHaveSystemAccess(callingPackageName));
+                            } else {
+                                document = instance.getAppSearchImpl().getDocument(
+                                        targetPackageName,
+                                        databaseName,
+                                        namespace,
+                                        id,
+                                        typePropertyPaths);
+                            }
                             ++operationSuccessCount;
                             resultBuilder.setSuccess(id, document.getBundle());
                         } catch (Throwable t) {
@@ -651,11 +664,12 @@ public class AppSearchManagerService extends SystemService {
                         int totalLatencyMillis =
                                 (int) (SystemClock.elapsedRealtime() - totalLatencyStartTimeMillis);
                         instance.getLogger().logStats(new CallStats.Builder()
-                                .setPackageName(packageName)
+                                .setPackageName(targetPackageName)
                                 .setDatabase(databaseName)
                                 .setStatusCode(statusCode)
                                 .setTotalLatencyMillis(totalLatencyMillis)
                                 .setCallType(CallStats.CALL_TYPE_GET_DOCUMENTS)
+                                // TODO(b/203819101) need mark the call as a global getById
                                 // TODO(b/173532925) check the existing binder call latency chart
                                 // is good enough for us:
                                 // http://dashboards/view/_72c98f9a_91d9_41d4_ab9a_bc14f79742b4
@@ -773,13 +787,12 @@ public class AppSearchManagerService extends SystemService {
 
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
 
-                    boolean callerHasSystemAccess =
-                            instance.getVisibilityStore().doesCallerHaveSystemAccess(packageName);
+                    boolean callerHasSystemAccess = instance.getVisibilityChecker()
+                            .doesCallerHaveSystemAccess(packageName);
                     SearchResultPage searchResultPage = instance.getAppSearchImpl().globalQuery(
                             queryExpression,
                             new SearchSpec(searchSpecBundle),
                             packageName,
-                            instance.getVisibilityStore(),
                             callingUid,
                             callerHasSystemAccess,
                             instance.getLogger());
@@ -1032,9 +1045,8 @@ public class AppSearchManagerService extends SystemService {
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
 
-                    if (systemUsage
-                            && !instance.getVisibilityStore()
-                            .doesCallerHaveSystemAccess(packageName)) {
+                    if (systemUsage && !instance.getVisibilityChecker().
+                            doesCallerHaveSystemAccess(packageName)) {
                         throw new AppSearchException(
                                 AppSearchResult.RESULT_SECURITY_ERROR,
                                 packageName + " does not have access to report system usage");
@@ -1316,12 +1328,12 @@ public class AppSearchManagerService extends SystemService {
         @Override
         public AppSearchResultParcel<Void> addObserver(
                 @NonNull String callingPackage,
-                @NonNull String observedPackage,
+                @NonNull String targetPackageName,
                 @NonNull Bundle observerSpecBundle,
                 @NonNull UserHandle userHandle,
                 @NonNull IAppSearchObserverProxy observerProxyStub) {
             Objects.requireNonNull(callingPackage);
-            Objects.requireNonNull(observedPackage);
+            Objects.requireNonNull(targetPackageName);
             Objects.requireNonNull(observerSpecBundle);
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(observerProxyStub);
@@ -1339,9 +1351,46 @@ public class AppSearchManagerService extends SystemService {
                 AppSearchUserInstance instance =
                         mAppSearchUserInstanceManager.getUserInstance(targetUser);
                 instance.getAppSearchImpl().addObserver(
-                        observedPackage,
+                        callingPackage,
+                        callingUid,
+                        instance.getVisibilityChecker().doesCallerHaveSystemAccess(callingPackage),
+                        targetPackageName,
                         new ObserverSpec(observerSpecBundle),
                         EXECUTOR,
+                        new AppSearchObserverProxy(observerProxyStub));
+                return new AppSearchResultParcel<>(AppSearchResult.newSuccessfulResult(null));
+            } catch (Throwable t) {
+                return new AppSearchResultParcel<>(throwableToFailedResult(t));
+            } finally {
+                Binder.restoreCallingIdentity(callingIdentity);
+            }
+        }
+
+        @Override
+        public AppSearchResultParcel<Void> removeObserver(
+                @NonNull String callingPackage,
+                @NonNull String observedPackage,
+                @NonNull UserHandle userHandle,
+                @NonNull IAppSearchObserverProxy observerProxyStub) {
+            Objects.requireNonNull(callingPackage);
+            Objects.requireNonNull(observedPackage);
+            Objects.requireNonNull(userHandle);
+            Objects.requireNonNull(observerProxyStub);
+
+            int callingPid = Binder.getCallingPid();
+            int callingUid = Binder.getCallingUid();
+            long callingIdentity = Binder.clearCallingIdentity();
+
+            // Note: removeObserver is performed on the binder thread, unlike most AppSearch APIs
+            try {
+                verifyCaller(callingUid, callingPackage);
+                UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
+                verifyUserUnlocked(targetUser);
+
+                AppSearchUserInstance instance =
+                        mAppSearchUserInstanceManager.getUserInstance(targetUser);
+                instance.getAppSearchImpl().removeObserver(
+                        observedPackage,
                         new AppSearchObserverProxy(observerProxyStub));
                 return new AppSearchResultParcel<>(AppSearchResult.newSuccessfulResult(null));
             } catch (Throwable t) {

@@ -23,7 +23,6 @@ import android.app.appsearch.AppSearchManager;
 import android.app.appsearch.AppSearchResult;
 import android.app.appsearch.AppSearchSession;
 import android.app.appsearch.AppSearchSessionShim;
-import android.app.appsearch.BatchResultCallback;
 import android.app.appsearch.Features;
 import android.app.appsearch.GenericDocument;
 import android.app.appsearch.GetByDocumentIdRequest;
@@ -215,24 +214,5 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
             throw new AppSearchException(result.getResultCode(), result.getErrorMessage());
         }
         return Futures.immediateFuture(result.getResultValue());
-    }
-
-    private static final class BatchResultCallbackAdapter<K, V>
-            implements BatchResultCallback<K, V> {
-        private final SettableFuture<AppSearchBatchResult<K, V>> mFuture;
-
-        BatchResultCallbackAdapter(SettableFuture<AppSearchBatchResult<K, V>> future) {
-            mFuture = future;
-        }
-
-        @Override
-        public void onResult(AppSearchBatchResult<K, V> result) {
-            mFuture.set(result);
-        }
-
-        @Override
-        public void onSystemError(Throwable t) {
-            mFuture.setException(t);
-        }
     }
 }

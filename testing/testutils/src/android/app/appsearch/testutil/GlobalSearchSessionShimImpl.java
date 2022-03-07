@@ -17,9 +17,13 @@
 package android.app.appsearch.testutil;
 
 import android.annotation.NonNull;
+import android.app.appsearch.AppSearchBatchResult;
 import android.app.appsearch.AppSearchManager;
 import android.app.appsearch.AppSearchResult;
 import android.app.appsearch.Features;
+import android.app.appsearch.GetSchemaResponse;
+import android.app.appsearch.GenericDocument;
+import android.app.appsearch.GetByDocumentIdRequest;
 import android.app.appsearch.GlobalSearchSession;
 import android.app.appsearch.GlobalSearchSessionShim;
 import android.app.appsearch.ReportSystemUsageRequest;
@@ -80,6 +84,19 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
     }
 
     @NonNull
+    public ListenableFuture<AppSearchBatchResult<String, GenericDocument>> getByDocumentId(
+            @NonNull String packageName,
+            @NonNull String databaseName,
+            @NonNull GetByDocumentIdRequest request) {
+        SettableFuture<AppSearchBatchResult<String, GenericDocument>> future =
+                SettableFuture.create();
+        mGlobalSearchSession.getByDocumentId(
+                packageName, databaseName, request, mExecutor,
+                new BatchResultCallbackAdapter<>(future));
+        return future;
+    }
+
+    @NonNull
     @Override
     public SearchResultsShim search(
             @NonNull String queryExpression, @NonNull SearchSpec searchSpec) {
@@ -95,6 +112,15 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
         return Futures.transformAsync(future, this::transformResult, mExecutor);
     }
 
+    @NonNull
+    @Override
+    public ListenableFuture<GetSchemaResponse> getSchema(
+        @NonNull String packageName, @NonNull String databaseName) {
+      SettableFuture<AppSearchResult<GetSchemaResponse>> future = SettableFuture.create();
+      mGlobalSearchSession.getSchema(packageName, databaseName, mExecutor, future::set);
+      return Futures.transformAsync(future, this::transformResult, mExecutor);
+    }
+
     @Override
     public void addObserver(
             @NonNull String observedPackage,
@@ -106,8 +132,9 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
 
     @Override
     public void removeObserver(
-            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer) {
-        // TODO(b/193494000): Implement removeObserver
+            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer)
+            throws AppSearchException {
+        mGlobalSearchSession.removeObserver(observedPackage, observer);
     }
 
     @NonNull
@@ -129,3 +156,4 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
         return Futures.immediateFuture(result.getResultValue());
     }
 }
+

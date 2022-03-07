@@ -19,7 +19,9 @@ package android.app.appsearch.observer;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 
+import java.util.Collections;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Contains information about a schema change detected by an {@link AppSearchObserverCallback}.
@@ -35,18 +37,23 @@ import java.util.Objects;
 public final class SchemaChangeInfo {
     private final String mPackageName;
     private final String mDatabaseName;
-
-    // TODO(b/193494000): Add the set of changed schema names to this class
+    private final Set<String> mChangedSchemaNames;
 
     /**
      * Constructs a new {@link SchemaChangeInfo}.
      *
      * @param packageName The package name of the app which owns the schema that changed.
      * @param databaseName The database in which the schema that changed resides.
+     * @param changedSchemaNames Names of schemas that have changed as part of this notification.
      */
-    public SchemaChangeInfo(@NonNull String packageName, @NonNull String databaseName) {
+    public SchemaChangeInfo(
+            @NonNull String packageName,
+            @NonNull String databaseName,
+            @NonNull Set<String> changedSchemaNames) {
         mPackageName = Objects.requireNonNull(packageName);
         mDatabaseName = Objects.requireNonNull(databaseName);
+        mChangedSchemaNames =
+                Collections.unmodifiableSet(Objects.requireNonNull(changedSchemaNames));
     }
 
     /** Returns the package name of the app which owns the schema that changed. */
@@ -61,17 +68,29 @@ public final class SchemaChangeInfo {
         return mDatabaseName;
     }
 
+    /**
+     * Returns the names of schema types affected by this change notification.
+     *
+     * <p>This will never be empty.
+     */
+    @NonNull
+    public Set<String> getChangedSchemaNames() {
+        return mChangedSchemaNames;
+    }
+
     @Override
     public boolean equals(@Nullable Object o) {
         if (this == o) return true;
         if (!(o instanceof SchemaChangeInfo)) return false;
         SchemaChangeInfo that = (SchemaChangeInfo) o;
-        return mPackageName.equals(that.mPackageName) && mDatabaseName.equals(that.mDatabaseName);
+        return mPackageName.equals(that.mPackageName)
+                && mDatabaseName.equals(that.mDatabaseName)
+                && mChangedSchemaNames.equals(that.mChangedSchemaNames);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(mPackageName, mDatabaseName);
+        return Objects.hash(mPackageName, mDatabaseName, mChangedSchemaNames);
     }
 
     @NonNull
@@ -83,6 +102,9 @@ public final class SchemaChangeInfo {
                 + '\''
                 + ", databaseName='"
                 + mDatabaseName
+                + '\''
+                + ", changedSchemaNames='"
+                + mChangedSchemaNames
                 + '\''
                 + '}';
     }
