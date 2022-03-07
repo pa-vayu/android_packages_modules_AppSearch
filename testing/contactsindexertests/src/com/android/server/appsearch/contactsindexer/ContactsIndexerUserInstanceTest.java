@@ -113,10 +113,13 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
     @After
     public void tearDown() throws Exception {
         // Wipe the data in AppSearchHelper.DATABASE_NAME.
-        AppSearchSessionShim db = AppSearchSessionShimImpl.createSearchSessionAsync(mContext,
-                new AppSearchManager.SearchContext.Builder(AppSearchHelper.DATABASE_NAME).build(),
-                mSingleThreadedExecutor).get();
-        db.setSchemaAsync(new SetSchemaRequest.Builder().setForceOverride(true).build()).get();
+        AppSearchManager.SearchContext searchContext =
+                new AppSearchManager.SearchContext.Builder(AppSearchHelper.DATABASE_NAME).build();
+        AppSearchSessionShim db = AppSearchSessionShimImpl.createSearchSessionAsync(
+                searchContext).get();
+        SetSchemaRequest setSchemaRequest = new SetSchemaRequest.Builder()
+                .setForceOverride(true).build();
+        db.setSchemaAsync(setSchemaRequest).get();
         super.tearDown();
     }
 
@@ -207,7 +210,6 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         List<String> contactIds = searchHelper.getAllContactIdsAsync().get();
         assertThat(contactIds.size()).isEqualTo(250);
 
-        // TODO(b/222126568): verify state using logged events instead
         PersistableBundle settingsBundle = ContactsIndexerSettings.readBundle(mSettingsFile);
         assertThat(settingsBundle.getLong(ContactsIndexerSettings.LAST_DELTA_UPDATE_TIMESTAMP_KEY))
                 .isAtLeast(timeBeforeDeltaChangeNotification);
@@ -220,7 +222,7 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         assertThat(mUpdateStats.mContactsUpdateFailedCount).isEqualTo(0);
         // NOT_FOUND does not count as error.
         assertThat(mUpdateStats.mContactsDeleteFailedCount).isEqualTo(0);
-        assertThat(mUpdateStats.mContactsInsertedCount).isEqualTo(0);
+        assertThat(mUpdateStats.mContactsInsertedCount).isEqualTo(250);
         assertThat(mUpdateStats.mContactsSkippedCount).isEqualTo(0);
         assertThat(mUpdateStats.mContactsUpdateCount).isEqualTo(250);
         assertThat(mUpdateStats.mContactsDeleteCount).isEqualTo(0);
@@ -316,7 +318,6 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         assertThat(contactIds.size()).isEqualTo(6);
         assertThat(contactIds).containsNoneOf("2", "3", "5", "7");
 
-        // TODO(b/222126568): verify state using logged events instead
         PersistableBundle settingsBundle = ContactsIndexerSettings.readBundle(mSettingsFile);
         assertThat(settingsBundle.getLong(ContactsIndexerSettings.LAST_DELTA_UPDATE_TIMESTAMP_KEY))
                 .isAtLeast(timeBeforeDeltaChangeNotification);
@@ -331,7 +332,7 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         assertThat(mUpdateStats.mContactsUpdateFailedCount).isEqualTo(0);
         // NOT_FOUND does not count as error.
         assertThat(mUpdateStats.mContactsDeleteFailedCount).isEqualTo(0);
-        assertThat(mUpdateStats.mContactsInsertedCount).isEqualTo(0);
+        assertThat(mUpdateStats.mContactsInsertedCount).isEqualTo(6);
         assertThat(mUpdateStats.mContactsSkippedCount).isEqualTo(0);
         assertThat(mUpdateStats.mContactsUpdateCount).isEqualTo(6);
         assertThat(mUpdateStats.mContactsDeleteCount).isEqualTo(0);
@@ -389,7 +390,7 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         assertThat(mUpdateStats.mContactsUpdateFailedCount).isEqualTo(0);
         // NOT_FOUND does not count as error.
         assertThat(mUpdateStats.mContactsDeleteFailedCount).isEqualTo(0);
-        assertThat(mUpdateStats.mContactsInsertedCount).isEqualTo(0);
+        assertThat(mUpdateStats.mContactsInsertedCount).isEqualTo(5);
         assertThat(mUpdateStats.mContactsSkippedCount).isEqualTo(0);
         assertThat(mUpdateStats.mContactsUpdateCount).isEqualTo(5);
         assertThat(mUpdateStats.mContactsDeleteCount).isEqualTo(4);

@@ -78,6 +78,7 @@ public class Person extends GenericDocument {
     public static final String PERSON_PROPERTY_AFFILIATIONS = "affiliations";
     public static final String PERSON_PROPERTY_RELATIONS = "relations";
     public static final String PERSON_PROPERTY_NOTES = "notes";
+    public static final String PERSON_PROPERTY_FINGERPRINT = "fingerprint";
 
     public static final AppSearchSchema SCHEMA = new AppSearchSchema.Builder(SCHEMA_TYPE)
             // full display name
@@ -161,6 +162,14 @@ public class Person extends GenericDocument {
                     .setIndexingType(
                             AppSearchSchema.StringPropertyConfig.INDEXING_TYPE_PREFIXES)
                     .setTokenizerType(AppSearchSchema.StringPropertyConfig.TOKENIZER_TYPE_PLAIN)
+                    .build())
+            //
+            // Following fields are internal to ContactsIndexer.
+            //
+            // Fingerprint for detecting significant changes
+            .addProperty(new AppSearchSchema.StringPropertyConfig.Builder(
+                    PERSON_PROPERTY_FINGERPRINT)
+                    .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_OPTIONAL)
                     .build())
             .build();
 
@@ -251,6 +260,14 @@ public class Person extends GenericDocument {
             contactPoints[i] = new ContactPoint(docs[i]);
         }
         return contactPoints;
+    }
+
+    /**
+     * Gets a byte array for the fingerprint.
+     */
+    @NonNull
+    public byte[] getFingerprint() {
+        return getPropertyBytes(PERSON_PROPERTY_FINGERPRINT);
     }
 
     /** Builder for {@link Person}. */
@@ -361,6 +378,19 @@ public class Person extends GenericDocument {
         public Builder addContactPoint(@NonNull ContactPoint contactPoint) {
             Objects.requireNonNull(contactPoint);
             mContactPoints.add(contactPoint);
+            return this;
+        }
+
+        /**
+         * Sets the fingerprint for this {@link Person}
+         *
+         * @param fingerprint byte array for the fingerprint. The size depends on the algorithm
+         *                    being used. Right now we are using md5 and generating a 16-byte
+         *                    fingerprint.
+         */
+        @NonNull
+        public Builder setFingerprint(@NonNull byte[] fingerprint) {
+            setPropertyBytes(PERSON_PROPERTY_FINGERPRINT, Objects.requireNonNull(fingerprint));
             return this;
         }
 

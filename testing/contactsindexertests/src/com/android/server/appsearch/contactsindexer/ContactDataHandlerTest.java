@@ -74,7 +74,7 @@ public class ContactDataHandlerTest {
 
     @Test
     public void testConvertCurrentRowToPersonWhenCursorNotSet_expectException() {
-        PersonBuilderHelper builderHelper = new PersonBuilderHelper(
+        PersonBuilderHelper builderHelper = new PersonBuilderHelper("id",
                 new Person.Builder("namespace", "id", "name"));
         assertThrows(NullPointerException.class, () ->
                 mContactDataHandler.convertCursorToPerson(/*cursor=*/ null, builderHelper));
@@ -92,13 +92,18 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.Email.TYPE, type);
         values.put(CommonDataKinds.Email.LABEL, label);
         Cursor cursor = makeCursorFromContentValues(values);
-        Person personExpected = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).addEmailToPerson(label, address).buildPerson();
+        long creationTimestampMillis = System.currentTimeMillis();
+        Person personExpected =
+                new PersonBuilderHelper(TEST_ID,
+                        new Person.Builder(TEST_NAMESPACE, TEST_ID, name)
+                )
+                        .setCreationTimestampMillis(creationTimestampMillis)
+                        .addEmailToPerson(label, address)
+                        .buildPerson();
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name)).setCreationTimestampMillis(
+                creationTimestampMillis);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
@@ -107,7 +112,7 @@ public class ContactDataHandlerTest {
         assertThat(contactPoints.length).isEqualTo(1);
         assertThat(contactPoints[0].getLabel()).isEqualTo(label);
         assertThat(contactPoints[0].getEmails()).asList().containsExactly(address);
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -119,17 +124,21 @@ public class ContactDataHandlerTest {
         values.put(Data.MIMETYPE, CommonDataKinds.Email.CONTENT_ITEM_TYPE);
         values.put(CommonDataKinds.Email.ADDRESS, address);
         values.put(CommonDataKinds.Email.TYPE, type);
+        long creationTimestampMillis = System.currentTimeMillis();
         // label is not set in the values
         Cursor cursor = makeCursorFromContentValues(values);
         // default value for custom label if null is provided by user.
         String expectedLabel = "Custom";
-        Person personExpected = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).addEmailToPerson(expectedLabel, address).buildPerson();
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name)
+        )
+                .setCreationTimestampMillis(creationTimestampMillis)
+                .addEmailToPerson(expectedLabel, address)
+                .buildPerson();
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
                 new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+                        name)).setCreationTimestampMillis(creationTimestampMillis);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
@@ -138,7 +147,7 @@ public class ContactDataHandlerTest {
         assertThat(contactPoints.length).isEqualTo(1);
         assertThat(contactPoints[0].getLabel()).isEqualTo(expectedLabel);
         assertThat(contactPoints[0].getEmails()).asList().containsExactly(address);
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -151,15 +160,17 @@ public class ContactDataHandlerTest {
         values.put(Data.MIMETYPE, CommonDataKinds.Email.CONTENT_ITEM_TYPE);
         values.put(CommonDataKinds.Email.ADDRESS, address);
         values.put(CommonDataKinds.Email.TYPE, type);
+        long creationTimestampMillis = System.currentTimeMillis();
         // label is not set in the values
         Cursor cursor = makeCursorFromContentValues(values);
-        Person personExpected = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).addEmailToPerson(label, address).buildPerson();
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name)
+        ).addEmailToPerson(label, address)
+                .setCreationTimestampMillis(creationTimestampMillis).buildPerson();
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name))
+                .setCreationTimestampMillis(creationTimestampMillis);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
@@ -168,7 +179,7 @@ public class ContactDataHandlerTest {
         assertThat(contactPoints.length).isEqualTo(1);
         assertThat(contactPoints[0].getLabel()).isEqualTo(label);
         assertThat(contactPoints[0].getEmails()).asList().containsExactly(address);
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -182,14 +193,16 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.Email.ADDRESS, address);
         values.put(CommonDataKinds.Email.TYPE, type);
         values.put(CommonDataKinds.Email.LABEL, label);
+        long creationTimestampMillis = System.currentTimeMillis();
         Cursor cursor = makeCursorFromContentValues(values);
-        Person personExpected = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).addEmailToPerson(label, address).buildPerson();
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name)
+        ).setCreationTimestampMillis(creationTimestampMillis)
+                .addEmailToPerson(label, address).buildPerson();
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name)).setCreationTimestampMillis(
+                creationTimestampMillis);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
@@ -197,7 +210,7 @@ public class ContactDataHandlerTest {
         assertThat(contactPoints.length).isEqualTo(1);
         assertThat(contactPoints[0].getLabel()).isEqualTo(label);
         assertThat(contactPoints[0].getEmails()).asList().containsExactly(address);
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -205,25 +218,25 @@ public class ContactDataHandlerTest {
         String name = "name";
         String nick = "nickName";
         ContentValues values = new ContentValues();
+        long creationTimestampMillis = System.currentTimeMillis();
         values.put(Data.MIMETYPE, CommonDataKinds.Nickname.CONTENT_ITEM_TYPE);
         values.put(CommonDataKinds.Nickname.NAME, nick);
         Cursor cursor = makeCursorFromContentValues(values);
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).addAdditionalName(
+                        Person.TYPE_NICKNAME, nick)
+        ).setCreationTimestampMillis(creationTimestampMillis).buildPerson();
 
-        Person personExpected = new Person.Builder(TEST_NAMESPACE, TEST_ID, name)
-                .setCreationTimestampMillis(0)
-                .addAdditionalName(Person.TYPE_NICKNAME, nick)
-                .build();
-
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name)).setCreationTimestampMillis(
+                creationTimestampMillis);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
         assertThat(personTested.getAdditionalNameTypes()).asList().containsExactly(
                 (long) Person.TYPE_NICKNAME);
         assertThat(personTested.getAdditionalNames()).asList().containsExactly(nick);
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -235,19 +248,18 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.Note.NOTE, note);
         Cursor cursor = makeCursorFromContentValues(values);
 
-        Person personExpected = new Person.Builder(TEST_NAMESPACE, TEST_ID, name)
-                .setCreationTimestampMillis(0)
-                .addNote(note)
-                .build();
-
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
                 new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+                        name).addNote(note)).setCreationTimestampMillis(0).buildPerson();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name)).setCreationTimestampMillis(0);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
         assertThat(personTested.getNotes()).asList().containsExactly(note);
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -261,17 +273,19 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.Phone.NUMBER, number);
         values.put(CommonDataKinds.Phone.TYPE, type);
         values.put(CommonDataKinds.Phone.LABEL, label);
+        long creationTimestampMillis = System.currentTimeMillis();
         Cursor cursor = makeCursorFromContentValues(values);
 
-        Person personExpected = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).addPhoneToPerson(
-                CommonDataKinds.Phone.getTypeLabel(mResources, type, label).toString(),
-                number).buildPerson();
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name)
+        ).setCreationTimestampMillis(creationTimestampMillis)
+                .addPhoneToPerson(CommonDataKinds.Phone.getTypeLabel(
+                        mResources, type, label).toString(), number)
+                .buildPerson();
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name)).setCreationTimestampMillis(
+                creationTimestampMillis);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
@@ -279,7 +293,7 @@ public class ContactDataHandlerTest {
         assertThat(contactPoints.length).isEqualTo(1);
         assertThat(contactPoints[0].getLabel()).isEqualTo(label);
         assertThat(contactPoints[0].getPhones()).asList().containsExactly(number);
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -293,17 +307,20 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.StructuredPostal.FORMATTED_ADDRESS, postal);
         values.put(CommonDataKinds.StructuredPostal.TYPE, type);
         values.put(CommonDataKinds.StructuredPostal.LABEL, label);
+        long creationTimestampMillis = System.currentTimeMillis();
         Cursor cursor = makeCursorFromContentValues(values);
 
-        Person personExpected = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).addAddressToPerson(
-                CommonDataKinds.StructuredPostal.getTypeLabel(mResources, type, label)
-                        .toString(), postal).buildPerson();
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name)
+        )
+                .addAddressToPerson(CommonDataKinds.StructuredPostal.getTypeLabel(
+                        mResources, type, label).toString(), postal)
+                .setCreationTimestampMillis(creationTimestampMillis)
+                .buildPerson();
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name))
+                .setCreationTimestampMillis(creationTimestampMillis);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
@@ -311,7 +328,7 @@ public class ContactDataHandlerTest {
         assertThat(contactPoints.length).isEqualTo(1);
         assertThat(contactPoints[0].getLabel()).isEqualTo(label);
         assertThat(contactPoints[0].getAddresses()).asList().containsExactly(postal);
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -328,25 +345,24 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.StructuredName.GIVEN_NAME, givenName);
         values.put(CommonDataKinds.StructuredName.MIDDLE_NAME, middleName);
         values.put(CommonDataKinds.StructuredName.FAMILY_NAME, familyName);
+        long creationTimestampMillis = System.currentTimeMillis();
         Cursor cursor = makeCursorFromContentValues(values);
 
-        Person personExpected = new Person.Builder(TEST_NAMESPACE, TEST_ID, name)
-                .setCreationTimestampMillis(0)
-                .setGivenName(givenName)
-                .setMiddleName(middleName)
-                .setFamilyName(familyName)
-                .build();
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setGivenName(
+                        givenName).setMiddleName(middleName).setFamilyName(familyName)
+        ).setCreationTimestampMillis(creationTimestampMillis).buildPerson();
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
                 new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+                        name)).setCreationTimestampMillis(creationTimestampMillis);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
         assertThat(personTested.getGivenName()).isEqualTo(givenName);
         assertThat(personTested.getMiddleName()).isEqualTo(middleName);
         assertThat(personTested.getFamilyName()).isEqualTo(familyName);
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -356,19 +372,20 @@ public class ContactDataHandlerTest {
         ContentValues values = new ContentValues();
         values.put(Data.MIMETYPE, CommonDataKinds.Organization.CONTENT_ITEM_TYPE);
         values.put(CommonDataKinds.Organization.COMPANY, company);
+        long creationTimestampMillis = System.currentTimeMillis();
         Cursor cursor = makeCursorFromContentValues(values);
 
-        Person personExpected = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).getPersonBuilder().addAffiliation(company).build();
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).addAffiliation(company)
+        ).setCreationTimestampMillis(creationTimestampMillis).buildPerson();
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
                 new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+                        name)).setCreationTimestampMillis(creationTimestampMillis);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -382,18 +399,18 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.Organization.COMPANY, company);
         Cursor cursor = makeCursorFromContentValues(values);
 
-        Person personExpected = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).getPersonBuilder().addAffiliation(
-                "Software Engineer, Google Inc").build();
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).addAffiliation(
+                        "Software Engineer, Google Inc")).setCreationTimestampMillis(
+                0).buildPerson();
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
                 new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+                        name)).setCreationTimestampMillis(0);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -409,18 +426,18 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.Organization.COMPANY, company);
         Cursor cursor = makeCursorFromContentValues(values);
 
-        Person personExpected = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).getPersonBuilder().addAffiliation(
-                "Software Engineer, Google Cloud, Google Inc").build();
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).addAffiliation(
+                        "Software Engineer, Google Cloud, Google Inc")).setCreationTimestampMillis(
+                0).buildPerson();
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
                 new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+                        name)).setCreationTimestampMillis(0);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -434,19 +451,20 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.Relation.NAME, relationName);
         values.put(CommonDataKinds.Relation.TYPE, type);
         values.put(CommonDataKinds.Relation.LABEL, label);
+        long creationTimestampMillis = System.currentTimeMillis();
         Cursor cursor = makeCursorFromContentValues(values);
 
-        Person personExpected = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).getPersonBuilder().addRelation(relationName).build();
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).addRelation(relationName)
+        ).setCreationTimestampMillis(creationTimestampMillis).buildPerson();
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name))
+                .setCreationTimestampMillis(creationTimestampMillis);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -460,20 +478,21 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.Relation.NAME, relationName);
         values.put(CommonDataKinds.Relation.TYPE, type);
         values.put(CommonDataKinds.Relation.LABEL, label);
+        long creationTimestampMillis = System.currentTimeMillis();
         Cursor cursor = makeCursorFromContentValues(values);
 
-        Person personExpected = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).getPersonBuilder().addRelation(
-                CommonDataKinds.Relation.getTypeLabel(mResources, type, label).toString()).build();
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).addRelation(
+                        CommonDataKinds.Relation.getTypeLabel(mResources, type, label).toString())
+        ).setCreationTimestampMillis(creationTimestampMillis).buildPerson();
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
                 new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+                        name)).setCreationTimestampMillis(creationTimestampMillis);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -487,20 +506,21 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.Relation.NAME, relationName);
         values.put(CommonDataKinds.Relation.TYPE, type);
         values.put(CommonDataKinds.Relation.LABEL, label);
+        long creationTimestampMillis = System.currentTimeMillis();
         Cursor cursor = makeCursorFromContentValues(values);
 
-        Person personExpected = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).getPersonBuilder().addRelation(
-                CommonDataKinds.Relation.getTypeLabel(mResources, type, label).toString()).build();
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).addRelation(
+                        CommonDataKinds.Relation.getTypeLabel(mResources, type, label).toString())
+        ).setCreationTimestampMillis(creationTimestampMillis).buildPerson();
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
                 new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+                        name)).setCreationTimestampMillis(creationTimestampMillis);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -514,40 +534,44 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.Relation.NAME, relationName);
         values.put(CommonDataKinds.Relation.TYPE, type);
         values.put(CommonDataKinds.Relation.LABEL, label);
+        long creationTimestampMillis = System.currentTimeMillis();
         Cursor cursor = makeCursorFromContentValues(values);
 
-        Person personExpected = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).getPersonBuilder().addRelation(label).build();
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).addRelation(label)
+        ).setCreationTimestampMillis(creationTimestampMillis).buildPerson();
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name)).setCreationTimestampMillis(
+                creationTimestampMillis);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
     public void testHandleCurrentRowWithUnknownMimeType() {
         // Change the Mimetype of StructuredName.
         String name = "name";
+        long creationTimestampMillis = System.currentTimeMillis();
         MatrixCursor cursor = new MatrixCursor(
                 new String[]{Data.MIMETYPE, CommonDataKinds.StructuredName.GIVEN_NAME});
         cursor.newRow().add("testUnknownMimeType", "testGivenName");
 
-        Person personExpected = new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                name).setCreationTimestampMillis(0).build();
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
-                new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+        Person personExpected = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name)
+        ).setCreationTimestampMillis(creationTimestampMillis).buildPerson();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name))
+                .setCreationTimestampMillis(creationTimestampMillis);
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
         // Couldn't read values correctly from an unknown mime type.
         assertThat(personTested.getGivenName()).isNull();
-        TestUtils.assertEquals(personTested, personExpected);
+        assertThat(personTested).isEqualTo(personExpected);
     }
 
     @Test
@@ -562,9 +586,9 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.Email.LABEL, label);
         Cursor cursor = makeCursorFromContentValues(values);
 
-        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(TEST_ID,
                 new Person.Builder(TEST_NAMESPACE, TEST_ID,
-                        name).setCreationTimestampMillis(0));
+                        name)).setCreationTimestampMillis(0);
         convertRowToPerson(cursor, helperTested);
 
         // no NPE thrown.

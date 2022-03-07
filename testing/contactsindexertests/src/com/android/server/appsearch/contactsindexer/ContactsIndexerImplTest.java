@@ -18,9 +18,6 @@ package com.android.server.appsearch.contactsindexer;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-
 import android.annotation.NonNull;
 import android.app.appsearch.AppSearchManager;
 import android.app.appsearch.AppSearchSessionShim;
@@ -28,14 +25,16 @@ import android.app.appsearch.SetSchemaRequest;
 import android.app.appsearch.testutil.AppSearchSessionShimImpl;
 import android.content.ContentResolver;
 import android.content.Context;
-import android.test.ProviderTestCase2;
 import android.content.ContextWrapper;
+import android.test.ProviderTestCase2;
 import android.util.Pair;
 
 import androidx.test.core.app.ApplicationProvider;
 
 import com.android.server.appsearch.contactsindexer.ContactsIndexerImpl.ContactsBatcher;
 import com.android.server.appsearch.contactsindexer.appsearchtypes.Person;
+
+import com.google.common.collect.ImmutableList;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -107,53 +106,300 @@ public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvi
         return new Pair<>(lastUpdatedTimestamp, lastDeletedTimestamp);
     }
 
-    public void testBatcher_noFlushBeforeReachingLimit() {
+    public void testBatcher_noFlushBeforeReachingLimit() throws Exception {
         int batchSize = 5;
         ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize);
 
         for (int i = 0; i < batchSize - 1; ++i) {
-            batcher.add(new Person.Builder("namespace", /*id=*/ String.valueOf(i), /*name=*/
-                    String.valueOf(i)).build(), mUpdateStats);
+            batcher.add(new PersonBuilderHelper(/*id=*/ String.valueOf(i),
+                    new Person.Builder("namespace", /*id=*/ String.valueOf(i), /*name=*/
+                            String.valueOf(i))).setCreationTimestampMillis(0), mUpdateStats);
         }
+        batcher.getCompositeFuture().get();
 
         assertThat(mAppSearchHelper.mIndexedContacts).isEmpty();
     }
 
-    public void testBatcher_autoFlush() {
+    public void testBatcher_autoFlush() throws Exception {
         int batchSize = 5;
         ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize);
 
         for (int i = 0; i < batchSize; ++i) {
-            batcher.add(new Person.Builder("namespace", /*id=*/ String.valueOf(i), /*name=*/
-                    String.valueOf(i)).build(), mUpdateStats);
+            batcher.add(
+                    new PersonBuilderHelper(
+                            /*id=*/ String.valueOf(i),
+                            new Person.Builder("namespace", /*id=*/ String.valueOf(i), /*name=*/
+                                    String.valueOf(i))
+                    ).setCreationTimestampMillis(0), mUpdateStats);
         }
+        batcher.getCompositeFuture().get();
 
         assertThat(mAppSearchHelper.mIndexedContacts).hasSize(batchSize);
+        assertThat(batcher.getPendingDiffContactsCount()).isEqualTo(0);
+        assertThat(batcher.getPendingIndexContactsCount()).isEqualTo(0);
     }
 
-    public void testBatcher_batchedContactClearedAfterFlush() {
+    public void testBatcher_contactFingerprintSame_notIndexed() throws Exception {
+        int batchSize = 2;
+        ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize);
+        PersonBuilderHelper builderHelper1 = new PersonBuilderHelper("id1",
+                new Person.Builder("namespace", "id1", "name1")
+                        .setGivenName("given1")
+        ).setCreationTimestampMillis(0);
+        PersonBuilderHelper builderHelper2 = new PersonBuilderHelper("id2",
+                new Person.Builder("namespace", "id2", "name2")
+                        .setGivenName("given2")
+        ).setCreationTimestampMillis(0);
+        mAppSearchHelper.setExistingContacts(ImmutableList.of(builderHelper1.buildPerson(),
+                builderHelper2.buildPerson()));
+
+        // Try to add the same contacts
+        batcher.add(builderHelper1, mUpdateStats);
+        batcher.add(builderHelper2, mUpdateStats);
+        batcher.getCompositeFuture().get();
+
+        assertThat(mAppSearchHelper.mIndexedContacts).isEmpty();
+        assertThat(batcher.getPendingDiffContactsCount()).isEqualTo(0);
+        assertThat(batcher.getPendingIndexContactsCount()).isEqualTo(0);
+    }
+
+    public void testBatcher_contactFingerprintDifferent_notIndexedButBatched() throws Exception {
+        int batchSize = 2;
+        ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize);
+        PersonBuilderHelper builderHelper1 = new PersonBuilderHelper("id1",
+                new Person.Builder("namespace", "id1", "name1")
+                        .setGivenName("given1")
+        ).setCreationTimestampMillis(0);
+        PersonBuilderHelper builderHelper2 = new PersonBuilderHelper("id2",
+                new Person.Builder("namespace", "id2", "name2")
+                        .setGivenName("given2")
+        ).setCreationTimestampMillis(0);
+        mAppSearchHelper.setExistingContacts(
+                ImmutableList.of(builderHelper1.buildPerson(), builderHelper2.buildPerson()));
+
+        PersonBuilderHelper sameAsContact1 = builderHelper1;
+        // use toBuilder once it works. Now it is not found due to @hide and not sure how since
+        // the test does depend on framework-appsearch.impl.
+        PersonBuilderHelper notSameAsContact2 = new PersonBuilderHelper("id2",
+                new Person.Builder("namespace", "id2", "name2").setGivenName(
+                        "given2diff")
+        ).setCreationTimestampMillis(0);
+        batcher.add(sameAsContact1, mUpdateStats);
+        batcher.add(notSameAsContact2, mUpdateStats);
+        batcher.getCompositeFuture().get();
+
+        assertThat(mAppSearchHelper.mIndexedContacts).isEmpty();
+        assertThat(batcher.getPendingDiffContactsCount()).isEqualTo(0);
+        assertThat(batcher.getPendingIndexContactsCount()).isEqualTo(1);
+    }
+
+    public void testBatcher_contactFingerprintDifferent_Indexed() throws Exception {
+        int batchSize = 2;
+        ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize);
+        PersonBuilderHelper contact1 = new PersonBuilderHelper("id1",
+                new Person.Builder("namespace", "id1", "name1")
+                        .setGivenName("given1")
+        ).setCreationTimestampMillis(0);
+        PersonBuilderHelper contact2 = new PersonBuilderHelper("id2",
+                new Person.Builder("namespace", "id2", "name2")
+                        .setGivenName("given2")
+        ).setCreationTimestampMillis(0);
+        PersonBuilderHelper contact3 = new PersonBuilderHelper("id3",
+                new Person.Builder("namespace", "id3", "name3")
+                        .setGivenName("given3")
+        ).setCreationTimestampMillis(0);
+        mAppSearchHelper.setExistingContacts(
+                ImmutableList.of(contact1.buildPerson(), contact2.buildPerson(),
+                        contact3.buildPerson()));
+
+        PersonBuilderHelper sameAsContact1 = contact1;
+        // use toBuilder once it works. Now it is not found due to @hide and not sure how since
+        // the test does depend on framework-appsearch.impl.
+        PersonBuilderHelper notSameAsContact2 = new PersonBuilderHelper("id2",
+                new Person.Builder("namespace", "id2", "name2").setGivenName(
+                        "given2diff")
+        ).setCreationTimestampMillis(0);
+        PersonBuilderHelper notSameAsContact3 = new PersonBuilderHelper("id3",
+                new Person.Builder("namespace", "id3", "name3").setGivenName(
+                        "given3diff")
+        ).setCreationTimestampMillis(0);
+        batcher.add(sameAsContact1, mUpdateStats);
+        batcher.add(notSameAsContact2, mUpdateStats);
+        batcher.add(notSameAsContact3, mUpdateStats);
+        batcher.getCompositeFuture().get();
+
+        assertThat(mAppSearchHelper.mIndexedContacts).isEmpty();
+        assertThat(batcher.getPendingDiffContactsCount()).isEqualTo(1);
+        assertThat(batcher.getPendingIndexContactsCount()).isEqualTo(1);
+
+        batcher.flushAsync(mUpdateStats).get();
+
+        assertThat(mAppSearchHelper.mIndexedContacts).containsExactly(
+                notSameAsContact2.buildPerson(),
+                notSameAsContact3.buildPerson());
+        assertThat(batcher.getPendingDiffContactsCount()).isEqualTo(0);
+        assertThat(batcher.getPendingIndexContactsCount()).isEqualTo(0);
+    }
+
+    public void testBatcher_contactFingerprintDifferent_IndexedWithOriginalCreationTimestamp()
+            throws Exception {
+        int batchSize = 2;
+        long originalTs = System.currentTimeMillis();
+        ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize);
+        PersonBuilderHelper contact1 = new PersonBuilderHelper("id1",
+                new Person.Builder("namespace", "id1", "name1")
+                        .setGivenName("given1")
+        ).setCreationTimestampMillis(originalTs);
+        PersonBuilderHelper contact2 = new PersonBuilderHelper("id2",
+                new Person.Builder("namespace", "id2", "name2")
+                        .setGivenName("given2")
+        ).setCreationTimestampMillis(originalTs);
+        PersonBuilderHelper contact3 = new PersonBuilderHelper("id3",
+                new Person.Builder("namespace", "id3", "name3")
+                        .setGivenName("given3")
+        ).setCreationTimestampMillis(originalTs);
+        mAppSearchHelper.setExistingContacts(
+                ImmutableList.of(contact1.buildPerson(), contact2.buildPerson(),
+                        contact3.buildPerson()));
+        long updatedTs1 = originalTs + 1;
+        long updatedTs2 = originalTs + 2;
+        long updatedTs3 = originalTs + 3;
+        PersonBuilderHelper sameAsContact1 = new PersonBuilderHelper("id1",
+                new Person.Builder("namespace", "id1", "name1")
+                        .setGivenName("given1")
+        ).setCreationTimestampMillis(updatedTs1);
+        // use toBuilder once it works. Now it is not found due to @hide and not sure how since
+        // the test does depend on framework-appsearch.impl.
+        PersonBuilderHelper notSameAsContact2 = new PersonBuilderHelper("id2",
+                new Person.Builder("namespace", "id2", "name2").setGivenName(
+                        "given2diff")
+        ).setCreationTimestampMillis(updatedTs2);
+        PersonBuilderHelper notSameAsContact3 = new PersonBuilderHelper("id3",
+                new Person.Builder("namespace", "id3", "name3").setGivenName(
+                        "given3diff")
+        ).setCreationTimestampMillis(updatedTs3);
+
+        assertThat(sameAsContact1.buildPerson().getCreationTimestampMillis()).isEqualTo(updatedTs1);
+        assertThat(notSameAsContact2.buildPerson().getCreationTimestampMillis()).isEqualTo(
+                updatedTs2);
+        assertThat(notSameAsContact3.buildPerson().getCreationTimestampMillis()).isEqualTo(
+                updatedTs3);
+
+        batcher.add(sameAsContact1, mUpdateStats);
+        batcher.add(notSameAsContact2, mUpdateStats);
+        batcher.add(notSameAsContact3, mUpdateStats);
+        batcher.flushAsync(mUpdateStats).get();
+
+        assertThat(mAppSearchHelper.mIndexedContacts).hasSize(2);
+        assertThat(mAppSearchHelper.mExistingContacts.get(
+                "id1").getGivenName()).isEqualTo("given1");
+        assertThat(mAppSearchHelper.mExistingContacts.get(
+                "id2").getGivenName()).isEqualTo("given2diff");
+        assertThat(mAppSearchHelper.mExistingContacts.get(
+                "id3").getGivenName()).isEqualTo("given3diff");
+        // But the timestamps remain same.
+        assertThat(mAppSearchHelper.mExistingContacts.get(
+                "id1").getCreationTimestampMillis()).isEqualTo(originalTs);
+        assertThat(mAppSearchHelper.mExistingContacts.get(
+                "id2").getCreationTimestampMillis()).isEqualTo(originalTs);
+        assertThat(mAppSearchHelper.mExistingContacts.get(
+                "id3").getCreationTimestampMillis()).isEqualTo(originalTs);
+    }
+
+    public void testBatcher_contactNew_notIndexedButBatched() throws Exception {
+        int batchSize = 2;
+        ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize);
+        PersonBuilderHelper contact1 = new PersonBuilderHelper("id1",
+                new Person.Builder("namespace", "id1", "name1")
+                        .setGivenName("given1")
+        ).setCreationTimestampMillis(0);
+        mAppSearchHelper.setExistingContacts(ImmutableList.of(contact1.buildPerson()));
+
+        PersonBuilderHelper sameAsContact1 = contact1;
+        // use toBuilder once it works. Now it is not found due to @hide and not sure how since
+        // the test does depend on framework-appsearch.impl.
+        PersonBuilderHelper newContact = new PersonBuilderHelper("id2",
+                new Person.Builder("namespace", "id2", "name2").setGivenName(
+                        "given2diff")
+        ).setCreationTimestampMillis(0);
+        batcher.add(sameAsContact1, mUpdateStats);
+        batcher.add(newContact, mUpdateStats);
+        batcher.getCompositeFuture().get();
+
+        assertThat(mAppSearchHelper.mIndexedContacts).isEmpty();
+        assertThat(batcher.getPendingDiffContactsCount()).isEqualTo(0);
+        assertThat(batcher.getPendingIndexContactsCount()).isEqualTo(1);
+    }
+
+    public void testBatcher_contactNew_indexed() throws Exception {
+        int batchSize = 2;
+        ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize);
+        PersonBuilderHelper contact1 = new PersonBuilderHelper("id1",
+                new Person.Builder("namespace", "id1", "name1")
+                        .setGivenName("given1")).setCreationTimestampMillis(0);
+        mAppSearchHelper.setExistingContacts(ImmutableList.of(contact1.buildPerson()));
+
+        PersonBuilderHelper sameAsContact1 = contact1;
+        // use toBuilder once it works. Now it is not found due to @hide and not sure how since
+        // the test does depend on framework-appsearch.impl.
+        PersonBuilderHelper newContact1 = new PersonBuilderHelper("id2",
+                new Person.Builder("namespace", "id2", "name2").setGivenName(
+                        "given2diff")
+        ).setCreationTimestampMillis(0);
+        PersonBuilderHelper newContact2 = new PersonBuilderHelper("id3",
+                new Person.Builder("namespace", "id3", "name3").setGivenName(
+                        "given3diff")
+        ).setCreationTimestampMillis(0);
+        batcher.add(sameAsContact1, mUpdateStats);
+        batcher.add(newContact1, mUpdateStats);
+        batcher.add(newContact2, mUpdateStats);
+        batcher.getCompositeFuture().get();
+
+        assertThat(mAppSearchHelper.mIndexedContacts).isEmpty();
+        assertThat(batcher.getPendingDiffContactsCount()).isEqualTo(1);
+        assertThat(batcher.getPendingIndexContactsCount()).isEqualTo(1);
+
+        batcher.flushAsync(mUpdateStats).get();
+
+        assertThat(mAppSearchHelper.mIndexedContacts).containsExactly(newContact1.buildPerson(),
+                newContact2.buildPerson());
+        assertThat(batcher.getPendingDiffContactsCount()).isEqualTo(0);
+        assertThat(batcher.getPendingIndexContactsCount()).isEqualTo(0);
+    }
+
+    public void testBatcher_batchedContactClearedAfterFlush() throws Exception {
         int batchSize = 5;
         ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize);
 
         // First batch
         for (int i = 0; i < batchSize; ++i) {
-            batcher.add(new Person.Builder("namespace", /*id=*/ String.valueOf(i), /*name=*/
-                    String.valueOf(i)).build(), mUpdateStats);
+            batcher.add(new PersonBuilderHelper(/*id=*/ String.valueOf(i),
+                    new Person.Builder("namespace", /*id=*/ String.valueOf(i), /*name=*/
+                            String.valueOf(i))
+            ).setCreationTimestampMillis(0), mUpdateStats);
         }
+        batcher.getCompositeFuture().get();
 
         assertThat(mAppSearchHelper.mIndexedContacts).hasSize(batchSize);
-        assertThat(batcher.numOfBatchedContacts()).isEqualTo(0);
+        assertThat(batcher.getPendingDiffContactsCount()).isEqualTo(0);
+        assertThat(batcher.getPendingIndexContactsCount()).isEqualTo(0);
 
 
         mAppSearchHelper.mIndexedContacts.clear();
         // Second batch. Make sure the first batch has been cleared.
         for (int i = 0; i < batchSize; ++i) {
-            batcher.add(new Person.Builder("namespace", /*id=*/ String.valueOf(i), /*name=*/
-                    String.valueOf(i)).build(), mUpdateStats);
+            batcher.add(new PersonBuilderHelper(/*id=*/ String.valueOf(i),
+                    new Person.Builder("namespace", /*id=*/ String.valueOf(i), /*name=*/
+                            String.valueOf(i))
+                            // Different from previous ones to bypass the fingerprinting.
+                            .addNote("note")
+            ).setCreationTimestampMillis(0), mUpdateStats);
         }
+        batcher.getCompositeFuture().get();
 
         assertThat(mAppSearchHelper.mIndexedContacts).hasSize(batchSize);
-        assertThat(batcher.numOfBatchedContacts()).isEqualTo(0);
+        assertThat(batcher.getPendingDiffContactsCount()).isEqualTo(0);
+        assertThat(batcher.getPendingIndexContactsCount()).isEqualTo(0);
     }
 
     public void testContactsIndexerImpl_batchRemoveContacts_largerThanBatchSize() throws Exception {
