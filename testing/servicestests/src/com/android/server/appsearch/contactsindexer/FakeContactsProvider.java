@@ -293,7 +293,6 @@ public class FakeContactsProvider extends ContentProvider {
             String lookUpKey = String.format("lookupUri%d", i);
             builder.setExternalUri(ContactsContract.Contacts.getLookupUri(i, lookUpKey));
             builder.setImageUri(Uri.parse(String.format("http://photoThumbNailUri%d.com", i)));
-            builder.addAdditionalName(String.format("phoneticName%d", i));
             builder.setScore((int) i + 1);
             builder.setCreationTimestampMillis(i);
             builder.setIsImportant((i & 1) != 0);

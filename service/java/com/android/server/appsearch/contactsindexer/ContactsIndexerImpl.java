@@ -216,7 +216,6 @@ public final class ContactsIndexerImpl {
                     personBuilder = new Person.Builder(AppSearchHelper.NAMESPACE_NAME,
                             String.valueOf(contactId), displayName);
                     String imageUri = getStringFromCursor(cursor, thumbnailUriIndex);
-                    String phoneticName = getStringFromCursor(cursor, phoneticNameIndex);
                     String lookupKey = getStringFromCursor(cursor, lookupKeyIndex);
                     boolean starred = starredIndex != -1 ?
                             cursor.getInt(starredIndex) != 0 : false;
@@ -230,10 +229,6 @@ public final class ContactsIndexerImpl {
                     if (imageUri != null) {
                         personBuilder.setImageUri(Uri.parse(imageUri));
                     }
-                    if (phoneticName != null) {
-                        personBuilder.addAdditionalName(phoneticName);
-                    }
-
                     personBuilderHelper = new PersonBuilderHelper(personBuilder);
                 }
                 if (personBuilderHelper != null) {

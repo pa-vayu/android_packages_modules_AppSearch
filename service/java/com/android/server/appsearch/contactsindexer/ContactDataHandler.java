@@ -23,9 +23,11 @@ import android.database.Cursor;
 import android.provider.ContactsContract;
 import android.provider.ContactsContract.CommonDataKinds.Email;
 import android.provider.ContactsContract.CommonDataKinds.Nickname;
+import android.provider.ContactsContract.CommonDataKinds.Organization;
 import android.provider.ContactsContract.CommonDataKinds.Phone;
 import android.provider.ContactsContract.CommonDataKinds.StructuredName;
 import android.provider.ContactsContract.CommonDataKinds.StructuredPostal;
+import android.provider.ContactsContract.CommonDataKinds.Relation;
 import android.provider.ContactsContract.Data;
 import android.text.TextUtils;
 import android.util.ArrayMap;
@@ -60,6 +62,8 @@ public final class ContactDataHandler {
         mHandlers.put(Phone.CONTENT_ITEM_TYPE, new PhoneHandler(resources));
         mHandlers.put(StructuredPostal.CONTENT_ITEM_TYPE, new StructuredPostalHandler(resources));
         mHandlers.put(StructuredName.CONTENT_ITEM_TYPE, new StructuredNameHandler());
+        mHandlers.put(Organization.CONTENT_ITEM_TYPE, new OrganizationDataHandler());
+        mHandlers.put(Relation.CONTENT_ITEM_TYPE, new RelationDataHandler(resources));
 
         // Retrieve all the needed columns from different data handlers.
         Set<String> neededColumns = new ArraySet<>();
@@ -389,6 +393,64 @@ public final class ContactDataHandler {
                     builder.setMiddleName(middleName);
                 }
             }
+        }
+    }
+
+    private static final class OrganizationDataHandler extends DataHandler {
+        private static final String[] COLUMNS = {
+                Organization.COMPANY,
+        };
+
+        @Override
+        public void addNeededColumns(Collection<String> columns) {
+            for (String column : COLUMNS) {
+                columns.add(column);
+            }
+        }
+
+        @Override
+        public void addData(@NonNull PersonBuilderHelper builder, Cursor cursor) {
+            String company = getColumnString(cursor, Organization.COMPANY);
+            if (!TextUtils.isEmpty(company)) {
+                builder.getPersonBuilder().addAffiliation(company);
+            }
+        }
+    }
+
+    private static final class RelationDataHandler extends DataHandler {
+        private static final String[] COLUMNS = {
+                Relation.NAME,
+                Relation.TYPE,
+                Relation.LABEL,
+        };
+
+        private final Resources mResources;
+
+        public RelationDataHandler(@NonNull Resources resources) {
+            mResources = resources;
+        }
+
+        @Override
+        public void addNeededColumns(Collection<String> columns) {
+            for (String column : COLUMNS) {
+                columns.add(column);
+            }
+        }
+
+        @Override
+        public void addData(@NonNull PersonBuilderHelper builder, Cursor cursor) {
+            String relationName = getColumnString(cursor, Relation.NAME);
+            if (TextUtils.isEmpty(relationName)) {
+                // Get the relation name from type. If it is a custom type, get it from
+                // label.
+                int type = getColumnInt(cursor, Relation.TYPE);
+                String label = getColumnString(cursor, Relation.LABEL);
+                relationName = Relation.getTypeLabel(mResources, type, label).toString();
+                if (TextUtils.isEmpty(relationName)) {
+                    return;
+                }
+            }
+            builder.getPersonBuilder().addRelation(relationName);
         }
     }
 }

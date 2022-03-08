@@ -40,6 +40,8 @@ public class PersonTest {
         Uri externalUri = Uri.parse("http://external.com");
         Uri imageUri = Uri.parse("http://image.com");
         List<String> additionalNames = Arrays.asList("name1", "name2");
+        List<String> affiliations = Arrays.asList("Org1", "Org2", "Org3");
+        List<String> relations = Arrays.asList("relation1", "relation2");
         boolean isImportant = true;
         boolean isBot = true;
         ContactPoint contact1 = new ContactPoint.Builder(namespace, id + "1", "Home")
@@ -63,6 +65,11 @@ public class PersonTest {
                 .setImageUri(imageUri)
                 .addAdditionalName(additionalNames.get(0))
                 .addAdditionalName(additionalNames.get(1))
+                .addAffiliation(affiliations.get(0))
+                .addAffiliation(affiliations.get(1))
+                .addAffiliation(affiliations.get(2))
+                .addRelation(relations.get(0))
+                .addRelation(relations.get(1))
                 .setIsImportant(isImportant)
                 .setIsBot(isBot)
                 .addContactPoint(contact1)
@@ -76,6 +83,8 @@ public class PersonTest {
         assertThat(person.getExternalUri().toString()).isEqualTo(externalUri.toString());
         assertThat(person.getImageUri().toString()).isEqualTo(imageUri.toString());
         assertThat(person.getAdditionalNames()).asList().isEqualTo(additionalNames);
+        assertThat(person.getAffiliations()).asList().isEqualTo(affiliations);
+        assertThat(person.getRelations()).asList().isEqualTo(relations);
         assertThat(person.getContactPoints()).asList().containsExactly(contact1, contact2);
     }
 }

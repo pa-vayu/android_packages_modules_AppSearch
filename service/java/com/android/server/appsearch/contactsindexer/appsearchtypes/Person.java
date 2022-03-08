@@ -42,11 +42,13 @@ public class Person extends GenericDocument {
     public static final String PERSON_PROPERTY_MIDDLE_NAME = "middleName";
     public static final String PERSON_PROPERTY_FAMILY_NAME = "familyName";
     public static final String PERSON_PROPERTY_EXTERNAL_URI = "externalUri";
-    public static final String PERSON_PROPERTY_ADDITIONAL_NAME = "additionalName";
+    public static final String PERSON_PROPERTY_ADDITIONAL_NAMES = "additionalNames";
     public static final String PERSON_PROPERTY_IS_IMPORTANT = "isImportant";
     public static final String PERSON_PROPERTY_IS_BOT = "isBot";
     public static final String PERSON_PROPERTY_IMAGE_URI = "imageUri";
-    public static final String PERSON_PROPERTY_CONTACT_POINT = "contactPoint";
+    public static final String PERSON_PROPERTY_CONTACT_POINTS = "contactPoints";
+    public static final String PERSON_PROPERTY_AFFILIATIONS = "affiliations";
+    public static final String PERSON_PROPERTY_RELATIONS = "relations";
 
     public static final AppSearchSchema SCHEMA = new AppSearchSchema.Builder(SCHEMA_TYPE)
             // full display name
@@ -78,7 +80,7 @@ public class Person extends GenericDocument {
                     .build())
             // additional names e.g. nick names and phonetic names.
             .addProperty(new AppSearchSchema.StringPropertyConfig.Builder(
-                    PERSON_PROPERTY_ADDITIONAL_NAME)
+                    PERSON_PROPERTY_ADDITIONAL_NAMES)
                     .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
                     .setIndexingType(
                             AppSearchSchema.StringPropertyConfig.INDEXING_TYPE_PREFIXES)
@@ -101,10 +103,26 @@ public class Person extends GenericDocument {
                     .build())
             // ContactPoint
             .addProperty(new AppSearchSchema.DocumentPropertyConfig.Builder(
-                    PERSON_PROPERTY_CONTACT_POINT,
+                    PERSON_PROPERTY_CONTACT_POINTS,
                     ContactPoint.SCHEMA.getSchemaType())
                     .setShouldIndexNestedProperties(true)
                     .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
+                    .build())
+            // Affiliations
+            .addProperty(new AppSearchSchema.StringPropertyConfig.Builder(
+                    PERSON_PROPERTY_AFFILIATIONS)
+                    .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
+                    .setIndexingType(
+                            AppSearchSchema.StringPropertyConfig.INDEXING_TYPE_PREFIXES)
+                    .setTokenizerType(AppSearchSchema.StringPropertyConfig.TOKENIZER_TYPE_PLAIN)
+                    .build())
+            // Relations
+            .addProperty(new AppSearchSchema.StringPropertyConfig.Builder(
+                    PERSON_PROPERTY_RELATIONS)
+                    .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
+                    .setIndexingType(
+                            AppSearchSchema.StringPropertyConfig.INDEXING_TYPE_PREFIXES)
+                    .setTokenizerType(AppSearchSchema.StringPropertyConfig.TOKENIZER_TYPE_PLAIN)
                     .build())
             .build();
 
@@ -162,13 +180,23 @@ public class Person extends GenericDocument {
 
     @NonNull
     public String[] getAdditionalNames() {
-        return getPropertyStringArray(PERSON_PROPERTY_ADDITIONAL_NAME);
+        return getPropertyStringArray(PERSON_PROPERTY_ADDITIONAL_NAMES);
+    }
+
+    @NonNull
+    public String[] getAffiliations() {
+        return getPropertyStringArray(PERSON_PROPERTY_AFFILIATIONS);
+    }
+
+    @NonNull
+    public String[] getRelations() {
+        return getPropertyStringArray(PERSON_PROPERTY_RELATIONS);
     }
 
     // This method is expensive, and is intended to be used in tests only.
     @NonNull
     public ContactPoint[] getContactPoints() {
-        GenericDocument[] docs = getPropertyDocumentArray(PERSON_PROPERTY_CONTACT_POINT);
+        GenericDocument[] docs = getPropertyDocumentArray(PERSON_PROPERTY_CONTACT_POINTS);
         ContactPoint[] contactPoints = new ContactPoint[docs.length];
         for (int i = 0; i < contactPoints.length; ++i) {
             contactPoints[i] = new ContactPoint(docs[i]);
@@ -179,6 +207,8 @@ public class Person extends GenericDocument {
     /** Builder for {@link Person}. */
     public static final class Builder extends GenericDocument.Builder<Builder> {
         private final List<String> mAdditionalNames = new ArrayList<>();
+        private final List<String> mAffiliations = new ArrayList<>();
+        private final List<String> mRelations = new ArrayList<>();
         private final List<ContactPoint> mContactPoints = new ArrayList<>();
 
         /**
@@ -246,8 +276,24 @@ public class Person extends GenericDocument {
 
         @NonNull
         public Builder addAdditionalName(@NonNull String additionalName) {
-            Objects.requireNonNull(additionalName);
-            mAdditionalNames.add(additionalName);
+            mAdditionalNames.add(Objects.requireNonNull(additionalName));
+            return this;
+        }
+
+        /**
+         * Adds an affiliation for the {@link Person}, like a company name as an employee, or a
+         * university name as a student.
+         */
+        @NonNull
+        public Builder addAffiliation(@NonNull String affiliation) {
+            mAffiliations.add(Objects.requireNonNull(affiliation));
+            return this;
+        }
+
+        /** Adds a relation to this {@link Person}. Like "spouse", "father", etc. */
+        @NonNull
+        public Builder addRelation(@NonNull String relation) {
+            mRelations.add(Objects.requireNonNull(relation));
             return this;
         }
 
@@ -260,9 +306,13 @@ public class Person extends GenericDocument {
 
         @NonNull
         public Person build() {
-            setPropertyString(PERSON_PROPERTY_ADDITIONAL_NAME,
+            setPropertyString(PERSON_PROPERTY_ADDITIONAL_NAMES,
                     mAdditionalNames.toArray(new String[0]));
-            setPropertyDocument(PERSON_PROPERTY_CONTACT_POINT,
+            setPropertyString(PERSON_PROPERTY_AFFILIATIONS,
+                    mAffiliations.toArray(new String[0]));
+            setPropertyString(PERSON_PROPERTY_RELATIONS,
+                    mRelations.toArray(new String[0]));
+            setPropertyDocument(PERSON_PROPERTY_CONTACT_POINTS,
                     mContactPoints.toArray(new ContactPoint[0]));
             // TODO(b/203605504) calculate score here.
             return new Person(super.build());

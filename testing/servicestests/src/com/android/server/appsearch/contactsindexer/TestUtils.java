@@ -156,6 +156,8 @@ class TestUtils {
         assertThat(actual.isImportant()).isEqualTo(expected.isImportant());
         assertThat(actual.isBot()).isEqualTo(expected.isBot());
         assertThat(actual.getAdditionalNames()).isEqualTo(expected.getAdditionalNames());
+        assertThat(actual.getAffiliations()).isEqualTo(expected.getAffiliations());
+        assertThat(actual.getRelations()).isEqualTo(expected.getRelations());
         // TODO(b/203605504) use toBuilder to reset creationTimestamp so we can directly compare
         //  two GenericDocuments. This way, we won't miss adding any new properties in the future.
         // Compare two contact point arrays. We can't directly use assert(genericDoc1).isEqualTo
