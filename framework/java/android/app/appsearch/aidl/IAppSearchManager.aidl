@@ -47,10 +47,7 @@ interface IAppSearchManager {
      * @param packageName The name of the package that owns this schema.
      * @param databaseName  The name of the database where this schema lives.
      * @param schemaBundles List of {@link AppSearchSchema} bundles.
-     * @param schemasNotDisplayedBySystem Schema types that should not be surfaced on platform
-     *     surfaces.
-     * @param schemasVisibleToPackagesBundles Schema types that are visible to the specified
-     *     packages. The value List contains PackageIdentifier Bundles.
+     * @param visibilityBundles List of {@link VisibilityDocument} bundles.
      * @param forceOverride Whether to apply the new schema even if it is incompatible. All
      *     incompatible documents will be deleted.
      * @param schemaVersion  The overall schema version number of the request.
@@ -64,8 +61,7 @@ interface IAppSearchManager {
         in String packageName,
         in String databaseName,
         in List<Bundle> schemaBundles,
-        in List<String> schemasNotDisplayedBySystem,
-        in Map<String, List<Bundle>> schemasVisibleToPackagesBundles,
+        in List<Bundle> visibilityBundles,
         boolean forceOverride,
         in int schemaVersion,
         in UserHandle userHandle,
@@ -75,6 +71,7 @@ interface IAppSearchManager {
     /**
      * Retrieves the AppSearch schema for this database.
      *
+     * @param callingackageName The name of the package making this call.
      * @param packageName The name of the package that owns the schema.
      * @param databaseName  The name of the database to retrieve.
      * @param userHandle Handle of the calling user
@@ -82,6 +79,7 @@ interface IAppSearchManager {
      *     {@link AppSearchResult}&lt;{@link Bundle}&gt; where the bundle is a GetSchemaResponse.
      */
     void getSchema(
+        in String callingPackageName,
         in String packageName,
         in String databaseName,
         in UserHandle userHandle,
@@ -128,7 +126,8 @@ interface IAppSearchManager {
     /**
      * Retrieves documents from the index.
      *
-     * @param packageName The name of the package that owns this document.
+     * @param callingPackageName The name of the package that is getting this document.
+     * @param targetPackageName The name of the package that owns this document.
      * @param databaseName  The databaseName this document resides in.
      * @param namespace    The namespace this document resides in.
      * @param ids The IDs of the documents to retrieve
@@ -136,6 +135,7 @@ interface IAppSearchManager {
      *     result.
      * @param userHandle Handle of the calling user
      * @param binderCallStartTimeMillis start timestamp of binder call in Millis
+     * @param global signifies whether this is a global get or not
      * @param callback
      *     If the call fails to start, {@link IAppSearchBatchResultCallback#onSystemError}
      *     will be called with the cause throwable. Otherwise,
@@ -144,13 +144,15 @@ interface IAppSearchManager {
      *     where the keys are document IDs, and the values are Document bundles.
      */
     void getDocuments(
-        in String packageName,
+        in String callingPackageName,
+        in String targetPackageName,
         in String databaseName,
         in String namespace,
         in List<String> ids,
         in Map<String, List<String>> typePropertyPaths,
         in UserHandle userHandle,
         in long binderCallStartTimeMillis,
+        in boolean global,
         in IAppSearchBatchResultCallback callback);
 
     /**
@@ -376,7 +378,7 @@ interface IAppSearchManager {
      * they match the given ObserverSpec.
      *
      * @param callingPackage The name of the package which is registering an observer.
-     * @param observedPackage Package whose changes to monitor
+     * @param targetPackageName Package whose changes to monitor
      * @param observerSpecBundle Bundle of ObserverSpec showing what types of changes to listen for
      * @param userHandle Handle of the calling user
      * @param observerProxy Callback to trigger when a schema or document changes
@@ -384,8 +386,23 @@ interface IAppSearchManager {
      */
     AppSearchResultParcel addObserver(
         in String callingPackage,
-        in String observedPackage,
+        in String targetPackageName,
         in Bundle observerSpecBundle,
+        in UserHandle userHandle,
+        in IAppSearchObserverProxy observerProxy);
+
+    /**
+     * Removes previously registered {@link AppSearchObserverCallback} instances from the system.
+     *
+     * @param callingPackage The name of the package that owns the observer.
+     * @param observedPackage Package whose changes are being monitored
+     * @param userHandle Handle of the calling user
+     * @param observerProxy Observer callback to remove
+     * @return the success or failure of this operation
+     */
+    AppSearchResultParcel removeObserver(
+        in String callingPackage,
+        in String observedPackage,
         in UserHandle userHandle,
         in IAppSearchObserverProxy observerProxy);
 }

@@ -24,7 +24,9 @@ import android.util.Log;
 import com.android.internal.annotations.VisibleForTesting;
 
 import com.google.android.icing.proto.DocumentProto;
+import com.google.android.icing.proto.PropertyConfigProto;
 import com.google.android.icing.proto.PropertyProto;
+import com.google.android.icing.proto.SchemaTypeConfigProto;
 
 /**
  * Provides utility functions for working with package + database prefixes.
@@ -45,6 +47,7 @@ public class PrefixUtil {
     public static String createPrefix(@NonNull String packageName, @NonNull String databaseName) {
         return packageName + PACKAGE_DELIMITER + databaseName + DATABASE_DELIMITER;
     }
+
     /** Creates prefix string for given package name. */
     @NonNull
     public static String createPackagePrefix(@NonNull String packageName) {
@@ -231,5 +234,36 @@ public class PrefixUtil {
         }
 
         return schemaPrefix;
+    }
+
+    /**
+     * Removes any prefixes from types mentioned anywhere in {@code typeConfigBuilder}.
+     *
+     * @param typeConfigBuilder The schema type to mutate
+     * @return Prefix name that was removed from the schema type.
+     * @throws AppSearchException if there are unexpected database prefixing errors.
+     */
+    @NonNull
+    public static String removePrefixesFromSchemaType(
+            @NonNull SchemaTypeConfigProto.Builder typeConfigBuilder) throws AppSearchException {
+        String typePrefix = PrefixUtil.getPrefix(typeConfigBuilder.getSchemaType());
+        // Rewrite SchemaProto.types.schema_type
+        String newSchemaType = typeConfigBuilder.getSchemaType().substring(typePrefix.length());
+        typeConfigBuilder.setSchemaType(newSchemaType);
+
+        // Rewrite SchemaProto.types.properties.schema_type
+        for (int propertyIdx = 0;
+                propertyIdx < typeConfigBuilder.getPropertiesCount();
+                propertyIdx++) {
+            if (!typeConfigBuilder.getProperties(propertyIdx).getSchemaType().isEmpty()) {
+                PropertyConfigProto.Builder propertyConfigBuilder =
+                        typeConfigBuilder.getProperties(propertyIdx).toBuilder();
+                String newPropertySchemaType =
+                        propertyConfigBuilder.getSchemaType().substring(typePrefix.length());
+                propertyConfigBuilder.setSchemaType(newPropertySchemaType);
+                typeConfigBuilder.setProperties(propertyIdx, propertyConfigBuilder);
+            }
+        }
+        return typePrefix;
     }
 }

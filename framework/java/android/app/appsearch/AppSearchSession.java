@@ -23,13 +23,11 @@ import android.app.appsearch.aidl.AppSearchResultParcel;
 import android.app.appsearch.aidl.IAppSearchBatchResultCallback;
 import android.app.appsearch.aidl.IAppSearchManager;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
-import android.app.appsearch.exceptions.AppSearchException;
 import android.app.appsearch.util.SchemaMigrationUtil;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.UserHandle;
-import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Log;
 
@@ -150,15 +148,14 @@ public final class AppSearchSession implements Closeable {
         for (AppSearchSchema schema : request.getSchemas()) {
             schemaBundles.add(schema.getBundle());
         }
-        Map<String, List<Bundle>> schemasVisibleToPackagesBundles =
-                new ArrayMap<>(request.getSchemasVisibleToPackagesInternal().size());
-        for (Map.Entry<String, Set<PackageIdentifier>> entry :
-                request.getSchemasVisibleToPackagesInternal().entrySet()) {
-            List<Bundle> packageIdentifierBundles = new ArrayList<>(entry.getValue().size());
-            for (PackageIdentifier packageIdentifier : entry.getValue()) {
-                packageIdentifierBundles.add(packageIdentifier.getBundle());
-            }
-            schemasVisibleToPackagesBundles.put(entry.getKey(), packageIdentifierBundles);
+
+        // Extract a List<VisibilityDocument> from the request and convert to a
+        // List<VisibilityDocument.Bundle> to send via binder.
+        List<VisibilityDocument> visibilityDocuments = VisibilityDocument
+                .toVisibilityDocuments(request);
+        List<Bundle> visibilityBundles = new ArrayList<>(visibilityDocuments.size());
+        for (int i = 0; i < visibilityDocuments.size(); i++) {
+            visibilityBundles.add(visibilityDocuments.get(i).getBundle());
         }
 
         // No need to trigger migration if user never set migrator
@@ -166,14 +163,14 @@ public final class AppSearchSession implements Closeable {
             setSchemaNoMigrations(
                     request,
                     schemaBundles,
-                    schemasVisibleToPackagesBundles,
+                    visibilityBundles,
                     callbackExecutor,
                     callback);
         } else {
             setSchemaWithMigrations(
                     request,
                     schemaBundles,
-                    schemasVisibleToPackagesBundles,
+                    visibilityBundles,
                     workExecutor,
                     callbackExecutor,
                     callback);
@@ -195,7 +192,8 @@ public final class AppSearchSession implements Closeable {
         Preconditions.checkState(!mIsClosed, "AppSearchSession has already been closed");
         try {
             mService.getSchema(
-                    mPackageName,
+                    /*callingPackageName=*/mPackageName,
+                    /*packageName=*/mPackageName,
                     mDatabaseName,
                     mUserHandle,
                     new IAppSearchResultCallback.Stub() {
@@ -297,7 +295,7 @@ public final class AppSearchSession implements Closeable {
 
                         @Override
                         public void onSystemError(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> sendSystemErrorToCallback(
+                            executor.execute(() -> SearchSessionUtil.sendSystemErrorToCallback(
                                     resultParcel.getResult(), callback));
                         }
                     });
@@ -332,61 +330,16 @@ public final class AppSearchSession implements Closeable {
         Preconditions.checkState(!mIsClosed, "AppSearchSession has already been closed");
         try {
             mService.getDocuments(
-                    mPackageName,
+                    /*callerPackageName=*/mPackageName,
+                    /*targetPackageName=*/mPackageName,
                     mDatabaseName,
                     request.getNamespace(),
                     new ArrayList<>(request.getIds()),
                     request.getProjectionsInternal(),
                     mUserHandle,
                     /*binderCallStartTimeMillis=*/ SystemClock.elapsedRealtime(),
-                    new IAppSearchBatchResultCallback.Stub() {
-                        @Override
-                        public void onResult(AppSearchBatchResultParcel resultParcel) {
-                            executor.execute(() -> {
-                                AppSearchBatchResult<String, Bundle> result =
-                                        resultParcel.getResult();
-                                AppSearchBatchResult.Builder<String, GenericDocument>
-                                        documentResultBuilder =
-                                        new AppSearchBatchResult.Builder<>();
-
-                                // Translate successful results
-                                for (Map.Entry<String, Bundle> bundleEntry :
-                                        result.getSuccesses().entrySet()) {
-                                    GenericDocument document;
-                                    try {
-                                        document = new GenericDocument(bundleEntry.getValue());
-                                    } catch (Throwable t) {
-                                        // These documents went through validation, so how could
-                                        // this fail? We must have done something wrong.
-                                        documentResultBuilder.setFailure(
-                                                bundleEntry.getKey(),
-                                                AppSearchResult.RESULT_INTERNAL_ERROR,
-                                                t.getMessage());
-                                        continue;
-                                    }
-                                    documentResultBuilder.setSuccess(
-                                            bundleEntry.getKey(), document);
-                                }
-
-                                // Translate failed results
-                                for (Map.Entry<String, AppSearchResult<Bundle>> bundleEntry :
-                                        ((Map<String, AppSearchResult<Bundle>>)
-                                                result.getFailures()).entrySet()) {
-                                    documentResultBuilder.setFailure(
-                                            bundleEntry.getKey(),
-                                            bundleEntry.getValue().getResultCode(),
-                                            bundleEntry.getValue().getErrorMessage());
-                                }
-                                callback.onResult(documentResultBuilder.build());
-                            });
-                        }
-
-                        @Override
-                        public void onSystemError(AppSearchResultParcel result) {
-                            executor.execute(
-                                    () -> sendSystemErrorToCallback(result.getResult(), callback));
-                        }
-                    });
+                    /*global=*/false,
+                    SearchSessionUtil.createGetDocumentCallback(executor, callback));
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -552,7 +505,7 @@ public final class AppSearchSession implements Closeable {
 
                         @Override
                         public void onSystemError(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> sendSystemErrorToCallback(
+                            executor.execute(() -> SearchSessionUtil.sendSystemErrorToCallback(
                                     resultParcel.getResult(), callback));
                         }
                     });
@@ -678,7 +631,7 @@ public final class AppSearchSession implements Closeable {
     private void setSchemaNoMigrations(
             @NonNull SetSchemaRequest request,
             @NonNull List<Bundle> schemaBundles,
-            @NonNull Map<String, List<Bundle>> schemasVisibleToPackagesBundles,
+            @NonNull List<Bundle> visibilityBundles,
             @NonNull @CallbackExecutor Executor executor,
             @NonNull Consumer<AppSearchResult<SetSchemaResponse>> callback) {
         try {
@@ -686,8 +639,7 @@ public final class AppSearchSession implements Closeable {
                     mPackageName,
                     mDatabaseName,
                     schemaBundles,
-                    new ArrayList<>(request.getSchemasNotDisplayedBySystem()),
-                    schemasVisibleToPackagesBundles,
+                    visibilityBundles,
                     request.isForceOverride(),
                     request.getVersion(),
                     mUserHandle,
@@ -735,7 +687,7 @@ public final class AppSearchSession implements Closeable {
     private void setSchemaWithMigrations(
             @NonNull SetSchemaRequest request,
             @NonNull List<Bundle> schemaBundles,
-            @NonNull Map<String, List<Bundle>> schemasVisibleToPackagesBundles,
+            @NonNull List<Bundle> visibilityBundles,
             @NonNull Executor workExecutor,
             @NonNull @CallbackExecutor Executor callbackExecutor,
             @NonNull Consumer<AppSearchResult<SetSchemaResponse>> callback) {
@@ -761,7 +713,7 @@ public final class AppSearchSession implements Closeable {
 
                 // No need to trigger migration if no migrator is active.
                 if (activeMigrators.isEmpty()) {
-                    setSchemaNoMigrations(request, schemaBundles, schemasVisibleToPackagesBundles,
+                    setSchemaNoMigrations(request, schemaBundles, visibilityBundles,
                             callbackExecutor, callback);
                     return;
                 }
@@ -774,8 +726,7 @@ public final class AppSearchSession implements Closeable {
                         mPackageName,
                         mDatabaseName,
                         schemaBundles,
-                        new ArrayList<>(request.getSchemasNotDisplayedBySystem()),
-                        schemasVisibleToPackagesBundles,
+                        visibilityBundles,
                         /*forceOverride=*/ false,
                         request.getVersion(),
                         mUserHandle,
@@ -826,8 +777,7 @@ public final class AppSearchSession implements Closeable {
                                 mPackageName,
                                 mDatabaseName,
                                 schemaBundles,
-                                new ArrayList<>(request.getSchemasNotDisplayedBySystem()),
-                                schemasVisibleToPackagesBundles,
+                                visibilityBundles,
                                 /*forceOverride=*/ true,
                                 request.getVersion(),
                                 mUserHandle,
@@ -864,22 +814,5 @@ public final class AppSearchSession implements Closeable {
                         AppSearchResult.throwableToFailedResult(t)));
             }
         });
-    }
-
-    /**
-     * Calls {@link BatchResultCallback#onSystemError} with a throwable derived from the given
-     * failed {@link AppSearchResult}.
-     *
-     * <p>The {@link AppSearchResult} generally comes from
-     * {@link IAppSearchBatchResultCallback#onSystemError}.
-     *
-     * <p>This method should be called from the callback executor thread.
-     */
-    private void sendSystemErrorToCallback(
-            @NonNull AppSearchResult<?> failedResult, @NonNull BatchResultCallback<?, ?> callback) {
-        Preconditions.checkArgument(!failedResult.isSuccess());
-        Throwable throwable = new AppSearchException(
-                failedResult.getResultCode(), failedResult.getErrorMessage());
-        callback.onSystemError(throwable);
     }
 }
