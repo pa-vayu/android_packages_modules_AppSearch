@@ -35,6 +35,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * The class to sync the data from CP2 to AppSearch.
@@ -97,9 +98,10 @@ public final class ContactsIndexerImpl {
     }
 
     @VisibleForTesting
-    void batchRemoveUnwantedContact(@NonNull Set<String> unWantedIds) {
+    CompletableFuture<Void> batchRemoveContactsAsync(@NonNull Set<String> unWantedIds) {
         Objects.requireNonNull(unWantedIds);
 
+        CompletableFuture<Void> batchRemoveFuture = CompletableFuture.completedFuture(null);
         int startIndex = 0;
         final List<String> unWantedIdList = new ArrayList<>(unWantedIds);
         int unWantedSize = unWantedIdList.size();
@@ -107,10 +109,12 @@ public final class ContactsIndexerImpl {
             int endIndex = Math.min(startIndex + NUM_DELETED_CONTACTS_PER_BATCH_FOR_APPSEARCH,
                     unWantedSize);
             Collection<String> currentContactIds = unWantedIdList.subList(startIndex, endIndex);
-            // TODO(b/221892152): propagate futures up the stack
-            mAppSearchHelper.removeContactsByIdAsync(currentContactIds);
+            batchRemoveFuture = batchRemoveFuture.thenCompose(
+                    x -> mAppSearchHelper.removeContactsByIdAsync(currentContactIds));
+
             startIndex = endIndex;
         }
+        return batchRemoveFuture;
     }
 
     /**
@@ -119,13 +123,14 @@ public final class ContactsIndexerImpl {
      * @param wantedContactIds   ids for contacts to be updated.
      * @param unWantedContactIds ids for contacts to be deleted.
      */
-    void updatePersonCorpus(@NonNull Set<String> wantedContactIds,
+    public CompletableFuture<Void> updatePersonCorpusAsync(@NonNull Set<String> wantedContactIds,
             @NonNull Set<String> unWantedContactIds) {
         Objects.requireNonNull(wantedContactIds);
         Objects.requireNonNull(unWantedContactIds);
 
         // batch removing unwanted contacts first
-        batchRemoveUnwantedContact(unWantedContactIds);
+        CompletableFuture<Void> updatePersonCorpusFuture =
+                batchRemoveContactsAsync(unWantedContactIds);
 
         int startIndex = 0;
         final List<String> wantedIdList = new ArrayList<>(wantedContactIds);
@@ -154,7 +159,9 @@ public final class ContactsIndexerImpl {
                 if (cursor == null) {
                     startIndex = wantedIdListSize; // Ensures we don't retry
                 } else {
-                    indexContactsFromCursorToAppSearch(cursor);
+                    Cursor finalCursor = cursor;
+                    updatePersonCorpusFuture = updatePersonCorpusFuture
+                            .thenCompose(x -> indexContactsFromCursorAsync(finalCursor));
                 }
             } catch (RuntimeException e) {
                 // The ContactsProvider sometimes propagates RuntimeExceptions to us
@@ -170,6 +177,7 @@ public final class ContactsIndexerImpl {
                 }
             }
         }
+        return updatePersonCorpusFuture;
     }
 
     /**
@@ -178,7 +186,7 @@ public final class ContactsIndexerImpl {
      *
      * @param cursor pointing to the contacts read from CP2.
      */
-    private void indexContactsFromCursorToAppSearch(@NonNull Cursor cursor) {
+    private CompletableFuture<Void> indexContactsFromCursorAsync(@NonNull Cursor cursor) {
         Objects.requireNonNull(cursor);
 
         int contactIdIndex = cursor.getColumnIndex(ContactsContract.Data.CONTACT_ID);
@@ -249,7 +257,7 @@ public final class ContactsIndexerImpl {
         }
 
         // finally force flush all the remaining batched contacts.
-        mBatcher.flush();
+        return mBatcher.flushAsync();
     }
 
     /**
@@ -268,11 +276,16 @@ public final class ContactsIndexerImpl {
 
     /**
      * Class for helping batching the {@link Person} to be indexed.
+     *
+     * <p>This class is thread unsafe and all its methods must be called from the same thread.
      */
     static class ContactsBatcher {
         private final List<Person> mBatchedContacts;
         private final int mBatchSize;
         private final AppSearchHelper mAppSearchHelper;
+
+        private CompletableFuture<Void> mIndexContactsCompositeFuture =
+                CompletableFuture.completedFuture(null);
 
         ContactsBatcher(@NonNull AppSearchHelper appSearchHelper, int batchSize) {
             mAppSearchHelper = Objects.requireNonNull(appSearchHelper);
@@ -295,18 +308,28 @@ public final class ContactsIndexerImpl {
             //  temporary data store, and do the comparison.
             mBatchedContacts.add(person);
             if (mBatchedContacts.size() >= mBatchSize) {
-                flush();
+                indexBatchedContactsAsync();
             }
         }
 
-        public void flush() {
-            if (mBatchedContacts.isEmpty()) {
-                return;
+        public CompletableFuture<Void> flushAsync() {
+            if (!mBatchedContacts.isEmpty()) {
+                indexBatchedContactsAsync();
             }
+            CompletableFuture<Void> flushFuture = mIndexContactsCompositeFuture;
+            mIndexContactsCompositeFuture = CompletableFuture.completedFuture(null);
+            return flushFuture;
+        }
 
-            // TODO(b/221892152): propagate futures up the stack
-            mAppSearchHelper.indexContactsAsync(mBatchedContacts);
+        /**
+         * Indexes the batched contacts into AppSearch and extends the chain of futures in {@link
+         * #mIndexContactsCompositeFuture}.
+         */
+        private void indexBatchedContactsAsync() {
+            List<Person> contactsToIndex = new ArrayList<>(mBatchedContacts);
             mBatchedContacts.clear();
+            mIndexContactsCompositeFuture = mIndexContactsCompositeFuture
+                    .thenCompose(x -> mAppSearchHelper.indexContactsAsync(contactsToIndex));
         }
     }
 }
