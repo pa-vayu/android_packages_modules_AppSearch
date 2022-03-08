@@ -120,9 +120,6 @@ public class Person extends GenericDocument {
             .addProperty(new AppSearchSchema.StringPropertyConfig.Builder(
                     PERSON_PROPERTY_RELATIONS)
                     .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
-                    .setIndexingType(
-                            AppSearchSchema.StringPropertyConfig.INDEXING_TYPE_PREFIXES)
-                    .setTokenizerType(AppSearchSchema.StringPropertyConfig.TOKENIZER_TYPE_PLAIN)
                     .build())
             .build();
 
