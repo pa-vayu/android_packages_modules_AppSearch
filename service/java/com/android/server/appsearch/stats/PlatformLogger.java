@@ -207,6 +207,17 @@ public final class PlatformLogger implements AppSearchLogger {
         ExtraStats extraStats = createExtraStatsLocked(stats.getPackageName(), stats.getCallType());
         String database = stats.getDatabase();
         try {
+            // The num_reported_calls field in AppSearchPutDocumentStatsReported is always set to 1.
+            // This is so that we can use one single sum value metrics to compute the total
+            // estimated call count based on the formula defined in num_skipped_sample's field doc
+            // (see atoms.proto). For example, if a device logged 3 call stats atoms for a call
+            // type, and the numbers of skipped samples are 5, 0, 7, respectively, and the sampling
+            // interval is 10, the total estimated calls are 10*(5+1) + 10*(0+1) + 10*(7+1) = 150.
+            // In the sum value metrics reported by the device, we'll see 12 (=5+0+7) as the sum of
+            // num_skipped_sample and 3 (=1+1+1) as the sum of num_reported_calls, and the total
+            // will be 10*12 + 10*3 = 150 for that device's reported value.
+            final int numReportedCalls = 1;
+
             int hashCodeForDatabase = calculateHashCodeMd5(database);
             AppSearchStatsLog.write(AppSearchStatsLog.APP_SEARCH_CALL_STATS_REPORTED,
                     extraStats.mSamplingInterval,
@@ -218,7 +229,8 @@ public final class PlatformLogger implements AppSearchLogger {
                     stats.getCallType(),
                     stats.getEstimatedBinderLatencyMillis(),
                     stats.getNumOperationsSucceeded(),
-                    stats.getNumOperationsFailed());
+                    stats.getNumOperationsFailed(),
+                    numReportedCalls);
         } catch (NoSuchAlgorithmException | UnsupportedEncodingException e) {
             // TODO(b/184204720) report hashing error to statsd
             //  We need to set a special value(e.g. 0xFFFFFFFF) for the hashing of the database,
