@@ -29,6 +29,7 @@ java_library {
         "framework",
         "framework-appsearch",
         "guava",
+        "service-appsearch",
         "truth-prebuilt",
     ],
     visibility: [
