@@ -84,7 +84,8 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
     }
 
     @NonNull
-    public ListenableFuture<AppSearchBatchResult<String, GenericDocument>> getByDocumentId(
+    @Override
+    public ListenableFuture<AppSearchBatchResult<String, GenericDocument>> getByDocumentIdAsync(
             @NonNull String packageName,
             @NonNull String databaseName,
             @NonNull GetByDocumentIdRequest request) {

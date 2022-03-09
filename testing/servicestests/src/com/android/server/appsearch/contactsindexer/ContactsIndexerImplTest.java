@@ -67,7 +67,7 @@ public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvi
                 lastUpdatedTimestamp, wantedContactIds);
         lastDeletedTimestamp = ContactsProviderUtil.getDeletedContactIds(mContext,
                 lastDeletedTimestamp, unWantedContactIds);
-        indexerImpl.updatePersonCorpus(wantedContactIds, unWantedContactIds);
+        indexerImpl.updatePersonCorpusAsync(wantedContactIds, unWantedContactIds);
 
         return new Pair<>(lastUpdatedTimestamp, lastDeletedTimestamp);
     }
@@ -140,7 +140,7 @@ public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvi
             removedIds.add(String.valueOf(i));
         }
 
-        contactsIndexerImpl.batchRemoveUnwantedContact(removedIds);
+        contactsIndexerImpl.batchRemoveContactsAsync(removedIds);
 
         assertThat(mAppSearchHelper.mRemovedIds).hasSize(removedIds.size());
         assertThat(new ArraySet<>(mAppSearchHelper.mRemovedIds)).isEqualTo(removedIds);
@@ -155,7 +155,7 @@ public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvi
             removedIds.add(String.valueOf(i));
         }
 
-        contactsIndexerImpl.batchRemoveUnwantedContact(removedIds);
+        contactsIndexerImpl.batchRemoveContactsAsync(removedIds);
 
         assertThat(mAppSearchHelper.mRemovedIds).hasSize(removedIds.size());
         assertThat(new ArraySet<>(mAppSearchHelper.mRemovedIds)).isEqualTo(removedIds);
