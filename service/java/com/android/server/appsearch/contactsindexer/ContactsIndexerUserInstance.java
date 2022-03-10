@@ -24,7 +24,6 @@ import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.CancellationSignal;
 import android.provider.ContactsContract;
-import android.util.AndroidRuntimeException;
 import android.util.ArraySet;
 import android.util.Log;
 
@@ -63,6 +62,7 @@ public final class ContactsIndexerUserInstance {
     static final String CONTACTS_INDEXER_STATE = "contacts_indexer_state";
 
     private final Context mContext;
+    private final File mDataDir;
     private final ContactsObserver mContactsObserver;
     private final PersistedData mPersistedData = new PersistedData();
     // Used for batching/throttling the contact change notification so we won't schedule too many
@@ -70,9 +70,6 @@ public final class ContactsIndexerUserInstance {
     private final AtomicBoolean mDeltaUpdatePending = new AtomicBoolean(/*initialValue=*/ false);
     private final AppSearchHelper mAppSearchHelper;
     private final ContactsIndexerImpl mContactsIndexerImpl;
-
-    // Path to persist timestamp data.
-    private final Path mPath;
 
     /**
      * Single threaded executor to make sure there is only one active sync for this {@link
@@ -171,43 +168,42 @@ public final class ContactsIndexerUserInstance {
         Objects.requireNonNull(userContext);
         Objects.requireNonNull(contactsDir);
 
-        if (!contactsDir.exists()) {
-            boolean result = contactsDir.mkdirs();
-            if (!result) {
-                throw new AndroidRuntimeException(
-                        "Failed to create contacts indexer directory " + contactsDir.getPath());
-            }
-        }
-        // We choose to go ahead here even if we can't create the directory. The indexer will
-        // still function correctly except every time the system reboots, the data is not
-        // persisted and reset to default.
-        Path path = new File(contactsDir, CONTACTS_INDEXER_STATE).toPath();
         ExecutorService singleThreadedExecutor = Executors.newSingleThreadExecutor();
-        AppSearchHelper appSearchHelper = AppSearchHelper.createAppSearchHelper(userContext,
-                singleThreadedExecutor);
-        ContactsIndexerUserInstance indexer = new ContactsIndexerUserInstance(userContext,
-                path, appSearchHelper, singleThreadedExecutor);
-        indexer.loadPersistedDataAsync(path);
+        return createInstance(userContext, contactsDir, singleThreadedExecutor);
+    }
+
+    @VisibleForTesting
+    @NonNull
+    /*package*/ static ContactsIndexerUserInstance createInstance(@NonNull Context context,
+            @NonNull File contactsDir, @NonNull ExecutorService executorService) {
+        Objects.requireNonNull(context);
+        Objects.requireNonNull(contactsDir);
+        Objects.requireNonNull(executorService);
+
+        AppSearchHelper appSearchHelper = AppSearchHelper.createAppSearchHelper(context,
+                executorService);
+        ContactsIndexerUserInstance indexer = new ContactsIndexerUserInstance(context,
+                contactsDir, appSearchHelper, executorService);
+        indexer.loadPersistedDataAsync();
 
         return indexer;
     }
 
     /**
      * Constructs a {@link ContactsIndexerUserInstance}.
-
+     *
      * @param context                 Context object passed from
      *                                {@link ContactsIndexerManagerService}
-     * @param path                    the path to the file to store the meta data for contacts
-     *                                indexer.
+     * @param dataDir                 data directory for storing contacts indexer state.
      * @param singleThreadedExecutor  an {@link ExecutorService} with at most one thread to ensure
      *                                the thread safety of this class.
      */
-    private ContactsIndexerUserInstance(@NonNull Context context, @NonNull Path path,
+    private ContactsIndexerUserInstance(@NonNull Context context, @NonNull File dataDir,
             @NonNull AppSearchHelper appSearchHelper,
             @NonNull ExecutorService singleThreadedExecutor) {
         mContext = Objects.requireNonNull(context);
+        mDataDir = Objects.requireNonNull(dataDir);
         mAppSearchHelper = Objects.requireNonNull(appSearchHelper);
-        mPath = Objects.requireNonNull(path);
         mSingleThreadedExecutor = Objects.requireNonNull(singleThreadedExecutor);
         mContactsObserver = new ContactsObserver();
         mContactsIndexerImpl = new ContactsIndexerImpl(context, appSearchHelper);
@@ -292,7 +288,7 @@ public final class ContactsIndexerUserInstance {
                     return mContactsIndexerImpl.updatePersonCorpusAsync(
                             /*wantedContactIds=*/ cp2ContactIds, unwantedContactIds);
                 }).thenAccept(x -> {
-                    persistTimestamps(mPath,
+                    persistTimestamps(
                             /*lastDeltaUpdateTimestampMillis=*/ currentTimeMillis,
                             /*lastDeltaDeleteTimestampMillis=*/ currentTimeMillis,
                             /*lastFullUpdateTimestampMillis=*/ currentTimeMillis);
@@ -389,7 +385,7 @@ public final class ContactsIndexerUserInstance {
 
         // Persist the timestamps.
         // TODO(b/221892152): persist timestamps after the documents are flush to AppSearch
-        persistTimestamps(mPath, mPersistedData.mLastDeltaUpdateTimestampMillis,
+        persistTimestamps(mPersistedData.mLastDeltaUpdateTimestampMillis,
                 mPersistedData.mLastDeltaDeleteTimestampMillis,
                 mPersistedData.mLastFullUpdateTimestampMillis);
     }
@@ -401,10 +397,11 @@ public final class ContactsIndexerUserInstance {
      * timestamps persisted in the memory.
      */
     @NonNull
-    private void loadPersistedDataAsync(@NonNull Path path) {
-        Objects.requireNonNull(path);
-
+    private void loadPersistedDataAsync() {
         mSingleThreadedExecutor.execute(() -> {
+            boolean unused = mDataDir.mkdirs();
+            Path path = new File(mDataDir, CONTACTS_INDEXER_STATE).toPath();
+
             boolean isLoadingDataFailed = false;
             try (
                     BufferedReader reader = Files.newBufferedReader(
@@ -438,14 +435,15 @@ public final class ContactsIndexerUserInstance {
     }
 
     /** Persists the timestamps to disk. */
-    private void persistTimestamps(@NonNull Path path, long lastDeltaUpdateTimestampMillis,
+    private void persistTimestamps(long lastDeltaUpdateTimestampMillis,
             long lastDeltaDeleteTimestampMillis, long lastFullUpdateTimestampMillis) {
-        Objects.requireNonNull(path);
         Objects.requireNonNull(mPersistedData);
 
         mPersistedData.mLastDeltaUpdateTimestampMillis = lastDeltaUpdateTimestampMillis;
         mPersistedData.mLastDeltaDeleteTimestampMillis = lastDeltaDeleteTimestampMillis;
         mPersistedData.mLastFullUpdateTimestampMillis = lastFullUpdateTimestampMillis;
+
+        Path path = new File(mDataDir, CONTACTS_INDEXER_STATE).toPath();
         try (
                 BufferedWriter writer = Files.newBufferedWriter(
                         path,
