@@ -55,6 +55,7 @@ public class CallStats {
                 CALL_TYPE_GLOBAL_SEARCH,
                 CALL_TYPE_REMOVE_DOCUMENTS_BY_SEARCH,
                 CALL_TYPE_REMOVE_DOCUMENT_BY_SEARCH,
+                CALL_TYPE_GLOBAL_GET_DOCUMENT_BY_ID,
             })
     @Retention(RetentionPolicy.SOURCE)
     public @interface CallType {}
@@ -74,6 +75,7 @@ public class CallStats {
     public static final int CALL_TYPE_GLOBAL_SEARCH = 12;
     public static final int CALL_TYPE_REMOVE_DOCUMENTS_BY_SEARCH = 13;
     public static final int CALL_TYPE_REMOVE_DOCUMENT_BY_SEARCH = 14;
+    public static final int CALL_TYPE_GLOBAL_GET_DOCUMENT_BY_ID = 15;
 
     @Nullable private final String mPackageName;
     @Nullable private final String mDatabase;

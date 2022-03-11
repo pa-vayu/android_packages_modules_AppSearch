@@ -110,14 +110,8 @@ public class VisibilityStoreMigrationHelperFromV0Test {
                                 deprecatedVisibilityToPackageBar)
                         .build();
 
-        // Put deprecated visibility documents in version 0 to AppSearchImpl
-        appSearchImplInV0.putDocument(
-                VisibilityStore.VISIBILITY_PACKAGE_NAME,
-                VisibilityStore.VISIBILITY_DATABASE_NAME,
-                deprecatedVisibilityDocument,
-                /*logger=*/ null);
-
-        // Set some client schemas into AppSearchImpl.
+        // Set some client schemas into AppSearchImpl with empty VisibilityDocument since we need to
+        // directly put old version of VisibilityDocument.
         appSearchImplInV0.setSchema(
                 "package",
                 "database",
@@ -128,6 +122,13 @@ public class VisibilityStoreMigrationHelperFromV0Test {
                 /*forceOverride=*/ false,
                 /*schemaVersion=*/ 0,
                 /*setSchemaStatsBuilder=*/ null);
+
+        // Put deprecated visibility documents in version 0 to AppSearchImpl
+        appSearchImplInV0.putDocument(
+                VisibilityStore.VISIBILITY_PACKAGE_NAME,
+                VisibilityStore.VISIBILITY_DATABASE_NAME,
+                deprecatedVisibilityDocument,
+                /*logger=*/ null);
 
         // Persist to disk and re-open the AppSearchImpl
         appSearchImplInV0.close();
