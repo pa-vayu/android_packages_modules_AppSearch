@@ -237,6 +237,8 @@ public final class ContactsIndexerUserInstance {
         Log.d(TAG, "Unregistering ContactsObserver for " + mContext.getUser());
         mContext.getContentResolver().unregisterContentObserver(mContactsObserver);
 
+        ContactsIndexerMaintenanceService.cancelFullUpdateJob(mContext,
+                mContext.getUser().getIdentifier());
         mSingleThreadedExecutor.shutdown();
         mSingleThreadedExecutor.awaitTermination(30L, TimeUnit.SECONDS);
     }
