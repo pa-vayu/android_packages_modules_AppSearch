@@ -39,7 +39,7 @@ apex {
     systemserverclasspath_fragments: ["com.android.appsearch-systemserverclasspath-fragment"],
     key: "com.android.appsearch.key",
     certificate: ":com.android.appsearch.certificate",
-    updatable: false,
+    defaults: ["t-launched-apex-module"],
     jni_libs: ["libicing"],
 }
 
