@@ -49,14 +49,14 @@ public interface Features {
     String GLOBAL_SEARCH_SESSION_GET_SCHEMA = "GLOBAL_SEARCH_SESSION_GET_SCHEMA";
 
     /**
-     * Feature for {@link #isFeatureSupported(String)}. This feature covers {@code
-     * SetSchemaRequest.Builder#addAllowedRoleForSchemaTypeVisibility}, {@code
-     * SetSchemaRequest.Builder#clearAllowedRolesForSchemaTypeVisibility}, {@link
+     * Feature for {@link #isFeatureSupported(String)}. This feature covers {@link
      * GetSchemaResponse#getSchemaTypesNotDisplayedBySystem()}, {@link
-     * GetSchemaResponse#getSchemaTypesVisibleToPackages()}, {@code
-     * GetSchemaResponse#getAllowedRolesForSchemaTypeVisibility()}.
+     * GetSchemaResponse#getSchemaTypesVisibleToPackages()}, {@link
+     * GetSchemaResponse#getRequiredPermissionsForSchemaTypeVisibility()}, {@link
+     * SetSchemaRequest.Builder#addRequiredPermissionsForSchemaTypeVisibility} and {@link
+     * SetSchemaRequest.Builder#clearRequiredPermissionsForSchemaTypeVisibility}
      */
-    String ROLE_AND_PERMISSION_WITH_GET_VISIBILITY = "ROLE_AND_PERMISSION_WITH_GET_VISIBILITY";
+    String ADD_PERMISSIONS_AND_GET_VISIBILITY = "ADD_PERMISSIONS_AND_GET_VISIBILITY";
 
     /**
      * Returns whether a feature is supported at run-time. Feature support depends on the feature in

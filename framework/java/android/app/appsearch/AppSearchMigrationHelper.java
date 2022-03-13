@@ -26,6 +26,7 @@ import android.app.appsearch.aidl.AppSearchResultParcel;
 import android.app.appsearch.aidl.IAppSearchManager;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
 import android.app.appsearch.exceptions.AppSearchException;
+import android.content.AttributionSource;
 import android.os.Bundle;
 import android.os.Parcel;
 import android.os.ParcelFileDescriptor;
@@ -55,7 +56,7 @@ import java.util.concurrent.ExecutionException;
  */
 public class AppSearchMigrationHelper implements Closeable {
     private final IAppSearchManager mService;
-    private final String mPackageName;
+    private final AttributionSource mCallerAttributionSource;
     private final String mDatabaseName;
     private final UserHandle mUserHandle;
     private final File mMigratedFile;
@@ -64,12 +65,12 @@ public class AppSearchMigrationHelper implements Closeable {
 
     AppSearchMigrationHelper(@NonNull IAppSearchManager service,
             @NonNull UserHandle userHandle,
-            @NonNull String packageName,
+            @NonNull AttributionSource callerAttributionSource,
             @NonNull String databaseName,
             @NonNull Set<AppSearchSchema> newSchemas) throws IOException {
         mService = Objects.requireNonNull(service);
         mUserHandle = Objects.requireNonNull(userHandle);
-        mPackageName = Objects.requireNonNull(packageName);
+        mCallerAttributionSource = Objects.requireNonNull(callerAttributionSource);
         mDatabaseName = Objects.requireNonNull(databaseName);
         mMigratedFile = File.createTempFile(/*prefix=*/"appsearch", /*suffix=*/null);
         mDestinationTypes = new ArraySet<>(newSchemas.size());
@@ -98,7 +99,7 @@ public class AppSearchMigrationHelper implements Closeable {
         try (ParcelFileDescriptor fileDescriptor =
                      ParcelFileDescriptor.open(queryFile, MODE_WRITE_ONLY)) {
             CompletableFuture<AppSearchResult<Void>> future = new CompletableFuture<>();
-            mService.writeQueryResultsToFile(mPackageName, mDatabaseName,
+            mService.writeQueryResultsToFile(mCallerAttributionSource, mDatabaseName,
                     fileDescriptor,
                     /*queryExpression=*/ "",
                     new SearchSpec.Builder()
@@ -145,7 +146,8 @@ public class AppSearchMigrationHelper implements Closeable {
         try (ParcelFileDescriptor fileDescriptor =
                      ParcelFileDescriptor.open(mMigratedFile, MODE_READ_ONLY)) {
             CompletableFuture<AppSearchResult<List<Bundle>>> future = new CompletableFuture<>();
-            mService.putDocumentsFromFile(mPackageName, mDatabaseName, fileDescriptor, mUserHandle,
+            mService.putDocumentsFromFile(mCallerAttributionSource, mDatabaseName, fileDescriptor,
+                    mUserHandle,
                     new IAppSearchResultCallback.Stub() {
                         @Override
                         public void onResult(AppSearchResultParcel resultParcel) {
