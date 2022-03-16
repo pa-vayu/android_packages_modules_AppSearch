@@ -45,7 +45,7 @@ public class SearchResultsShimImpl implements SearchResultsShim {
     }
 
     @NonNull
-    public ListenableFuture<List<SearchResult>> getNextPage() {
+    public ListenableFuture<List<SearchResult>> getNextPageAsync() {
         SettableFuture<AppSearchResult<List<SearchResult>>> future = SettableFuture.create();
         mSearchResults.getNextPage(mExecutor, future::set);
         return Futures.transform(future, AppSearchResult::getResultValue, mExecutor);

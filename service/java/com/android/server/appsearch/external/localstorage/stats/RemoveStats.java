@@ -28,8 +28,8 @@ import java.util.Objects;
 
 /**
  * Class holds detailed stats for {@link
- * android.app.appsearch.AppSearchSession#remove(RemoveByDocumentIdRequest)} and {@link
- * android.app.appsearch.AppSearchSession#remove(String, SearchSpec)}
+ * android.app.appsearch.AppSearchSession#removeAsync(RemoveByDocumentIdRequest)} and {@link
+ * android.app.appsearch.AppSearchSession#removeAsync(String, SearchSpec)}
  *
  * @hide
  */
