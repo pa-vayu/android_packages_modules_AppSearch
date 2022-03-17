@@ -99,8 +99,8 @@ public class SetSchemaResponse {
      * Returns a {@link Set} of deleted schema types.
      *
      * <p>A "deleted" type is a schema type that was previously a part of the database schema but
-     * was not present in the {@link SetSchemaRequest} object provided in the
-     * {@link AppSearchSession#setSchema) call.
+     * was not present in the {@link SetSchemaRequest} object provided in the {@link
+     * AppSearchSession#setSchema} call.
      *
      * <p>Documents for a deleted type are removed from the database.
      */

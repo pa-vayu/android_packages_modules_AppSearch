@@ -92,6 +92,7 @@ public final class SearchResult {
      *     method returns an empty list.
      */
     @NonNull
+    @SuppressWarnings("deprecation")
     public List<MatchInfo> getMatchInfos() {
         if (mMatchInfos == null) {
             List<Bundle> matchBundles =
