@@ -288,12 +288,11 @@ public class FakeContactsProvider extends ContentProvider {
         mURIMatcher.addURI(AUTHORITY, "data/emails", EMAIL);
         mURIMatcher.addURI(AUTHORITY, "data/postals", PHONE);
         for (long i = 1; i <= mContactsExisted; ++i) {
-            Person.Builder builder = new Person.Builder("namespace",
+            Person.Builder builder = new Person.Builder(AppSearchHelper.NAMESPACE_NAME,
                     /*contactId=*/ String.valueOf(i), /*name=*/ String.format("displayName%d", i));
             String lookUpKey = String.format("lookupUri%d", i);
             builder.setExternalUri(ContactsContract.Contacts.getLookupUri(i, lookUpKey));
             builder.setImageUri(Uri.parse(String.format("http://photoThumbNailUri%d.com", i)));
-            builder.addAdditionalName(String.format("phoneticName%d", i));
             builder.setScore((int) i + 1);
             builder.setCreationTimestampMillis(i);
             builder.setIsImportant((i & 1) != 0);
@@ -566,6 +565,10 @@ public class FakeContactsProvider extends ContentProvider {
     Person getContactData(long id) {
         return ((id <= 0) || (id > mAllContactData.length)) ? null
                 : mAllContactData[(int) (id - 1)];
+    }
+
+    Person[] getAllContactData() {
+        return mAllContactData;
     }
 
     @Override

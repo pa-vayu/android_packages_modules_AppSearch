@@ -81,6 +81,97 @@ public class ContactDataHandlerTest {
     }
 
     @Test
+    public void testConvertCurrentRowToPerson_labelCustom_typeCustom() {
+        int type = 0; // Custom
+        String name = "name";
+        String address = "emailAddress@google.com";
+        String label = "CustomLabel";
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Email.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Email.ADDRESS, address);
+        values.put(CommonDataKinds.Email.TYPE, type);
+        values.put(CommonDataKinds.Email.LABEL, label);
+        Cursor cursor = makeCursorFromContentValues(values);
+        Person personExpected = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
+                        0)).addEmailToPerson(label, address).buildPerson();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+        Person personTested = helperTested.buildPerson();
+
+        // Since the type is 1(Homes), we won't use user provided label. So it is fine to be null.
+        ContactPoint[] contactPoints = personTested.getContactPoints();
+        assertThat(contactPoints.length).isEqualTo(1);
+        assertThat(contactPoints[0].getLabel()).isEqualTo(label);
+        assertThat(contactPoints[0].getEmails()).asList().containsExactly(address);
+        TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
+    public void testConvertCurrentRowToPerson_labelIsNull_typeCustom() {
+        int type = 0; // Custom
+        String name = "name";
+        String address = "emailAddress@google.com";
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Email.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Email.ADDRESS, address);
+        values.put(CommonDataKinds.Email.TYPE, type);
+        // label is not set in the values
+        Cursor cursor = makeCursorFromContentValues(values);
+        // default value for custom label if null is provided by user.
+        String expectedLabel = "Custom";
+        Person personExpected = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
+                        0)).addEmailToPerson(expectedLabel, address).buildPerson();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+        Person personTested = helperTested.buildPerson();
+
+        // Since the type is 1(Homes), we won't use user provided label. So it is fine to be null.
+        ContactPoint[] contactPoints = personTested.getContactPoints();
+        assertThat(contactPoints.length).isEqualTo(1);
+        assertThat(contactPoints[0].getLabel()).isEqualTo(expectedLabel);
+        assertThat(contactPoints[0].getEmails()).asList().containsExactly(address);
+        TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
+    public void testConvertCurrentRowToPerson_labelIsNull_typeHome() {
+        int type = 1; // Home
+        String name = "name";
+        String address = "emailAddress@google.com";
+        String label = "Home";
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Email.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Email.ADDRESS, address);
+        values.put(CommonDataKinds.Email.TYPE, type);
+        // label is not set in the values
+        Cursor cursor = makeCursorFromContentValues(values);
+        Person personExpected = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
+                        0)).addEmailToPerson(label, address).buildPerson();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+        Person personTested = helperTested.buildPerson();
+
+        // Since the type is 1(Homes), we won't use user provided label. So it is fine to be null.
+        ContactPoint[] contactPoints = personTested.getContactPoints();
+        assertThat(contactPoints.length).isEqualTo(1);
+        assertThat(contactPoints[0].getLabel()).isEqualTo(label);
+        assertThat(contactPoints[0].getEmails()).asList().containsExactly(address);
+        TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
     public void testConvertCurrentRowToPerson_email() {
         int type = 1; // Home
         String name = "name";
@@ -92,12 +183,9 @@ public class ContactDataHandlerTest {
         values.put(CommonDataKinds.Email.TYPE, type);
         values.put(CommonDataKinds.Email.LABEL, label);
         Cursor cursor = makeCursorFromContentValues(values);
-
         Person personExpected = new PersonBuilderHelper(
                 new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
-                        0)).addEmailToPerson(
-                CommonDataKinds.Email.getTypeLabel(mResources, type, label).toString(),
-                address).buildPerson();
+                        0)).addEmailToPerson(label, address).buildPerson();
 
         PersonBuilderHelper helperTested = new PersonBuilderHelper(
                 new Person.Builder(TEST_NAMESPACE, TEST_ID,
@@ -236,6 +324,134 @@ public class ContactDataHandlerTest {
     }
 
     @Test
+    public void testConvertCurrentRowToPerson_organization() {
+        String name = "name";
+        String company = "company";
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Organization.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Organization.COMPANY, company);
+        Cursor cursor = makeCursorFromContentValues(values);
+
+        Person personExpected = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
+                        0)).getPersonBuilder().addAffiliation(company).build();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+        Person personTested = helperTested.buildPerson();
+
+        TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
+    public void testConvertCurrentRowToPerson_relation_nameNotNull() {
+        String name = "name";
+        String relationName = "relationName";
+        int type = CommonDataKinds.Relation.TYPE_BROTHER;
+        String label = null;
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Relation.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Relation.NAME, relationName);
+        values.put(CommonDataKinds.Relation.TYPE, type);
+        values.put(CommonDataKinds.Relation.LABEL, label);
+        Cursor cursor = makeCursorFromContentValues(values);
+
+        Person personExpected = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
+                        0)).getPersonBuilder().addRelation(relationName).build();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+        Person personTested = helperTested.buildPerson();
+
+        TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
+    public void testConvertCurrentRowToPerson_relation_nameNull_typeNotCustom() {
+        String name = "name";
+        String relationName = null;
+        int type = CommonDataKinds.Relation.TYPE_BROTHER;
+        String label = null;
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Relation.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Relation.NAME, relationName);
+        values.put(CommonDataKinds.Relation.TYPE, type);
+        values.put(CommonDataKinds.Relation.LABEL, label);
+        Cursor cursor = makeCursorFromContentValues(values);
+
+        Person personExpected = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
+                        0)).getPersonBuilder().addRelation(
+                CommonDataKinds.Relation.getTypeLabel(mResources, type, label).toString()).build();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+        Person personTested = helperTested.buildPerson();
+
+        TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
+    public void testConvertCurrentRowToPerson_relation_nameNull_typeCustom_labelNull() {
+        String name = "name";
+        String relationName = null;
+        int type = CommonDataKinds.Relation.TYPE_CUSTOM;
+        String label = null;
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Relation.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Relation.NAME, relationName);
+        values.put(CommonDataKinds.Relation.TYPE, type);
+        values.put(CommonDataKinds.Relation.LABEL, label);
+        Cursor cursor = makeCursorFromContentValues(values);
+
+        Person personExpected = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
+                        0)).getPersonBuilder().addRelation(
+                CommonDataKinds.Relation.getTypeLabel(mResources, type, label).toString()).build();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+        Person personTested = helperTested.buildPerson();
+
+        TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
+    public void testConvertCurrentRowToPerson_relation_nameNull_typeCustom_labelNotNull() {
+        String name = "name";
+        String relationName = null;
+        int type = CommonDataKinds.Relation.TYPE_CUSTOM;
+        String label = "CustomLabel";
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Relation.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Relation.NAME, relationName);
+        values.put(CommonDataKinds.Relation.TYPE, type);
+        values.put(CommonDataKinds.Relation.LABEL, label);
+        Cursor cursor = makeCursorFromContentValues(values);
+
+        Person personExpected = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
+                        0)).getPersonBuilder().addRelation(label).build();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+        Person personTested = helperTested.buildPerson();
+
+        TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
     public void testHandleCurrentRowWithUnknownMimeType() {
         // Change the Mimetype of StructuredName.
         String name = "name";
@@ -254,5 +470,25 @@ public class ContactDataHandlerTest {
         // Couldn't read values correctly from an unknown mime type.
         assertThat(personTested.getGivenName()).isNull();
         TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
+    public void testConvertCurrentRowToPerson_nullEmailAddress_noExceptionThrown() {
+        int type = 0; // Custom
+        String name = "name";
+        String label = "CustomLabel";
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Email.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Email.ADDRESS, /*address=*/ (String) null);
+        values.put(CommonDataKinds.Email.TYPE, type);
+        values.put(CommonDataKinds.Email.LABEL, label);
+        Cursor cursor = makeCursorFromContentValues(values);
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+
+        // no NPE thrown.
     }
 }

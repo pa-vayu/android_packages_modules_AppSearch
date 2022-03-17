@@ -165,7 +165,8 @@ public class ServiceImplHelper {
         long callingIdentity = Binder.clearCallingIdentity();
         try {
             verifyCaller(callingUid, callerAttributionSource);
-            UserHandle targetUser = handleIncomingUser(userHandle, callingPid, callingUid);
+            UserHandle targetUser = handleIncomingUser(callerAttributionSource.getPackageName(),
+                    userHandle, callingPid, callingUid);
             verifyUserUnlocked(targetUser);
             return targetUser;
         } finally {
@@ -231,6 +232,7 @@ public class ServiceImplHelper {
      * <p>Takes care of checking permissions and if the target is special user, this method will
      * simply throw.
      *
+     * @param callingPackageName The package name of the caller.
      * @param targetUserHandle The user which the caller is requesting to execute as.
      * @param callingPid The actual pid of the caller as determined by Binder.
      * @param callingUid The actual uid of the caller as determined by Binder.
@@ -242,7 +244,7 @@ public class ServiceImplHelper {
      * {@link Manifest.permission#INTERACT_ACROSS_USERS_FULL}
      */
     @NonNull
-    private UserHandle handleIncomingUser(
+    private UserHandle handleIncomingUser(@NonNull String callingPackageName,
             @NonNull UserHandle targetUserHandle, int callingPid, int callingUid) {
         UserHandle callingUserHandle = UserHandle.getUserHandleForUid(callingUid);
         if (callingUserHandle.equals(targetUserHandle)) {
@@ -258,7 +260,19 @@ public class ServiceImplHelper {
         if (mContext.checkPermission(
                 Manifest.permission.INTERACT_ACROSS_USERS_FULL,
                 callingPid,
-                callingUid) == PackageManager.PERMISSION_GRANTED) {
+                callingUid) == PackageManager.PERMISSION_GRANTED) {try {
+            // Normally if the calling package doesn't exist in the target user, user cannot
+            // call AppSearch. But since the SDK side cannot be trusted, we still need to verify
+            // the calling package exists in the target user.
+            // We need to create the package context for the targetUser, and this call will fail
+            // if the calling package doesn't exist in the target user.
+            mContext.createPackageContextAsUser(callingPackageName, /*flags=*/0,
+                    targetUserHandle);
+        } catch (PackageManager.NameNotFoundException e) {
+            throw new SecurityException(
+                    "Package: " + callingPackageName + " haven't installed for user "
+                            + targetUserHandle.getIdentifier());
+        }
             return targetUserHandle;
         }
         throw new SecurityException(

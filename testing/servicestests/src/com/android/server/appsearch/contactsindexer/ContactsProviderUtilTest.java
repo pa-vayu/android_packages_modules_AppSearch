@@ -29,10 +29,9 @@ import com.android.server.appsearch.contactsindexer.FakeContactsProvider;
 
 import java.util.Set;
 
-// TODO(b/203605504) this is a junit3 tests but we should use junit4. Right now I can't make
+// TODO(b/203605504) this is a junit3 test but we should use junit4. Right now I can't make
 //  ProviderTestRule work so we stick to ProviderTestCase2 for now.
 public class ContactsProviderUtilTest extends ProviderTestCase2<FakeContactsProvider> {
-
     public ContactsProviderUtilTest() {
         super(FakeContactsProvider.class, FakeContactsProvider.AUTHORITY);
     }

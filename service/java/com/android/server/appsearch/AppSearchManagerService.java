@@ -212,14 +212,13 @@ public class AppSearchManagerService extends SystemService {
                 return;
             }
             // Only clear the package's data if AppSearch exists for this user.
-            if (AppSearchUserInstanceManager.getAppSearchDir(userHandle).exists()) {
+            if (AppSearchModule.getAppSearchDir(userHandle).exists()) {
                 Context userContext = mContext.createContextAsUser(userHandle, /*flags=*/ 0);
                 AppSearchUserInstance instance =
                         mAppSearchUserInstanceManager.getOrCreateUserInstance(
                                 userContext,
                                 userHandle,
                                 AppSearchConfig.getInstance(SHARED_EXECUTOR));
-                //TODO(b/145759910) clear visibility setting for package.
                 instance.getAppSearchImpl().clearPackageData(packageName);
                 dispatchChangeNotifications(instance);
                 instance.getLogger().removeCachedUidForPackage(packageName);
@@ -237,7 +236,7 @@ public class AppSearchManagerService extends SystemService {
         mExecutorManager.getOrCreateUserExecutor(userHandle).execute(() -> {
             try {
                 // Only clear the package's data if AppSearch exists for this user.
-                if (AppSearchUserInstanceManager.getAppSearchDir(userHandle).exists()) {
+                if (AppSearchModule.getAppSearchDir(userHandle).exists()) {
                     Context userContext = mContext.createContextAsUser(userHandle, /*flags=*/ 0);
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getOrCreateUserInstance(
@@ -252,7 +251,6 @@ public class AppSearchManagerService extends SystemService {
                         packagesToKeep.add(installedPackageInfos.get(i).packageName);
                     }
                     packagesToKeep.add(VisibilityStore.VISIBILITY_PACKAGE_NAME);
-                    //TODO(b/145759910) clear visibility setting for package.
                     instance.getAppSearchImpl().prunePackageData(packagesToKeep);
                 }
             } catch (Throwable t) {
@@ -271,9 +269,9 @@ public class AppSearchManagerService extends SystemService {
         Objects.requireNonNull(userHandle);
         Log.i(TAG, "Shutting down AppSearch for user " + userHandle);
         try {
+            mServiceImplHelper.setUserIsLocked(userHandle, true);
             mExecutorManager.shutDownAndRemoveUserExecutor(userHandle);
             mAppSearchUserInstanceManager.closeAndRemoveUserInstance(userHandle);
-            mServiceImplHelper.setUserIsLocked(userHandle, true);
             Log.i(TAG, "Removed AppSearchImpl instance for: " + userHandle);
         } catch (Throwable t) {
             Log.e(TAG, "Unable to remove data for: " + userHandle, t);

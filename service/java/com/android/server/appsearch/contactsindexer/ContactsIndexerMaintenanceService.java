@@ -25,6 +25,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.CancellationSignal;
+import android.util.Log;
 
 import com.android.server.LocalManagerRegistry;
 
@@ -34,9 +35,10 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 public class ContactsIndexerMaintenanceService extends JobService {
+    private static final String TAG = "ContactsIndexerMaintenanceService";
 
     /** This job ID must be unique within the system server. */
-    private static final int ONE_OFF_FULL_UPDATE_JOB_ID = 0x1B7DED30; // 461237552
+    private static final int FULL_UPDATE_JOB_ID = 0x1B7DED30; // 461237552
 
     private static final String EXTRA_USER_ID = "user_id";
 
@@ -47,21 +49,22 @@ public class ContactsIndexerMaintenanceService extends JobService {
     private CancellationSignal mSignal;
 
     /**
-     * Schedules a one-off full update job for the given device-user.
+     * Schedules a full update job for the given device-user.
      */
-    static void scheduleOneOffFullUpdateJob(Context context, @UserIdInt int userId) {
+    static void scheduleFullUpdateJob(Context context, @UserIdInt int userId) {
         JobScheduler jobScheduler = context.getSystemService(JobScheduler.class);
         ComponentName component =
                 new ComponentName(context, ContactsIndexerMaintenanceService.class);
         final Bundle extras = new Bundle();
         extras.putInt(EXTRA_USER_ID, userId);
         JobInfo jobInfo =
-                new JobInfo.Builder(ONE_OFF_FULL_UPDATE_JOB_ID, component)
+                new JobInfo.Builder(FULL_UPDATE_JOB_ID, component)
                         .setTransientExtras(extras)
                         .setRequiresBatteryNotLow(true)
                         .setRequiresDeviceIdle(true)
                         .build();
         jobScheduler.schedule(jobInfo);
+        Log.v(TAG, "Scheduled full update job for " + userId);
     }
 
     @Override
@@ -70,6 +73,8 @@ public class ContactsIndexerMaintenanceService extends JobService {
         if (userId == -1) {
             return false;
         }
+
+        Log.v(TAG, "Full update job started for " + userId);
         mSignal = new CancellationSignal();
         EXECUTOR.execute(() -> {
             ContactsIndexerManagerService.LocalService service =

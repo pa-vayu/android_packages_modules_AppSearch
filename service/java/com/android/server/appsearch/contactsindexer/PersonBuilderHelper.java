@@ -31,6 +31,8 @@ import java.util.Objects;
  * <p>It takes a {@link Person.Builder} with a map to help handle and aggregate {@link
  * ContactPoint}s, and put them in the {@link Person} during the build.
  *
+ * <p>This class is not thread safe.
+ *
  * @hide
  */
 // TODO(b/203605504) We can also make it only generates a list of contact points. And move the
@@ -61,8 +63,8 @@ public final class PersonBuilderHelper {
     private ContactPoint.Builder getOrCreateContactPointBuilder(@NonNull String label) {
         ContactPoint.Builder builder = mContactPointBuilders.get(Objects.requireNonNull(label));
         if (builder == null) {
-            builder = new ContactPoint.Builder(AppSearchHelper.NAMESPACE,
-                    AppSearchHelper.NAMESPACE,
+            builder = new ContactPoint.Builder(AppSearchHelper.NAMESPACE_NAME,
+                    /*id=*/"", // doesn't matter for this nested type.
                     label);
             mContactPointBuilders.put(label, builder);
         }

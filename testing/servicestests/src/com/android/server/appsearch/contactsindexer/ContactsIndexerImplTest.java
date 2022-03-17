@@ -19,6 +19,7 @@ package com.android.server.appsearch.contactsindexer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import android.annotation.NonNull;
 import android.content.Context;
 import android.media.audio.common.Int;
 import android.provider.ContactsContract;
@@ -41,15 +42,34 @@ import static com.google.common.truth.Truth.assertThat;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
-// TODO(b/203605504) this is a junit3 tests but we should use junit4. Right now I can't make
+// TODO(b/203605504) this is a junit3 test but we should use junit4. Right now I can't make
 //  ProviderTestRule work so we stick to ProviderTestCase2 for now.
 public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvider> {
+    // TODO(b/203605504) we could just use AppSearchHelper.
     FakeAppSearchHelper mAppSearchHelper;
 
     public ContactsIndexerImplTest() {
         super(FakeContactsProvider.class, FakeContactsProvider.AUTHORITY);
+    }
+
+    private Pair<Long, Long> runDeltaUpdateOnContactsIndexerImpl(
+            @NonNull ContactsIndexerImpl indexerImpl,
+            long lastUpdatedTimestamp,
+            long lastDeletedTimestamp) {
+        Objects.requireNonNull(indexerImpl);
+        Set<String> wantedContactIds = new ArraySet<>();
+        Set<String> unWantedContactIds = new ArraySet<>();
+
+        lastUpdatedTimestamp = ContactsProviderUtil.getUpdatedContactIds(mContext,
+                lastUpdatedTimestamp, wantedContactIds);
+        lastDeletedTimestamp = ContactsProviderUtil.getDeletedContactIds(mContext,
+                lastDeletedTimestamp, unWantedContactIds);
+        indexerImpl.updatePersonCorpusAsync(wantedContactIds, unWantedContactIds);
+
+        return new Pair<>(lastUpdatedTimestamp, lastDeletedTimestamp);
     }
 
     public void setUp() throws Exception {
@@ -64,7 +84,7 @@ public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvi
 
     public void testBatcher_noFlushBeforeReachingLimit() {
         int batchSize = 5;
-        ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize, Runnable::run);
+        ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize);
 
         for (int i = 0; i < batchSize - 1; ++i) {
             batcher.add(new Person.Builder("namespace", /*id=*/ String.valueOf(i), /*name=*/
@@ -76,7 +96,7 @@ public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvi
 
     public void testBatcher_autoFlush() {
         int batchSize = 5;
-        ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize, Runnable::run);
+        ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize);
 
         for (int i = 0; i < batchSize; ++i) {
             batcher.add(new Person.Builder("namespace", /*id=*/ String.valueOf(i), /*name=*/
@@ -88,7 +108,7 @@ public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvi
 
     public void testBatcher_batchedContactClearedAfterFlush() {
         int batchSize = 5;
-        ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize, Runnable::run);
+        ContactsBatcher batcher = new ContactsBatcher(mAppSearchHelper, batchSize);
 
         // First batch
         for (int i = 0; i < batchSize; ++i) {
@@ -113,14 +133,14 @@ public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvi
 
     public void testContactsIndexerImpl_batchRemoveContacts_largerThanBatchSize() {
         ContactsIndexerImpl contactsIndexerImpl = new ContactsIndexerImpl(mContext,
-                mAppSearchHelper, Runnable::run);
+                mAppSearchHelper);
         int totalNum = ContactsIndexerImpl.NUM_DELETED_CONTACTS_PER_BATCH_FOR_APPSEARCH + 1;
         Set<String> removedIds = new ArraySet<>(totalNum);
         for (int i = 0; i < totalNum; ++i) {
             removedIds.add(String.valueOf(i));
         }
 
-        contactsIndexerImpl.batchRemoveUnwantedContact(removedIds);
+        contactsIndexerImpl.batchRemoveContactsAsync(removedIds);
 
         assertThat(mAppSearchHelper.mRemovedIds).hasSize(removedIds.size());
         assertThat(new ArraySet<>(mAppSearchHelper.mRemovedIds)).isEqualTo(removedIds);
@@ -128,14 +148,14 @@ public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvi
 
     public void testContactsIndexerImpl_batchRemoveContacts_smallerThanBatchSize() {
         ContactsIndexerImpl contactsIndexerImpl = new ContactsIndexerImpl(mContext,
-                mAppSearchHelper, Runnable::run);
+                mAppSearchHelper);
         int totalNum = ContactsIndexerImpl.NUM_DELETED_CONTACTS_PER_BATCH_FOR_APPSEARCH - 1;
         Set<String> removedIds = new ArraySet<>(totalNum);
         for (int i = 0; i < totalNum; ++i) {
             removedIds.add(String.valueOf(i));
         }
 
-        contactsIndexerImpl.batchRemoveUnwantedContact(removedIds);
+        contactsIndexerImpl.batchRemoveContactsAsync(removedIds);
 
         assertThat(mAppSearchHelper.mRemovedIds).hasSize(removedIds.size());
         assertThat(new ArraySet<>(mAppSearchHelper.mRemovedIds)).isEqualTo(removedIds);
@@ -152,7 +172,7 @@ public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvi
         // 40, [41, 50] needs to be updated. Likewise, if lastDeletedTime is 55, we would delete
         // [56, 100
         ContactsIndexerImpl contactsIndexerImpl = new ContactsIndexerImpl(mContext,
-                mAppSearchHelper, Runnable::run);
+                mAppSearchHelper);
         long lastUpdatedTimestamp = 0;
         long lastDeletedTimestamp = 0;
         int expectedUpdatedContactsFirstId = 1;
@@ -164,8 +184,8 @@ public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvi
         long expectedNewLastUpdatedTimestamp = FakeContactsProvider.NUM_EXISTED_CONTACTS;
         long expectedNewLastDeletedTimestamp = FakeContactsProvider.NUM_TOTAL_CONTACTS;
 
-        Pair<Long, Long> result = contactsIndexerImpl.doDeltaUpdate(lastUpdatedTimestamp,
-                lastDeletedTimestamp);
+        Pair<Long, Long> result = runDeltaUpdateOnContactsIndexerImpl(contactsIndexerImpl,
+                lastUpdatedTimestamp, lastDeletedTimestamp);
 
         // Check return result
         assertThat(result.first).isEqualTo(expectedNewLastUpdatedTimestamp);
@@ -197,7 +217,7 @@ public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvi
         // 40, [41, 50] needs to be updated. Likewise, if lastDeletedTime is 55, we would delete
         // [56, 100]
         ContactsIndexerImpl contactsIndexerImpl = new ContactsIndexerImpl(mContext,
-                mAppSearchHelper, Runnable::run);
+                mAppSearchHelper);
         long lastUpdatedTimestamp = FakeContactsProvider.NUM_EXISTED_CONTACTS / 2;
         long lastDeletedTimestamp = FakeContactsProvider.NUM_EXISTED_CONTACTS +
                 (FakeContactsProvider.NUM_TOTAL_CONTACTS
@@ -212,8 +232,8 @@ public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvi
         long expectedNewLastDeletedTimestamp = FakeContactsProvider.NUM_TOTAL_CONTACTS;
 
 
-        Pair<Long, Long> result = contactsIndexerImpl.doDeltaUpdate(lastUpdatedTimestamp,
-                lastDeletedTimestamp);
+        Pair<Long, Long> result = runDeltaUpdateOnContactsIndexerImpl(contactsIndexerImpl,
+                lastUpdatedTimestamp, lastDeletedTimestamp);
 
         // Check return result
         assertThat(result.first).isEqualTo(expectedNewLastUpdatedTimestamp);
