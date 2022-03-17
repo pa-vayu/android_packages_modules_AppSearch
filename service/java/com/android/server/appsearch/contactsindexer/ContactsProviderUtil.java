@@ -17,7 +17,8 @@
 package com.android.server.appsearch.contactsindexer;
 
 import android.annotation.NonNull;
-import android.content.ContentResolver;
+import android.annotation.Nullable;
+import android.app.appsearch.AppSearchResult;
 import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteException;
@@ -27,8 +28,8 @@ import android.provider.ContactsContract.Contacts;
 import android.provider.ContactsContract.DeletedContacts;
 import android.util.Log;
 
+import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * Helper class to query Contacts Provider (CP2).
@@ -68,7 +69,7 @@ public final class ContactsProviderUtil {
      * @return the timestamp for the contact most recently deleted.
      */
     static public long getDeletedContactIds(@NonNull Context context, long sinceFilter,
-            @NonNull Set<String> contactIds) {
+            @NonNull List<String> contactIds, @Nullable ContactsUpdateStats updateStats) {
         Objects.requireNonNull(context);
         Objects.requireNonNull(contactIds);
 
@@ -98,8 +99,6 @@ public final class ContactsProviderUtil {
             long rows = 0;
             while (cursor.moveToNext()) {
                 contactIds.add(String.valueOf(cursor.getLong(contactIdIndex)));
-                // Since the rows are sorted by CONTACT_DELETED_TIMESTAMP DESC, the first
-                // row should have the latest(maximum) updated timestamp.
                 // We still get max value between those two here just in case cursor.getLong
                 // returns something unexpected(e.g. somehow it returns an invalid value like
                 // -1 or 0 due to an invalid index).
@@ -112,58 +111,9 @@ public final class ContactsProviderUtil {
                 NullPointerException |
                 NoClassDefFoundError e) {
             Log.e(TAG, "ContentResolver.query failed to get latest deleted contacts.", e);
-        } finally {
-            if (cursor != null) {
-                cursor.close();
+            if (updateStats != null) {
+                updateStats.mDeleteStatuses.add(AppSearchResult.RESULT_INTERNAL_ERROR);
             }
-        }
-
-        return newTimestamp;
-    }
-
-    static public long getDeletedContactIdsForTest(@NonNull ContentResolver resolver,
-            long sinceFilter,
-            @NonNull Set<String> contactIds) {
-        Objects.requireNonNull(resolver);
-        Objects.requireNonNull(contactIds);
-
-        String[] selectionArgs = new String[]{Long.toString(sinceFilter)};
-        long newTimestamp = sinceFilter;
-        Cursor cursor = null;
-        try {
-            cursor =
-                    resolver.query(
-                            DeletedContacts.CONTENT_URI,
-                            DELETION_SELECTION,
-                            DELETION_SINCE,
-                            selectionArgs,
-                            /*sortOrder=*/ null);
-
-            if (cursor == null) {
-                Log.e(TAG,
-                        "Could not fetch deleted contacts - no contacts provider present?");
-                return newTimestamp;
-            }
-
-            int contactIdIndex = cursor.getColumnIndex(DeletedContacts.CONTACT_ID);
-            int timestampIndex = cursor.getColumnIndex(DeletedContacts.CONTACT_DELETED_TIMESTAMP);
-            long rows = 0;
-            while (cursor.moveToNext()) {
-                contactIds.add(String.valueOf(cursor.getLong(contactIdIndex)));
-                // Since the rows are sorted by CONTACT_DELETED_TIMESTAMP DESC, the first
-                // row should have the latest(maximum) updated timestamp.
-                // We still get max value between those two here just in case cursor.getLong
-                // returns something unexpected(e.g. somehow it returns an invalid value like
-                // -1 or 0 due to an invalid index).
-                newTimestamp = Math.max(newTimestamp, cursor.getLong(timestampIndex));
-                ++rows;
-            }
-            Log.d(TAG, "Got " + rows + " deleted contacts since " + sinceFilter);
-        } catch (SecurityException |
-                SQLiteException |
-                NullPointerException |
-                NoClassDefFoundError e) {
-            Log.e(TAG, "ContentResolver.query failed to get latest deleted contacts.", e);
         } finally {
             if (cursor != null) {
                 cursor.close();
@@ -181,8 +131,8 @@ public final class ContactsProviderUtil {
      * @param contactIds  the Set passed in to hold the recently updated contacts.
      * @return the timestamp for the contact most recently updated.
      */
-    public static long getUpdatedContactIds(@NonNull Context context, long sinceFilter,
-            @NonNull Set<String> contactIds) {
+    static public long getUpdatedContactIds(@NonNull Context context, long sinceFilter,
+            @NonNull List<String> contactIds, @Nullable ContactsUpdateStats updateStats) {
         Objects.requireNonNull(context);
         Objects.requireNonNull(contactIds);
 
@@ -218,8 +168,6 @@ public final class ContactsProviderUtil {
             int timestampIndex = cursor.getColumnIndex(Contacts.CONTACT_LAST_UPDATED_TIMESTAMP);
             while (cursor.moveToNext()) {
                 long contactId = cursor.getLong(contactIdIndex);
-                // Since the rows are sorted by CONTACT_LAST_UPDATED_TIMESTAMP DESC, the first
-                // row should have the latest(maximum) updated timestamp.
                 // We still get max value between those two here just in case cursor.getLong
                 // returns something unexpected(e.g. somehow it returns an invalid value like
                 // -1 or 0 due to an invalid index).
@@ -234,6 +182,13 @@ public final class ContactsProviderUtil {
                 NullPointerException |
                 NoClassDefFoundError e) {
             Log.e(TAG, "ContentResolver.query failed to get latest updated contacts.", e);
+            // TODO(b/222126568) consider throwing an exception here. And in the caller it can
+            //  still catch the exception, and based on the states(e.g. whether we query CP2
+            //  successfully before and need to remove some contacts), caller can choose to keep
+            //  doing the update or not.
+            if (updateStats != null) {
+                updateStats.mUpdateStatuses.add(AppSearchResult.RESULT_INTERNAL_ERROR);
+            }
         } finally {
             if (cursor != null) {
                 cursor.close();
