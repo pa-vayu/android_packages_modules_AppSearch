@@ -31,7 +31,7 @@ import android.app.appsearch.SearchResults;
 import android.app.appsearch.SearchResultsShim;
 import android.app.appsearch.SearchSpec;
 import android.app.appsearch.exceptions.AppSearchException;
-import android.app.appsearch.observer.AppSearchObserverCallback;
+import android.app.appsearch.observer.ObserverCallback;
 import android.app.appsearch.observer.ObserverSpec;
 import android.content.Context;
 
@@ -124,19 +124,19 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
     }
 
     @Override
-    public void addObserver(
-            @NonNull String observedPackage,
+    public void registerObserverCallback(
+            @NonNull String targetPackageName,
             @NonNull ObserverSpec spec,
             @NonNull Executor executor,
-            @NonNull AppSearchObserverCallback observer) throws AppSearchException {
-        mGlobalSearchSession.addObserver(observedPackage, spec, mExecutor, observer);
+            @NonNull ObserverCallback observer) throws AppSearchException {
+        mGlobalSearchSession.registerObserverCallback(targetPackageName, spec, mExecutor, observer);
     }
 
     @Override
-    public void removeObserver(
-            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer)
+    public void unregisterObserverCallback(
+            @NonNull String targetPackageName, @NonNull ObserverCallback observer)
             throws AppSearchException {
-        mGlobalSearchSession.removeObserver(observedPackage, observer);
+        mGlobalSearchSession.unregisterObserverCallback(targetPackageName, observer);
     }
 
     @NonNull

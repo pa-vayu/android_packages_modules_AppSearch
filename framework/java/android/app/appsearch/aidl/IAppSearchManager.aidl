@@ -393,7 +393,7 @@ interface IAppSearchManager {
      * @param observerProxy Callback to trigger when a schema or document changes
      * @return the success or failure of this operation
      */
-    AppSearchResultParcel addObserver(
+    AppSearchResultParcel registerObserverCallback(
         in AttributionSource callerAttributionSource,
         in String targetPackageName,
         in Bundle observerSpecBundle,
@@ -401,7 +401,7 @@ interface IAppSearchManager {
         in IAppSearchObserverProxy observerProxy);
 
     /**
-     * Removes previously registered {@link AppSearchObserverCallback} instances from the system.
+     * Removes previously registered {@link ObserverCallback} instances from the system.
      *
      * @param callerAttributionSource The permission identity of the package that owns the observer
      * @param observedPackage Package whose changes are being monitored
@@ -409,7 +409,7 @@ interface IAppSearchManager {
      * @param observerProxy Observer callback to remove
      * @return the success or failure of this operation
      */
-    AppSearchResultParcel removeObserver(
+    AppSearchResultParcel unregisterObserverCallback(
         in AttributionSource callerAttributionSource,
         in String observedPackage,
         in UserHandle userHandle,

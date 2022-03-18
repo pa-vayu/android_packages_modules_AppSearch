@@ -18,7 +18,7 @@ package com.android.server.appsearch.observer;
 
 import android.annotation.NonNull;
 import android.app.appsearch.aidl.IAppSearchObserverProxy;
-import android.app.appsearch.observer.AppSearchObserverCallback;
+import android.app.appsearch.observer.ObserverCallback;
 import android.app.appsearch.observer.DocumentChangeInfo;
 import android.app.appsearch.observer.SchemaChangeInfo;
 import android.os.RemoteException;
@@ -29,11 +29,11 @@ import java.util.Objects;
 
 /**
  * A wrapper that adapts {@link android.app.appsearch.aidl.IAppSearchObserverProxy} to the
- * {@link android.app.appsearch.observer.AppSearchObserverCallback} interface.
+ * {@link android.app.appsearch.observer.ObserverCallback} interface.
  *
  * @hide
  */
-public class AppSearchObserverProxy implements AppSearchObserverCallback {
+public class AppSearchObserverProxy implements ObserverCallback {
     private static final String TAG = "AppSearchObserverProxy";
 
     private final IAppSearchObserverProxy mStub;

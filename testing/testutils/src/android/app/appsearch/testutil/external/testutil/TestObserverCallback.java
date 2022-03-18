@@ -17,8 +17,8 @@
 package android.app.appsearch.testutil;
 
 import android.annotation.NonNull;
-import android.app.appsearch.observer.AppSearchObserverCallback;
 import android.app.appsearch.observer.DocumentChangeInfo;
+import android.app.appsearch.observer.ObserverCallback;
 import android.app.appsearch.observer.SchemaChangeInfo;
 
 import com.android.internal.annotations.GuardedBy;
@@ -27,15 +27,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * An implementation of {@link android.app.appsearch.observer.AppSearchObserverCallback} for testing
- * that caches its notifications in memory.
+ * An implementation of {@link android.app.appsearch.observer.ObserverCallback} for testing that
+ * caches its notifications in memory.
  *
  * <p>You should wait for all notifications to be delivered using {@link #waitForNotificationCount}
  * before using the public lists to avoid concurrency issues.
  *
  * @hide
  */
-public class TestObserverCallback implements AppSearchObserverCallback {
+public class TestObserverCallback implements ObserverCallback {
     private final Object mLock = new Object();
 
     private final List<SchemaChangeInfo> mSchemaChanges = new ArrayList<>();
