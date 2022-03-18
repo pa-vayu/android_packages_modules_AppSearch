@@ -23,7 +23,7 @@
     </application>
 
     <instrumentation android:name="androidx.test.runner.AndroidJUnitRunner"
-                     android:targetPackage="android"
+                     android:targetPackage="com.android.appsearch.coretests"
                      android:label="AppSearch core tests"/>
 
 </manifest>
