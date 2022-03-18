@@ -181,7 +181,7 @@ public final class ContactsProviderUtil {
      * @param contactIds  the Set passed in to hold the recently updated contacts.
      * @return the timestamp for the contact most recently updated.
      */
-    static public long getUpdatedContactIds(@NonNull Context context, long sinceFilter,
+    public static long getUpdatedContactIds(@NonNull Context context, long sinceFilter,
             @NonNull Set<String> contactIds) {
         Objects.requireNonNull(context);
         Objects.requireNonNull(contactIds);

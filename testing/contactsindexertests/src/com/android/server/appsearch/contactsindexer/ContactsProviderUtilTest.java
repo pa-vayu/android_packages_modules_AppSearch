@@ -21,11 +21,18 @@ import static com.google.common.truth.Truth.assertThat;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import android.content.ContentResolver;
+import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Context;
+import android.provider.ContactsContract;
 import android.test.ProviderTestCase2;
 import android.util.ArraySet;
 
 import com.android.server.appsearch.contactsindexer.FakeContactsProvider;
+
+import org.junit.After;
+import org.junit.Before;
 
 import java.util.Set;
 
@@ -36,96 +43,143 @@ public class ContactsProviderUtilTest extends ProviderTestCase2<FakeContactsProv
         super(FakeContactsProvider.class, FakeContactsProvider.AUTHORITY);
     }
 
+    @Override
+    @Before
     public void setUp() throws Exception {
         super.setUp();
         mContext = mock(Context.class);
         doReturn(getMockContentResolver()).when(mContext).getContentResolver();
     }
 
+    @Override
+    @After
+    public void tearDown() throws Exception {
+        super.tearDown();
+    }
+
     public void testGetUpdatedContactIds_getAll() {
-        long idAsTimestamp = 0L;
-        Set<String> expected = new ArraySet<>();
-        for (long i = 1L; i <= FakeContactsProvider.NUM_EXISTED_CONTACTS; ++i) {
-            expected.add(String.valueOf(i));
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues dummyValues = new ContentValues();
+        Set<String> expectedIds = new ArraySet<>();
+        for (int i = 0; i < 50; i ++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+            expectedIds.add(String.valueOf(i));
         }
 
         Set<String> ids = new ArraySet<>();
-        long lastUpdatedTime = ContactsProviderUtil.getUpdatedContactIds(mContext, idAsTimestamp,
-                ids);
+        long lastUpdatedTime = ContactsProviderUtil.getUpdatedContactIds(mContext,
+                /*sinceFilter=*/ 0, ids);
 
-        assertThat(lastUpdatedTime).isEqualTo(FakeContactsProvider.NUM_EXISTED_CONTACTS);
-        assertThat(ids).isEqualTo(expected);
+        assertThat(lastUpdatedTime).isEqualTo(
+                getProvider().getMostRecentContactUpdateTimestampMillis());
+        assertThat(ids).isEqualTo(expectedIds);
     }
 
     public void testGetUpdatedContactIds_getNone() {
-        long idAsTimestamp = FakeContactsProvider.NUM_EXISTED_CONTACTS + 1;
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues dummyValues = new ContentValues();
+        for (int i = 0; i < 50; i ++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+        }
 
         Set<String> ids = new ArraySet<>();
         long lastUpdatedTime = ContactsProviderUtil.getUpdatedContactIds(mContext,
-                idAsTimestamp,
+                /*sinceFilter=*/ getProvider().getMostRecentContactUpdateTimestampMillis(),
                 ids);
 
-        assertThat(lastUpdatedTime).isEqualTo(idAsTimestamp);
+        assertThat(lastUpdatedTime).isEqualTo(
+                getProvider().getMostRecentContactUpdateTimestampMillis());
         assertThat(ids).isEmpty();
     }
 
     public void testGetUpdatedContactIds() {
-        int expectedUpdatedNum = FakeContactsProvider.NUM_EXISTED_CONTACTS / 2;
-        long idAsTimestamp = FakeContactsProvider.NUM_EXISTED_CONTACTS - expectedUpdatedNum;
-        Set<String> expected = new ArraySet<>();
-        for (long i = expectedUpdatedNum + 1; i <= FakeContactsProvider.NUM_EXISTED_CONTACTS; ++i) {
-            expected.add(String.valueOf(i));
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues dummyValues = new ContentValues();
+        for (int i = 0; i < 50; i ++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+        }
+        long firstUpdateTimestamp = getProvider().getMostRecentContactUpdateTimestampMillis();
+        Set<String> expectedIds = new ArraySet<>();
+        for (int i = 50; i < 100; i ++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+            expectedIds.add(String.valueOf(i));
         }
 
         Set<String> ids = new ArraySet<>();
-        long lastUpdatedTime = ContactsProviderUtil.getUpdatedContactIds(mContext, idAsTimestamp,
-                ids);
+        long lastUpdatedTime = ContactsProviderUtil.getUpdatedContactIds(mContext,
+                /*sinceFilter=*/ firstUpdateTimestamp, ids);
 
-        assertThat(lastUpdatedTime).isEqualTo(FakeContactsProvider.NUM_EXISTED_CONTACTS);
-        assertThat(ids).isEqualTo(expected);
+        assertThat(lastUpdatedTime).isEqualTo(
+                getProvider().getMostRecentContactUpdateTimestampMillis());
+        assertThat(ids).isEqualTo(expectedIds);
     }
 
-    public void testGetDeletedContactIds_deleteNone() {
-        long idAsTimestamp = FakeContactsProvider.NUM_TOTAL_CONTACTS + 1;
+    public void testGetDeletedContactIds_getAll() {
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues dummyValues = new ContentValues();
+        for (int i = 0; i < 50; i ++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+        }
+        Set<String> expectedIds = new ArraySet<>();
+        for (int i = 5; i < 50; i += 5) {
+            resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, i),
+                    /*extras=*/ null);
+            expectedIds.add(String.valueOf(i));
+        }
 
         Set<String> ids = new ArraySet<>();
-        long lastDeleteTime = ContactsProviderUtil.getDeletedContactIds(mContext, idAsTimestamp,
-                ids);
+        long lastDeleteTime = ContactsProviderUtil.getDeletedContactIds(mContext,
+                /*sinceFilter=*/ 0, ids);
 
-        assertThat(lastDeleteTime).isEqualTo(idAsTimestamp);
+        assertThat(lastDeleteTime).isEqualTo(
+                getProvider().getMostRecentDeletedContactTimestampMillis());
+        assertThat(ids).isEqualTo(expectedIds);
+    }
+
+    public void testGetDeletedContactIds_getNone() {
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues dummyValues = new ContentValues();
+        for (int i = 0; i < 50; i ++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+        }
+        for (int i = 5; i < 50; i += 5) {
+            resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, i),
+                    /*extras=*/ null);
+        }
+
+        Set<String> ids = new ArraySet<>();
+        long lastDeleteTime = ContactsProviderUtil.getDeletedContactIds(mContext,
+                /*sinceFilter=*/ getProvider().getMostRecentDeletedContactTimestampMillis(), ids);
+
+        assertThat(lastDeleteTime).isEqualTo(
+                getProvider().getMostRecentDeletedContactTimestampMillis());
         assertThat(ids).isEmpty();
     }
 
-    public void testGetDeletedContactIds_deleteAll() {
-        long idAsTimestamp = FakeContactsProvider.NUM_EXISTED_CONTACTS / 2;
-        Set<String> expectedDeleted = new ArraySet<>();
-        for (long i = FakeContactsProvider.NUM_EXISTED_CONTACTS + 1;
-                i <= FakeContactsProvider.NUM_TOTAL_CONTACTS; ++i) {
-            expectedDeleted.add(String.valueOf(i));
-        }
-
-        Set<String> ids = new ArraySet<>();
-        long lastDeleteTime = ContactsProviderUtil.getDeletedContactIds(mContext, idAsTimestamp,
-                ids);
-
-        assertThat(lastDeleteTime).isEqualTo(FakeContactsProvider.NUM_TOTAL_CONTACTS);
-        assertThat(ids).isEqualTo(expectedDeleted);
-    }
-
     public void testGetDeletedContactIds() {
-        long idAsTimestamp = FakeContactsProvider.NUM_EXISTED_CONTACTS +
-                (FakeContactsProvider.NUM_TOTAL_CONTACTS
-                        - FakeContactsProvider.NUM_EXISTED_CONTACTS) / 2;
-        Set<String> expectedDeleted = new ArraySet<>();
-        for (long i = idAsTimestamp + 1; i <= FakeContactsProvider.NUM_TOTAL_CONTACTS; ++i) {
-            expectedDeleted.add(String.valueOf(i));
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues dummyValues = new ContentValues();
+        for (int i = 0; i < 50; i ++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+        }
+        for (int i = 5; i < 50; i += 5) {
+            resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, i),
+                    /*extras=*/ null);
+        }
+        long firstDeleteTimestamp = getProvider().getMostRecentDeletedContactTimestampMillis();
+        Set<String> expectedIds = new ArraySet<>();
+        for (int i = 7; i < 50; i += 7) {
+            resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, i),
+                    /*extras=*/ null);
+            expectedIds.add(String.valueOf(i));
         }
 
         Set<String> ids = new ArraySet<>();
-        long lastDeletedTime = ContactsProviderUtil.getDeletedContactIds(mContext, idAsTimestamp,
-                ids);
+        long lastDeleteTime = ContactsProviderUtil.getDeletedContactIds(mContext,
+                /*sinceFilter=*/ firstDeleteTimestamp, ids);
 
-        assertThat(lastDeletedTime).isEqualTo(FakeContactsProvider.NUM_TOTAL_CONTACTS);
-        assertThat(ids).isEqualTo(expectedDeleted);
+        assertThat(lastDeleteTime).isEqualTo(
+                getProvider().getMostRecentDeletedContactTimestampMillis());
+        assertThat(ids).isEqualTo(expectedIds);
     }
 }

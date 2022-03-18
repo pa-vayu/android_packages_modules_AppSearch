@@ -266,7 +266,7 @@ public final class ContactsIndexerUserInstance {
         Objects.requireNonNull(signal);
         // TODO(b/222126568): log stats
         mSingleThreadedExecutor.execute(() -> doFullUpdateInternalAsync(signal).exceptionally(t -> {
-            Log.w("Failed to perform full update", t);
+            Log.w(TAG, "Failed to perform full update", t);
             return null;
         }));
     }
@@ -289,12 +289,10 @@ public final class ContactsIndexerUserInstance {
                             + ") of CP2 contacts in AppSearch");
                     return mContactsIndexerImpl.updatePersonCorpusAsync(
                             /*wantedContactIds=*/ cp2ContactIds, unwantedContactIds);
-                }).thenAccept(x -> {
-                    persistTimestamps(
-                            /*lastDeltaUpdateTimestampMillis=*/ currentTimeMillis,
-                            /*lastDeltaDeleteTimestampMillis=*/ currentTimeMillis,
-                            /*lastFullUpdateTimestampMillis=*/ currentTimeMillis);
-                });
+                }).thenAccept(x -> persistTimestamps(
+                        /*lastDeltaUpdateTimestampMillis=*/ currentTimeMillis,
+                        /*lastDeltaDeleteTimestampMillis=*/ currentTimeMillis,
+                        /*lastFullUpdateTimestampMillis=*/ currentTimeMillis));
     }
 
     /**
@@ -324,33 +322,19 @@ public final class ContactsIndexerUserInstance {
         // user within the time window(delaySec). And we hope the query to CP2 "Give me all the
         // contacts from timestamp T" would catch all the unhandled contact change notifications.
         if (!mDeltaUpdatePending.getAndSet(true)) {
-            mSingleThreadedExecutor.execute(() -> {
-                try {
-                    doDeltaUpdate();
-                } catch (Throwable t) {
-                    Log.e(TAG, "Error during doDeltaUpdate", t);
-                }
-            });
+            mSingleThreadedExecutor.execute(() -> doDeltaUpdateAsync().exceptionally(t -> {
+                Log.w(TAG, "Failed to perform delta update", t);
+                return null;
+            }));
         }
-    }
-
-    /**
-     * Performs delta update bypassing any constraints in {@link #handleDeltaUpdate()}
-     *
-     * <p>The operation is performed on the {@link #mSingleThreadedExecutor} to ensure
-     * thread safety.
-     */
-    @WorkerThread
-    @VisibleForTesting
-    /*package*/ void doDeltaUpdateForTest() throws InterruptedException, ExecutionException {
-        mSingleThreadedExecutor.submit(this::doDeltaUpdate).get();
     }
 
     /**
      * Does the delta update. It also resets {@link ContactsIndexerUserInstance#mDeltaUpdatePending}
      * to false.
      */
-    private void doDeltaUpdate() {
+    @VisibleForTesting
+    /*package*/ CompletableFuture<Void> doDeltaUpdateAsync() {
         // Reset the delta update pending flag at the top of this method. This allows the next
         // ContentObserver.onChange() notification to schedule another delta-update task on the
         // executor. Note that additional change notifications will not schedule more delta-update
@@ -367,29 +351,29 @@ public final class ContactsIndexerUserInstance {
                 + mPersistedData.mLastDeltaDeleteTimestampMillis);
         Set<String> wantedIds = new ArraySet<>();
         Set<String> unWantedIds = new ArraySet<>();
-        mPersistedData.mLastDeltaUpdateTimestampMillis =
+        long mostRecentContactLastUpdateTimestampMillis =
                 ContactsProviderUtil.getUpdatedContactIds(mContext,
                         mPersistedData.mLastDeltaUpdateTimestampMillis, wantedIds);
-        mPersistedData.mLastDeltaDeleteTimestampMillis =
+        long mostRecentContactDeletedTimestampMillis =
                 ContactsProviderUtil.getDeletedContactIds(mContext,
                         mPersistedData.mLastDeltaDeleteTimestampMillis, unWantedIds);
-        Log.d(TAG, "updated timestamps -- lastDeltaUpdateTimestampMillis: "
-                + mPersistedData.mLastDeltaUpdateTimestampMillis
-                + " lastDeltaDeleteTimestampMillis: "
-                + mPersistedData.mLastDeltaDeleteTimestampMillis);
 
         // Update the person corpus in AppSearch based on the changed contact
         // information we get from CP2. At this point mUpdateScheduled has been
         // reset, so a new task is allowed to catch any new changes in CP2.
         // TODO(b/203605504) report errors here so we can choose not to update the
         //  timestamps.
-        mContactsIndexerImpl.updatePersonCorpusAsync(wantedIds, unWantedIds);
-
-        // Persist the timestamps.
-        // TODO(b/221892152): persist timestamps after the documents are flush to AppSearch
-        persistTimestamps(mPersistedData.mLastDeltaUpdateTimestampMillis,
-                mPersistedData.mLastDeltaDeleteTimestampMillis,
-                mPersistedData.mLastFullUpdateTimestampMillis);
+        return mContactsIndexerImpl.updatePersonCorpusAsync(wantedIds, unWantedIds)
+                .thenAccept(x -> {
+                    Log.d(TAG, "updated timestamps --"
+                            + " lastDeltaUpdateTimestampMillis: "
+                            + mostRecentContactLastUpdateTimestampMillis
+                            + " lastDeltaDeleeteTimestampMillis: "
+                            + mostRecentContactDeletedTimestampMillis);
+                    persistTimestamps(mostRecentContactLastUpdateTimestampMillis,
+                            mostRecentContactDeletedTimestampMillis,
+                            mPersistedData.mLastFullUpdateTimestampMillis);
+                });
     }
 
     /**
