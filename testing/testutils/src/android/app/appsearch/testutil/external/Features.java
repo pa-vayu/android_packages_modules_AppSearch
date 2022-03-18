@@ -25,8 +25,6 @@ import android.annotation.NonNull;
  * #isFeatureSupported} returns {@code true} for a certain feature, it is safe to assume that the
  * feature will be available forever on that AppSearch storage implementation, at that Android API
  * level, on that device form factor.
- *
- * @hide
  */
 public interface Features {
 
