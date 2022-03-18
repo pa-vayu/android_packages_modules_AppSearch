@@ -27,11 +27,14 @@ public class PersistedDataTest {
                 new ContactsIndexerUserInstance.PersistedData();
         ContactsIndexerUserInstance.PersistedData persistedDataCopy =
                 new ContactsIndexerUserInstance.PersistedData();
+        persistedData.mLastFullUpdateTimestampMillis = 1;
         persistedData.mLastDeltaUpdateTimestampMillis = 3;
-        persistedData.mLastDeltaUpdateTimestampMillis = 5;
+        persistedData.mLastDeltaDeleteTimestampMillis = 5;
 
         persistedDataCopy.fromString(persistedData.toString());
 
+        assertThat(persistedDataCopy.mLastFullUpdateTimestampMillis).isEqualTo(
+                persistedData.mLastFullUpdateTimestampMillis);
         assertThat(persistedDataCopy.mLastDeltaUpdateTimestampMillis).isEqualTo(
                 persistedData.mLastDeltaUpdateTimestampMillis);
         assertThat(persistedDataCopy.mLastDeltaDeleteTimestampMillis).isEqualTo(

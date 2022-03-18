@@ -21,14 +21,21 @@ android_test {
     srcs: ["src/**/*.java"],
     defaults: ["modules-utils-testable-device-config-defaults"],
     static_libs: [
+        "AppSearchTestUtils",
         "androidx.test.ext.junit",
         "androidx.test.rules",
         "mockito-target-minus-junit4",
         "service-appsearch",
+        "services.core",
+        "services.usage",
         "truth-prebuilt",
+    ],
+    libs: [
+        "framework-appsearch.impl",
     ],
     test_suites: [
         "general-tests",
         "mts-appsearch",
     ],
+    compile_multilib: "both",
 }
