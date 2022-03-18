@@ -40,9 +40,9 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.internal.util.Preconditions;
 
 import java.io.Closeable;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.ArrayList;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
@@ -401,26 +401,30 @@ public class GlobalSearchSession implements Closeable {
      * Removes previously registered {@link AppSearchObserverCallback} instances from the system.
      *
      * <p>All instances of {@link AppSearchObserverCallback} which are registered to observe
-     * {@code observedPackage} and compare equal to the provided callback using
+     * {@code targetPackageName} and compare equal to the provided callback using
      * {@code AppSearchObserverCallback#equals} will be removed.
      *
      * <p>If no matching observers have been registered, this method has no effect. If multiple
      * matching observers have been registered, all will be removed.
      *
-     * @param observedPackage Package in which the observers to be removed are registered
-     * @param observer        Callback to unregister
+     * @param targetPackageName Package which the observers to be removed are listening to.
+     * @param observer          Callback to unregister.
+     * @throws AppSearchException if an error occurs trying to remove the observer, such as a
+     *                            failure to communicate with the system service. Note that no error
+     *                            will be thrown if the provided observer doesn't match any
+     *                            registered observer.
      */
     public void removeObserver(
-            @NonNull String observedPackage,
+            @NonNull String targetPackageName,
             @NonNull AppSearchObserverCallback observer) throws AppSearchException {
-        Objects.requireNonNull(observedPackage);
+        Objects.requireNonNull(targetPackageName);
         Objects.requireNonNull(observer);
         Preconditions.checkState(!mIsClosed, "GlobalSearchSession has already been closed");
 
         IAppSearchObserverProxy stub;
         synchronized (mObserverCallbacksLocked) {
             Map<AppSearchObserverCallback, IAppSearchObserverProxy> observersForPackage =
-                    mObserverCallbacksLocked.get(observedPackage);
+                    mObserverCallbacksLocked.get(targetPackageName);
             if (observersForPackage == null) {
                 return;  // No observers registered for this package. Nothing to do.
             }
@@ -432,7 +436,7 @@ public class GlobalSearchSession implements Closeable {
             AppSearchResultParcel<Void> resultParcel;
             try {
                 resultParcel = mService.removeObserver(
-                        mCallerAttributionSource, observedPackage, mUserHandle, stub);
+                        mCallerAttributionSource, targetPackageName, mUserHandle, stub);
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }
@@ -445,7 +449,7 @@ public class GlobalSearchSession implements Closeable {
             // Only remove from the in-memory map once removal from the service side succeeds
             observersForPackage.remove(observer);
             if (observersForPackage.isEmpty()) {
-                mObserverCallbacksLocked.remove(observedPackage);
+                mObserverCallbacksLocked.remove(targetPackageName);
             }
         }
     }

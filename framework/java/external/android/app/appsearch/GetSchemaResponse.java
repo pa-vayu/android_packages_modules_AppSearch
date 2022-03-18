@@ -98,6 +98,7 @@ public final class GetSchemaResponse {
      * <p>It is inefficient to call this method repeatedly.
      */
     @NonNull
+    @SuppressWarnings("deprecation")
     public Set<AppSearchSchema> getSchemas() {
         ArrayList<Bundle> schemaBundles = mBundle.getParcelableArrayList(SCHEMAS_FIELD);
         Set<AppSearchSchema> schemas = new ArraySet<>(schemaBundles.size());
@@ -128,6 +129,7 @@ public final class GetSchemaResponse {
      * type.
      */
     @NonNull
+    @SuppressWarnings("deprecation")
     public Map<String, Set<PackageIdentifier>> getSchemaTypesVisibleToPackages() {
         checkGetVisibilitySettingSupported();
         if (mSchemasVisibleToPackages == null) {
@@ -143,8 +145,8 @@ public final class GetSchemaResponse {
                     packageIdentifiers.add(new PackageIdentifier(PackageIdentifierBundles.get(i)));
                 }
                 copy.put(key, packageIdentifiers);
-                mSchemasVisibleToPackages = Collections.unmodifiableMap(copy);
             }
+            mSchemasVisibleToPackages = Collections.unmodifiableMap(copy);
         }
         return mSchemasVisibleToPackages;
     }
@@ -156,9 +158,8 @@ public final class GetSchemaResponse {
      * <p>The querier could read the {@link GenericDocument} objects under the {@code schemaType} if
      * they holds ALL required permissions of ANY of the individual value sets.
      *
-     * <p>For example, if the Map contains {@code {% verbatim %}{{permissionA,
-     * PermissionB}, {PermissionC, PermissionD},
-     * {PermissionE}}{% endverbatim %}}.
+     * <p>For example, if the Map contains {@code {% verbatim %}{{permissionA, PermissionB}, {
+     * PermissionC, PermissionD}, {PermissionE}}{% endverbatim %}}.
      *
      * <ul>
      *   <li>A querier holds both PermissionA and PermissionB has access.
@@ -176,7 +177,9 @@ public final class GetSchemaResponse {
      *     SetSchemaRequest#READ_HOME_APP_SEARCH_DATA} and {@link
      *     SetSchemaRequest#READ_ASSISTANT_APP_SEARCH_DATA}.
      */
+    @SetSchemaRequest.AppSearchSupportedPermission
     @NonNull
+    @SuppressWarnings("deprecation")
     public Map<String, Set<Set<Integer>>> getRequiredPermissionsForSchemaTypeVisibility() {
         checkGetVisibilitySettingSupported();
         if (mSchemasVisibleToPermissions == null) {
@@ -331,8 +334,8 @@ public final class GetSchemaResponse {
          * <p>The querier could read the {@link GenericDocument} objects under the {@code
          * schemaType} if they holds ALL required permissions of ANY of the individual value sets.
          *
-         * <p>For example, if the Map contains {@code {% verbatim %}{{permissionA,
-         * PermissionB}, {PermissionC, PermissionD}, {PermissionE}}{% endverbatim %}}.
+         * <p>For example, if the Map contains {@code {% verbatim %}{{permissionA, PermissionB},
+         * {PermissionC, PermissionD}, {PermissionE}}{% endverbatim %}}.
          *
          * <ul>
          *   <li>A querier holds both PermissionA and PermissionB has access.
