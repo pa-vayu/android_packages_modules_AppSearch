@@ -20,6 +20,7 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.res.Resources;
 import android.database.Cursor;
+import android.provider.ContactsContract.CommonDataKinds.Note;
 import android.provider.ContactsContract;
 import android.provider.ContactsContract.CommonDataKinds.Email;
 import android.provider.ContactsContract.CommonDataKinds.Nickname;
@@ -64,6 +65,7 @@ public final class ContactDataHandler {
         mHandlers.put(StructuredName.CONTENT_ITEM_TYPE, new StructuredNameHandler());
         mHandlers.put(Organization.CONTENT_ITEM_TYPE, new OrganizationDataHandler());
         mHandlers.put(Relation.CONTENT_ITEM_TYPE, new RelationDataHandler(resources));
+        mHandlers.put(Note.CONTENT_ITEM_TYPE, new NoteDataHandler());
 
         // Retrieve all the needed columns from different data handlers.
         Set<String> neededColumns = new ArraySet<>();
@@ -398,8 +400,11 @@ public final class ContactDataHandler {
 
     private static final class OrganizationDataHandler extends DataHandler {
         private static final String[] COLUMNS = {
+                Organization.TITLE,
                 Organization.COMPANY,
         };
+
+        private final StringBuilder mStringBuilder = new StringBuilder();
 
         @Override
         public void addNeededColumns(Collection<String> columns) {
@@ -410,9 +415,18 @@ public final class ContactDataHandler {
 
         @Override
         public void addData(@NonNull PersonBuilderHelper builder, Cursor cursor) {
-            String company = getColumnString(cursor, Organization.COMPANY);
-            if (!TextUtils.isEmpty(company)) {
-                builder.getPersonBuilder().addAffiliation(company);
+            mStringBuilder.setLength(0);
+            for (String column : COLUMNS) {
+                String value = getColumnString(cursor, column);
+                if (!TextUtils.isEmpty(value)) {
+                    if (mStringBuilder.length() != 0) {
+                        mStringBuilder.append(", ");
+                    }
+                    mStringBuilder.append(value);
+                }
+            }
+            if (mStringBuilder.length() > 0) {
+                builder.getPersonBuilder().addAffiliation(mStringBuilder.toString());
             }
         }
     }
@@ -451,6 +465,20 @@ public final class ContactDataHandler {
                 }
             }
             builder.getPersonBuilder().addRelation(relationName);
+        }
+    }
+
+    private static final class NoteDataHandler extends SingleColumnDataHandler {
+        public NoteDataHandler() {
+            super(Note.NOTE);
+        }
+
+        @Override
+        protected void addSingleColumnStringData(@NonNull PersonBuilderHelper builder,
+                @NonNull String data) {
+            Objects.requireNonNull(builder);
+            Objects.requireNonNull(data);
+            builder.getPersonBuilder().setNote(data);
         }
     }
 }
