@@ -57,6 +57,7 @@ java_sdk_library {
     srcs: [":framework-appsearch-sources"],
     sdk_version: "module_current",
     min_sdk_version: "Tiramisu",
+    libs: ["unsupportedappusage"],
     static_libs: [
         // This list must be kept in sync with jarjar.txt
         "modules-utils-preconditions",
