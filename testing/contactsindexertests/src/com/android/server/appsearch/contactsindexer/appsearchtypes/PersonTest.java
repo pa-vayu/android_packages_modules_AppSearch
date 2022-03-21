@@ -44,6 +44,7 @@ public class PersonTest {
         List<String> relations = Arrays.asList("relation1", "relation2");
         boolean isImportant = true;
         boolean isBot = true;
+        String note = "note";
         ContactPoint contact1 = new ContactPoint.Builder(namespace, id + "1", "Home")
                 .addAddress("addr1")
                 .addPhone("phone1")
@@ -72,6 +73,7 @@ public class PersonTest {
                 .addRelation(relations.get(1))
                 .setIsImportant(isImportant)
                 .setIsBot(isBot)
+                .setNote(note)
                 .addContactPoint(contact1)
                 .addContactPoint(contact2)
                 .build();
@@ -82,6 +84,7 @@ public class PersonTest {
         assertThat(person.getFamilyName()).isEqualTo(lastName);
         assertThat(person.getExternalUri().toString()).isEqualTo(externalUri.toString());
         assertThat(person.getImageUri().toString()).isEqualTo(imageUri.toString());
+        assertThat(person.getNote()).isEqualTo(note);
         assertThat(person.getAdditionalNames()).asList().isEqualTo(additionalNames);
         assertThat(person.getAffiliations()).asList().isEqualTo(affiliations);
         assertThat(person.getRelations()).asList().isEqualTo(relations);
