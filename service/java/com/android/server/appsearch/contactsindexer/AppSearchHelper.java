@@ -195,6 +195,7 @@ public class AppSearchHelper {
     public CompletableFuture<Void> indexContactsAsync(@NonNull Collection<Person> contacts) {
         Objects.requireNonNull(contacts);
 
+        Log.v(TAG, "Indexing " + contacts.size() + " contacts into AppSearch");
         PutDocumentsRequest request = new PutDocumentsRequest.Builder()
                 .addGenericDocuments(contacts)
                 .build();
@@ -238,6 +239,7 @@ public class AppSearchHelper {
     public CompletableFuture<Void> removeContactsByIdAsync(@NonNull Collection<String> ids) {
         Objects.requireNonNull(ids);
 
+        Log.v(TAG, "Removing " + ids.size() + " contacts from AppSearch");
         RemoveByDocumentIdRequest request = new RemoveByDocumentIdRequest.Builder(NAMESPACE_NAME)
                 .addIds(ids)
                 .build();
@@ -246,15 +248,29 @@ public class AppSearchHelper {
             appSearchSession.remove(request, mExecutor, new BatchResultCallback<String, Void>() {
                 @Override
                 public void onResult(AppSearchBatchResult<String, Void> result) {
-                    if (result.isSuccess()) {
-                        int numDocs = result.getSuccesses().size();
-                        Log.v(TAG, numDocs + " documents successfully deleted from AppSearch.");
-                        future.complete(null);
-                    } else {
-                        future.completeExceptionally(new AppSearchException(
-                                AppSearchResult.RESULT_INTERNAL_ERROR,
-                                "Not all documents are deleted: " + result.toString()));
+                    int numFailures = 0;
+                    AppSearchResult<Void> firstFailure = null;
+                    for (AppSearchResult<Void> failedResult : result.getFailures().values()) {
+                        // Ignore document not found errors.
+                        if (failedResult.getResultCode() != AppSearchResult.RESULT_NOT_FOUND) {
+                            numFailures++;
+                            if (firstFailure == null) {
+                                firstFailure = failedResult;
+                            }
+                        }
                     }
+                    if (firstFailure != null) {
+                        Log.w(TAG, "Failed to delete "
+                                + numFailures + " contacts from AppSearch");
+                        future.completeExceptionally(new AppSearchException(
+                                firstFailure.getResultCode(), firstFailure.getErrorMessage()));
+                        return;
+                    }
+                    int numDocs = result.getSuccesses().size();
+                    if (numDocs > 0) {
+                        Log.v(TAG, numDocs + " documents successfully deleted from AppSearch.");
+                    }
+                    future.complete(null);
                 }
 
                 @Override

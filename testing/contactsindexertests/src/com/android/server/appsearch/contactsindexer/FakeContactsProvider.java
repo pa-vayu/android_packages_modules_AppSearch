@@ -20,6 +20,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import android.content.ContentProvider;
+import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.UriMatcher;
@@ -27,8 +28,10 @@ import android.content.pm.ProviderInfo;
 import android.content.res.Resources;
 import android.database.Cursor;
 import android.database.MatrixCursor;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
+import android.database.sqlite.SQLiteQueryBuilder;
 import android.net.Uri;
-import android.provider.ContactsContract;
 import android.provider.ContactsContract.CommonDataKinds.Email;
 import android.provider.ContactsContract.CommonDataKinds.Nickname;
 import android.provider.ContactsContract.CommonDataKinds.Phone;
@@ -49,17 +52,38 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Fake Contacts Provider. It provides mContactsExisted existed contacts with ids
- * [1..mContactsExisted]. And the deleted ones are [mContactsEixsted + 1..mContancatsTotal]. Each
- * existed contacts' information is "hard-coded". If id is even it has no other data. Otherwise if
- * id is odd it has 2 emails, 2 nicknames, ...etc.
+ * Fake Contacts Provider that provides basic insert, delete, and query functionality.
  */
 public class FakeContactsProvider extends ContentProvider {
-    static final String TAG = "ContactsIndexerFakeContactsProvider";
-    static final int NUM_EXISTED_CONTACTS = 100;
-    static final int NUM_TOTAL_CONTACTS = 200;
+
+    private static final String TAG = "ContactsIndexerFakeContactsProvider";
 
     public static final String AUTHORITY = "com.android.contacts";
+
+    private static final String DATABASE_NAME = "contacts.db";
+    private static final int DATABASE_VERSION = 1;
+    private static final String CONTACTS_TABLE = "contacts";
+    private static final String DELETED_CONTACTS_TABLE = "deleted_contacts";
+
+    private static final UriMatcher sUriMatcher = new UriMatcher(UriMatcher.NO_MATCH);
+
+    private static final int CONTACTS = 1;
+    private static final int CONTACTS_ID = 2;
+    private static final int DELETED_CONTACTS = 3;
+    private static final int DATA = 4;
+    private static final int PHONE = 5;
+    private static final int EMAIL = 6;
+    private static final int POSTAL = 7;
+
+    static {
+        sUriMatcher.addURI(AUTHORITY, "contacts", CONTACTS);
+        sUriMatcher.addURI(AUTHORITY, "contacts/#", CONTACTS_ID);
+        sUriMatcher.addURI(AUTHORITY, "deleted_contacts", DELETED_CONTACTS);
+        sUriMatcher.addURI(AUTHORITY, "data", DATA);
+        sUriMatcher.addURI(AUTHORITY, "data/phones", PHONE);
+        sUriMatcher.addURI(AUTHORITY, "data/emails", EMAIL);
+        sUriMatcher.addURI(AUTHORITY, "data/postals", POSTAL);
+    }
 
     private static final String CONTACTS_DATA_ORDER_BY =
             Data.CONTACT_ID
@@ -103,29 +127,16 @@ public class FakeContactsProvider extends ContentProvider {
             StructuredPostal.TYPE_WORK,
             StructuredPostal.TYPE_OTHER
     };
-    private static final int CONTACTS = 1;
-    private static final int DELETED_CONTACTS = 2;
-    private static final int DATA = 3;
-    private static final int PHONE = 4;
-    private static final int EMAIL = 5;
-    private static final int POSTAL = 6;
-    private static final String[] CONTACTS_COLUMNS = {
-            Contacts._ID, Contacts.CONTACT_LAST_UPDATED_TIMESTAMP
-    };
-    private static final String[] CONTACTS_DELETED_COLUMNS = {
-            DeletedContacts.CONTACT_ID, DeletedContacts.CONTACT_DELETED_TIMESTAMP
-    };
     private static final int VERY_IMPORTANT_SCORE = 3;
     private static final int IMPORTANT_SCORE = 2;
     private static final int ORDINARY_SCORE = 1;
 
-    // Contacts with id in [1..mContactsExisted] are treated as existed.
-    private final int mContactsExisted;
-    // Contacts with id in [mContactsExisted + 1..mContactsTotal] are treated as deleted.
-    private final int mContactsTotal;
-    private final Person[] mAllContactData;
     private final Resources mResources;
-    private final UriMatcher mURIMatcher;
+
+    private SQLiteOpenHelper mOpenHelper = null;
+    private int mNumContacts;
+    private long mMostRecentContactLastUpdatedTimestampMillis;
+    private long mMostRecentDeletedContactTimestampMillis;
 
     // Only odd contactIds should have additional data.
     private static boolean shouldhaveAdditionalData(long contactId) {
@@ -271,58 +282,18 @@ public class FakeContactsProvider extends ContentProvider {
     }
 
     public FakeContactsProvider() {
-        this(ApplicationProvider.getApplicationContext().getResources(), NUM_EXISTED_CONTACTS,
-                NUM_TOTAL_CONTACTS);
+        this(ApplicationProvider.getApplicationContext().getResources());
     }
 
-    FakeContactsProvider(Resources resources, int contactsExisted, int contactsTotal) {
-        mContactsExisted = contactsExisted;
-        mContactsTotal = contactsTotal;
+    FakeContactsProvider(Resources resources) {
         mResources = resources;
-        mAllContactData = new Person[mContactsExisted];
-        mURIMatcher = new UriMatcher(UriMatcher.NO_MATCH);
-        mURIMatcher.addURI(AUTHORITY, "contacts", CONTACTS);
-        mURIMatcher.addURI(AUTHORITY, "deleted_contacts", DELETED_CONTACTS);
-        mURIMatcher.addURI(AUTHORITY, "data", DATA);
-        mURIMatcher.addURI(AUTHORITY, "data/phones", PHONE);
-        mURIMatcher.addURI(AUTHORITY, "data/emails", EMAIL);
-        mURIMatcher.addURI(AUTHORITY, "data/postals", PHONE);
-        for (long i = 1; i <= mContactsExisted; ++i) {
-            Person.Builder builder = new Person.Builder(AppSearchHelper.NAMESPACE_NAME,
-                    /*contactId=*/ String.valueOf(i), /*name=*/ String.format("displayName%d", i));
-            String lookUpKey = String.format("lookupUri%d", i);
-            builder.setExternalUri(ContactsContract.Contacts.getLookupUri(i, lookUpKey));
-            builder.setImageUri(Uri.parse(String.format("http://photoThumbNailUri%d.com", i)));
-            builder.setScore((int) i + 1);
-            builder.setCreationTimestampMillis(i);
-            builder.setIsImportant((i & 1) != 0);
-            PersonBuilderHelper builderHelper = new PersonBuilderHelper(builder);
-            if (shouldhaveAdditionalData(i)) {
-                // Same contact with Nickname.
-                addNicknameToBuilder(builderHelper, i);
-                addNicknameToBuilder(builderHelper, i + 1);
-                // Same contact with email.
-                addEmailToBuilder(builderHelper, i);
-                addEmailToBuilder(builderHelper, i + 1);
-                // Same contact with Phone.
-                addPhoneToBuilder(builderHelper, i);
-                addPhoneToBuilder(builderHelper, i + 1);
-                // Same contact with StructuredPostal.
-                addStructuredPostalToBuilder(builderHelper, i);
-                addStructuredPostalToBuilder(builderHelper, i + 1);
-                // Same contact with StructuredName.
-                addStructuredNameToBuilder(builderHelper, i);
-                addStructuredNameToBuilder(builderHelper, i + 1);
-            }
-            mAllContactData[(int) (i - 1)] = builderHelper.buildPerson();
-        }
     }
 
     // Parse the selection String which may be "IN (idlist)" or null for all ids.
-    private List<Long> parseList(String selection) {
+    private List<Integer> parseList(String selection) {
         int left = -1;
         int right = -1;
-        List<Long> selectionIds = new ArrayList<>();
+        List<Integer> selectionIds = new ArrayList<>();
         if ((selection != null) && (selection.contains("IN"))) {
             left = selection.indexOf('(');
             right = selection.indexOf(')');
@@ -332,8 +303,8 @@ public class FakeContactsProvider extends ContentProvider {
             String[] ids = selection.substring(left + 1, right).split(",");
             for (String i : ids) {
                 try {
-                    Long id = Long.valueOf(i);
-                    if ((id >= 1) && (id <= mContactsExisted)) {
+                    Integer id = Integer.valueOf(i);
+                    if (id < mNumContacts) {
                         selectionIds.add(id);
                     }
                 } catch (NumberFormatException e) {
@@ -341,74 +312,11 @@ public class FakeContactsProvider extends ContentProvider {
                 }
             }
         } else { // all ids
-            for (long i = 1L; i <= mContactsExisted; ++i) {
+            for (int i = 1; i <= mNumContacts; ++i) {
                 selectionIds.add(i);
             }
         }
         return selectionIds;
-    }
-
-    // Add all ids (and LAST_UPDATED_TIMESTAMP) into cursor.
-    private void insertRowsIntoIdCursor(MatrixCursor cursor, List<Long> selectionIds) {
-        for (long i : selectionIds) {
-            // Add id, and last_updated_timestamp, which has same value as id, into the cursor.
-            cursor.newRow().add(i).add(i);
-        }
-    }
-
-    // Query contact ids and their CONTACT_LAST_UPDATED_TIMESTAMP.
-    // Projection is id and update time_stamp.
-    // Selection can be a list of ids or null for all ids.
-    protected Cursor manageContactsQuery(
-            String[] projection, String selection, String[] selectionArgs, String orderBy) {
-        MatrixCursor cursor = null;
-        List<Long> selectionIds;
-        if (Arrays.equals(CONTACTS_COLUMNS, projection)) {
-            cursor = new MatrixCursor(projection);
-            if ((selection != null)
-                    && selection.startsWith(Contacts.CONTACT_LAST_UPDATED_TIMESTAMP + ">")) {
-                long since;
-                try {
-                    if (selectionArgs != null && selectionArgs.length == 1) {
-                        since = Long.parseLong(selectionArgs[0]);
-                    } else {
-                        since = 0;
-                    }
-                } catch (NumberFormatException e) {
-                    since = 0;
-                }
-                selectionIds = new ArrayList<>();
-                for (long i = Math.max(0, since) + 1; i <= mContactsExisted; ++i) {
-                    selectionIds.add(i);
-                }
-            } else {
-                selectionIds = parseList(selection);
-            }
-            // Query contact ids and update timestamp.
-            insertRowsIntoIdCursor(cursor, selectionIds);
-        }
-        return cursor;
-    }
-
-    // Query contacts whose delete_timestamp is larger than given parameter.
-    // Only support selection = "delete_timestamp >?" here. selectionArgs should have one element
-    // - integer that replaces the '?' place holder in given selection.
-    // replaces the placeholder.
-    protected Cursor manageDeleteQuery(
-            String[] projection, String selection, String[] selectionArgs, String orderBy) {
-        MatrixCursor cursor = null;
-        if (Arrays.equals(CONTACTS_DELETED_COLUMNS, projection)
-                && (DeletedContacts.CONTACT_DELETED_TIMESTAMP + ">?").equals(selection)
-                && (selectionArgs != null)
-                && (selectionArgs.length == 1)) {
-            // Query delete_id and timestamp with timestamp larger than "since".
-            cursor = new MatrixCursor(projection);
-            long since = Long.parseLong(selectionArgs[0]);
-            for (long i = Math.max(since, mContactsExisted) + 1; i <= mContactsTotal; ++i) {
-                cursor.newRow().add(i).add(i);
-            }
-        }
-        return cursor;
     }
 
     // Query all details for given contact ids.  Selection will be a list of ids or null. Since we
@@ -421,8 +329,9 @@ public class FakeContactsProvider extends ContentProvider {
         // Details in id list.
         if (CONTACTS_DATA_ORDER_BY.equals(orderBy) && (projection != null)) {
             cursor = new MatrixCursor(projection);
-            List<Long> selectionIds = parseList(selection);
+            List<Integer> selectionIds = parseList(selection);
             Collections.sort(selectionIds);
+            Log.d(TAG, Arrays.toString(selectionIds.toArray()));
             ContentValues values = new ContentValues();
             for (long i : selectionIds) {
                 if ((i & 1) != 0) {
@@ -496,79 +405,49 @@ public class FakeContactsProvider extends ContentProvider {
         return cursor;
     }
 
-    private static Cursor makeCountCursor(int count) {
-        Cursor cursor = mock(Cursor.class);
-        doReturn(count).when(cursor).getCount();
-        return cursor;
-    }
-
     @Override
     public Cursor query(
             Uri uri, String[] projection, String selection, String[] selectionArgs,
             String orderBy) {
         Log.i(TAG, "uri = " + uri);
-        Cursor cursor = null;
-        switch (mURIMatcher.match(uri)) {
+        SQLiteDatabase db = mOpenHelper.getReadableDatabase();
+
+        SQLiteQueryBuilder qb = new SQLiteQueryBuilder();
+        qb.setStrict(true);
+
+        int match = sUriMatcher.match(uri);
+        switch (match) {
             case CONTACTS:
-                Log.i(TAG, "contacts uri");
-                cursor = manageContactsQuery(projection, selection, selectionArgs, orderBy);
-                break;
-            case DELETED_CONTACTS:
-                Log.i(TAG, "delete_contacts uri");
-                cursor = manageDeleteQuery(projection, selection, selectionArgs, orderBy);
-                break;
-            case DATA:
-                Log.i(TAG, "data uri");
-                cursor = manageDataQuery(projection, selection, selectionArgs, orderBy);
-                break;
-            case PHONE:
-                Log.i(TAG, "phone uri");
-                if (projection != null
-                        && projection.length == 1
-                        && "_id".equals(projection[0])
-                        && selection == null
-                        && selectionArgs == null
-                        && orderBy == null) {
-                    cursor = makeCountCursor(((mContactsExisted + 1) >> 1) << 1);
-                }
-                break;
-            case EMAIL:
-                Log.i(TAG, "email uri");
-                if (projection != null
-                        && projection.length == 1
-                        && "_id".equals(projection[0])
-                        && selection == null
-                        && selectionArgs == null
-                        && orderBy == null) {
-                    cursor = makeCountCursor(((mContactsExisted + 1) >> 1) << 1);
-                }
-                break;
-            case POSTAL:
-                Log.i(TAG, "postal uri");
-                if (projection != null
-                        && projection.length == 1
-                        && "_id".equals(projection[0])
-                        && selection == null
-                        && selectionArgs == null
-                        && orderBy == null) {
-                    cursor = makeCountCursor(((mContactsExisted + 1) >> 1) << 1);
-                }
+                qb.setTables(CONTACTS_TABLE);
                 break;
 
-            default:
-                Log.e(TAG, "unknown uri");
+            case DELETED_CONTACTS:
+                qb.setTables(DELETED_CONTACTS_TABLE);
                 break;
+
+            case DATA:
+                return manageDataQuery(projection, selection, selectionArgs, orderBy);
+
+            default:
+                throw new UnsupportedOperationException();
         }
+
+        Cursor cursor = qb.query(db, projection, selection, selectionArgs, /*groupBy=*/ null,
+                /*having=*/null, orderBy);
+        if (cursor == null) {
+            Log.w(TAG, "query failed");
+            return null;
+        }
+        cursor.setNotificationUri(getContext().getContentResolver(), uri);
         return cursor;
     }
 
-    Person getContactData(long id) {
-        return ((id <= 0) || (id > mAllContactData.length)) ? null
-                : mAllContactData[(int) (id - 1)];
+    long getMostRecentContactUpdateTimestampMillis() {
+        return mMostRecentContactLastUpdatedTimestampMillis;
     }
 
-    Person[] getAllContactData() {
-        return mAllContactData;
+    long getMostRecentDeletedContactTimestampMillis() {
+        return mMostRecentDeletedContactTimestampMillis;
     }
 
     @Override
@@ -577,17 +456,57 @@ public class FakeContactsProvider extends ContentProvider {
 
     @Override
     public boolean onCreate() {
+        mOpenHelper = new DatabaseHelper(ApplicationProvider.getApplicationContext());
         return true;
     }
 
     @Override
+    public void shutdown() {
+        SQLiteDatabase db = mOpenHelper.getWritableDatabase();
+        db.execSQL("delete from " + CONTACTS_TABLE);
+        db.execSQL("delete from " + DELETED_CONTACTS_TABLE);
+        db.close();
+        mOpenHelper.close();
+    }
+
+    @Override
     public int delete(Uri uri, String selection, String[] selectionArgs) {
-        throw new UnsupportedOperationException("delete not supported");
+        SQLiteDatabase db = mOpenHelper.getWritableDatabase();
+
+        if (sUriMatcher.match(uri) != CONTACTS_ID) {
+            throw new IllegalArgumentException("delete: unknown URI " + uri);
+        }
+        // Insert tombstone into deleted_contacts table
+        mMostRecentDeletedContactTimestampMillis = System.currentTimeMillis();
+        long contactId = ContentUris.parseId(uri);
+        ContentValues values = new ContentValues();
+        values.put(DeletedContacts.CONTACT_ID, contactId);
+        values.put(DeletedContacts.CONTACT_DELETED_TIMESTAMP,
+                mMostRecentDeletedContactTimestampMillis);
+        db.insertWithOnConflict(DELETED_CONTACTS_TABLE, /*nullColumnHack=*/ null,
+                values, SQLiteDatabase.CONFLICT_REPLACE);
+
+        // Delete contact from contacts table
+        return db.delete(CONTACTS_TABLE, Contacts._ID + " = ?", new String[] {contactId + ""});
     }
 
     @Override
     public Uri insert(Uri uri, ContentValues values) {
-        throw new UnsupportedOperationException("delete not supported");
+        SQLiteDatabase db = mOpenHelper.getWritableDatabase();
+
+        if (sUriMatcher.match(uri) != CONTACTS) {
+            throw new IllegalArgumentException("insert: unknown URI " + uri);
+        }
+
+        mMostRecentContactLastUpdatedTimestampMillis = System.currentTimeMillis();
+        values.put(Contacts._ID, mNumContacts++);
+        values.put(Contacts.CONTACT_LAST_UPDATED_TIMESTAMP,
+                mMostRecentContactLastUpdatedTimestampMillis);
+
+        long rowId = db.insert(CONTACTS_TABLE, /*nullColumnHack=*/ null, values);
+
+        getContext().getContentResolver().notifyChange(uri, /*observer=*/ null);
+        return ContentUris.withAppendedId(Contacts.CONTENT_URI, rowId);
     }
 
     @Override
@@ -598,5 +517,28 @@ public class FakeContactsProvider extends ContentProvider {
     @Override
     public String getType(Uri uri) {
         throw new UnsupportedOperationException("update not supported");
+    }
+
+    private static final class DatabaseHelper extends SQLiteOpenHelper {
+
+        DatabaseHelper(Context context) {
+            super(context, DATABASE_NAME, /*factory=*/ null, DATABASE_VERSION);
+        }
+        @Override
+        public void onCreate(SQLiteDatabase db) {
+            db.execSQL("CREATE TABLE contacts (" +
+                    "_id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "contact_last_updated_timestamp INTEGER" +
+                    ");");
+            db.execSQL("CREATE TABLE deleted_contacts (" +
+                    "contact_id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "contact_deleted_timestamp INTEGER" +
+                    ");");
+        }
+
+        @Override
+        public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+            // nothing to do
+        }
     }
 }

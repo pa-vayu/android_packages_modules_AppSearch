@@ -149,19 +149,23 @@ public final class ContactsIndexerImpl {
             String selection = ContactsContract.Data.CONTACT_ID + " IN (" + TextUtils.join(
                     /*delimiter=*/ ",", currentContactIds) + ")";
             startIndex = endIndex;
-            Cursor cursor = null;
             try {
                 // For our iteration work, we must sort the result by contact_id first.
-                cursor = mContext.getContentResolver().query(ContactsContract.Data.CONTENT_URI,
+                Cursor cursor = mContext.getContentResolver().query(
+                        ContactsContract.Data.CONTENT_URI,
                         mProjection,
                         selection, /*selectionArgs=*/null,
                         ORDER_BY);
                 if (cursor == null) {
-                    startIndex = wantedIdListSize; // Ensures we don't retry
+                    return CompletableFuture.failedFuture(new IllegalStateException());
                 } else {
-                    Cursor finalCursor = cursor;
                     updatePersonCorpusFuture = updatePersonCorpusFuture
-                            .thenCompose(x -> indexContactsFromCursorAsync(finalCursor));
+                            .thenCompose(x -> {
+                                CompletableFuture<Void> indexContactsFuture =
+                                        indexContactsFromCursorAsync(cursor);
+                                cursor.close();
+                                return indexContactsFuture;
+                            });
                 }
             } catch (RuntimeException e) {
                 // The ContactsProvider sometimes propagates RuntimeExceptions to us
@@ -169,12 +173,7 @@ public final class ContactsIndexerImpl {
                 // ContactsProvider, and flag that we were not successful.
                 // TODO(b/203605504) log the error once we have the logger configured.
                 Log.e(TAG, "ContentResolver.query threw an exception.", e);
-                cursor = null;
-                startIndex = wantedIdListSize; // Ensures we don't retry
-            } finally {
-                if (cursor != null) {
-                    cursor.close();
-                }
+                return CompletableFuture.failedFuture(e);
             }
         }
         return updatePersonCorpusFuture;
@@ -189,19 +188,20 @@ public final class ContactsIndexerImpl {
     private CompletableFuture<Void> indexContactsFromCursorAsync(@NonNull Cursor cursor) {
         Objects.requireNonNull(cursor);
 
-        int contactIdIndex = cursor.getColumnIndex(ContactsContract.Data.CONTACT_ID);
-        int lookupKeyIndex = cursor.getColumnIndex(ContactsContract.Data.LOOKUP_KEY);
-        int thumbnailUriIndex = cursor.getColumnIndex(
-                ContactsContract.Data.PHOTO_THUMBNAIL_URI);
-        int displayNameIndex = cursor.getColumnIndex(
-                ContactsContract.Data.DISPLAY_NAME_PRIMARY);
-        int phoneticNameIndex = cursor.getColumnIndex(ContactsContract.Data.PHONETIC_NAME);
-        int starredIndex = cursor.getColumnIndex(ContactsContract.Data.STARRED);
-        long currentContactId = -1;
-        Person.Builder personBuilder = null;
-        PersonBuilderHelper personBuilderHelper = null;
         try {
-            while (cursor != null && cursor.moveToNext()) {
+            int contactIdIndex = cursor.getColumnIndex(ContactsContract.Data.CONTACT_ID);
+            int lookupKeyIndex = cursor.getColumnIndex(ContactsContract.Data.LOOKUP_KEY);
+            int thumbnailUriIndex = cursor.getColumnIndex(
+                    ContactsContract.Data.PHOTO_THUMBNAIL_URI);
+            int displayNameIndex = cursor.getColumnIndex(
+                    ContactsContract.Data.DISPLAY_NAME_PRIMARY);
+            int phoneticNameIndex = cursor.getColumnIndex(ContactsContract.Data.PHONETIC_NAME);
+            int starredIndex = cursor.getColumnIndex(ContactsContract.Data.STARRED);
+            long currentContactId = -1;
+            Person.Builder personBuilder = null;
+            PersonBuilderHelper personBuilderHelper = null;
+
+            while (cursor.moveToNext()) {
                 long contactId = cursor.getLong(contactIdIndex);
                 if (contactId != currentContactId) {
                     // Either it is the very first row (currentContactId = -1), or a row for a new
@@ -225,8 +225,7 @@ public final class ContactsIndexerImpl {
                             String.valueOf(contactId), displayName);
                     String imageUri = getStringFromCursor(cursor, thumbnailUriIndex);
                     String lookupKey = getStringFromCursor(cursor, lookupKeyIndex);
-                    boolean starred = starredIndex != -1 ?
-                            cursor.getInt(starredIndex) != 0 : false;
+                    boolean starred = starredIndex != -1 && cursor.getInt(starredIndex) != 0;
                     Uri lookupUri = lookupKey != null ?
                             ContactsContract.Contacts.getLookupUri(currentContactId, lookupKey)
                             : null;
@@ -243,17 +242,18 @@ public final class ContactsIndexerImpl {
                     mContactDataHandler.convertCursorToPerson(cursor, personBuilderHelper);
                 }
             }
+
+            if (cursor.isAfterLast() && currentContactId != -1) {
+                // The ContactData for the last contact has not been handled yet. So we need to
+                // build and index it.
+                if (personBuilderHelper != null) {
+                    mBatcher.add(personBuilderHelper.buildPerson());
+                }
+            }
         } catch (Throwable t) {
             // TODO(b/203605504) see if we could catch more specific exceptions/errors.
             Log.e(TAG, "Error while indexing documents from the cursor", t);
-        }
-
-        if (cursor.isAfterLast() && currentContactId != -1) {
-            // The ContactData for the last contact has not been handled yet. So we need to
-            // build and index it.
-            if (personBuilderHelper != null) {
-                mBatcher.add(personBuilderHelper.buildPerson());
-            }
+            return CompletableFuture.failedFuture(t);
         }
 
         // finally force flush all the remaining batched contacts.

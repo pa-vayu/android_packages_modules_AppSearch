@@ -18,20 +18,24 @@ package com.android.server.appsearch.contactsindexer;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.spy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyZeroInteractions;
 
 import android.app.appsearch.AppSearchManager;
-import android.app.appsearch.AppSearchResult;
-import android.app.appsearch.AppSearchSession;
+import android.app.appsearch.AppSearchSessionShim;
 import android.app.appsearch.SearchSpec;
 import android.app.appsearch.SetSchemaRequest;
-import android.app.appsearch.SetSchemaResponse;
+import android.app.appsearch.testutil.AppSearchSessionShimImpl;
+import android.app.job.JobScheduler;
+import android.content.ContentResolver;
+import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Context;
 import android.os.CancellationSignal;
+import android.provider.ContactsContract;
 import android.test.ProviderTestCase2;
-
-import static org.junit.Assert.assertThrows;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -46,246 +50,310 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
+import javax.annotation.Nullable;
 
 // TODO(b/203605504) this is a junit3 test(ProviderTestCase2) but we run it with junit4 to use
 //  some utilities like temporary folder. Right now I can't make ProviderTestRule work so we
 //  stick to ProviderTestCase2 for now.
 @RunWith(AndroidJUnit4.class)
 public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeContactsProvider> {
+
     @Rule
     public TemporaryFolder mTemporaryFolder = new TemporaryFolder();
 
+    private final ExecutorService mSingleThreadedExecutor = Executors.newSingleThreadExecutor();
+
+    private ContextWrapper mContextWrapper;
     private File mContactsDir;
     private Path mDataFilePath;
     private SearchSpec mSpecForQueryAllContacts;
+    private ContactsIndexerUserInstance mInstance;
 
     public ContactsIndexerUserInstanceTest() {
         super(FakeContactsProvider.class, FakeContactsProvider.AUTHORITY);
     }
 
+    @Override
     @Before
     public void setUp() throws Exception {
         super.setUp();
 
         // Setup the file path to the persisted data
-        mContactsDir = mTemporaryFolder.newFolder("appsearch/contacts");
+        mContactsDir = new File(mTemporaryFolder.newFolder(), "appsearch/contacts");
         mDataFilePath = new File(mContactsDir, ContactsIndexerUserInstance.CONTACTS_INDEXER_STATE)
                 .toPath();
 
-        Context appContext = ApplicationProvider.getApplicationContext();
-        mContext = spy(appContext);
-        doReturn(getMockContentResolver()).when(mContext).getContentResolver();
+        mContextWrapper = new ContextWrapper(ApplicationProvider.getApplicationContext());
+        mContextWrapper.setContentResolver(getMockContentResolver());
+        mContext = mContextWrapper;
+
         mSpecForQueryAllContacts = new SearchSpec.Builder().addFilterSchemas(
                 Person.SCHEMA_TYPE).addProjection(Person.SCHEMA_TYPE,
                 Arrays.asList(Person.PERSON_PROPERTY_NAME))
                 .setResultCountPerPage(100)
                 .build();
+
+        mInstance = ContactsIndexerUserInstance.createInstance(mContext, mContactsDir,
+                mSingleThreadedExecutor);
     }
 
+    @Override
     @After
     public void tearDown() throws Exception {
         // Wipe the data in AppSearchHelper.DATABASE_NAME.
-        AppSearchManager appSearchManager = mContext.getSystemService(AppSearchManager.class);
-        AppSearchManager.SearchContext searchContext =
-                new AppSearchManager.SearchContext.Builder(AppSearchHelper.DATABASE_NAME).build();
-        CompletableFuture<AppSearchResult<AppSearchSession>> future = new CompletableFuture<>();
-        appSearchManager.createSearchSession(searchContext, Runnable::run, future::complete);
-        AppSearchSession session = future.get().getResultValue();
-        SetSchemaRequest setSchemaRequest = new SetSchemaRequest.Builder()
-                .setForceOverride(true).build();
-        CompletableFuture<AppSearchResult<SetSchemaResponse>> futureSetSchema =
-                new CompletableFuture<>();
-        session.setSchema(setSchemaRequest, Runnable::run, Runnable::run,
-                futureSetSchema::complete);
+        AppSearchSessionShim db = AppSearchSessionShimImpl.createSearchSessionAsync(mContext,
+                new AppSearchManager.SearchContext.Builder(AppSearchHelper.DATABASE_NAME).build(),
+                mSingleThreadedExecutor).get();
+        db.setSchema(new SetSchemaRequest.Builder().setForceOverride(true).build()).get();
+        super.tearDown();
     }
 
     @Test
     public void testCreateInstance_dataDirectoryCreatedAsynchronously() throws Exception {
-        File dataDir = new File(mTemporaryFolder.newFolder("tmp"), "contacts");
-        ExecutorService singleThreadedExecutor = Executors.newSingleThreadExecutor();
-        AtomicBoolean isDataDirectoryCreatedAsynchronously = new AtomicBoolean(false);
-        singleThreadedExecutor.submit(() -> {
+        File dataDir = new File(mTemporaryFolder.newFolder(), "contacts");
+        boolean isDataDirectoryCreatedSynchronously = mSingleThreadedExecutor.submit(() -> {
             ContactsIndexerUserInstance unused =
                     ContactsIndexerUserInstance.createInstance(mContext, dataDir,
-                            singleThreadedExecutor);
+                            mSingleThreadedExecutor);
             // Data directory shouldn't have been created synchronously in createInstance()
-            isDataDirectoryCreatedAsynchronously.set(!dataDir.exists());
+            return dataDir.exists();
         }).get();
-        assertTrue(isDataDirectoryCreatedAsynchronously.get());
-        singleThreadedExecutor.submit(
-                () -> isDataDirectoryCreatedAsynchronously.set(dataDir.exists())).get();
-        assertTrue(isDataDirectoryCreatedAsynchronously.get());
+        assertFalse(isDataDirectoryCreatedSynchronously);
+        boolean isDataDirectoryCreatedAsynchronously = mSingleThreadedExecutor.submit(
+                dataDir::exists).get();
+        assertTrue(isDataDirectoryCreatedAsynchronously);
     }
 
     @Test
-    public void testCreateInstance_initialLastTimestamps_zero()
-            throws Exception {
+    public void testCreateInstance_initialRun_schedulesFullUpdateJob() throws Exception {
+        JobScheduler mockJobScheduler = mock(JobScheduler.class);
+        mContextWrapper.setJobScheduler(mockJobScheduler);
         ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
-                mDataFilePath.getParent().toFile());
+                mContactsDir, mSingleThreadedExecutor);
 
-        PersistedData data = instance.getPersistedStateForTest();
+        instance.startAsync();
 
-        assertThat(data.mLastFullUpdateTimestampMillis).isEqualTo(0);
-        assertThat(data.mLastDeltaUpdateTimestampMillis).isEqualTo(0);
-        assertThat(data.mLastDeltaDeleteTimestampMillis).isEqualTo(0);
+        // Wait for all async tasks to complete
+        mSingleThreadedExecutor.submit(() -> {}).get();
+
+        verify(mockJobScheduler).schedule(any());
     }
 
     @Test
-    public void testCreateInstance_lastTimestamps_readFromDiskCorrectly()
-            throws Exception {
-        PersistedData newData = new PersistedData();
-        newData.mLastFullUpdateTimestampMillis = 1;
-        newData.mLastDeltaUpdateTimestampMillis = 2;
-        newData.mLastDeltaDeleteTimestampMillis = 3;
-        clearAndWriteDataToTempFile(newData.toString(), mDataFilePath);
+    public void testCreateInstance_subsequentRun_doesNotScheduleFullUpdateJob() throws Exception {
+        executeAndWaitForCompletion(mInstance.doFullUpdateInternalAsync(new CancellationSignal()),
+                mSingleThreadedExecutor);
 
+        JobScheduler mockJobScheduler = mock(JobScheduler.class);
+        mContextWrapper.setJobScheduler(mockJobScheduler);
         ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
-                mDataFilePath.getParent().toFile());
+                mContactsDir, mSingleThreadedExecutor);
 
-        PersistedData loadedData = instance.getPersistedStateForTest();
-        assertThat(loadedData.mLastFullUpdateTimestampMillis).isEqualTo(
-                newData.mLastFullUpdateTimestampMillis);
-        assertThat(loadedData.mLastDeltaUpdateTimestampMillis).isEqualTo(
-                newData.mLastDeltaUpdateTimestampMillis);
-        assertThat(loadedData.mLastDeltaDeleteTimestampMillis).isEqualTo(
-                newData.mLastDeltaDeleteTimestampMillis);
-    }
+        instance.startAsync();
 
-    @Test
-    public void testContactsIndexerUserInstance_lastTimestamps_writeToDiskCorrectly()
-            throws Exception {
-        // Simulate a full update to enable non-deferred delta updates
-        PersistedData newData = new PersistedData();
-        newData.mLastFullUpdateTimestampMillis = 1;
-        clearAndWriteDataToTempFile(newData.toString(), mDataFilePath);
+        // Wait for all async tasks to complete
+        mSingleThreadedExecutor.submit(() -> {}).get();
 
-        // In FakeContactsIndexer, we have contacts array [1, 2, ... NUM_TOTAL_CONTACTS], among
-        // them, [1, NUM_EXISTED_CONTACTS] is for updated contacts, and [NUM_EXISTED_CONTACTS +
-        // 1, NUM_TOTAL_CONTACTS] is for deleted contacts.
-        // And the number here is same for both contact_id, and last update/delete timestamp.
-        // So, if we have [1, 50] for updated, and [51, 100] for deleted, and lastUpdatedTime is
-        // 40, [41, 50] needs to be updated. Likewise, if lastDeletedTime is 55, we would delete
-        // [56, 100
-        long expectedNewLastUpdatedTimestamp = FakeContactsProvider.NUM_EXISTED_CONTACTS;
-        long expectedNewLastDeletedTimestamp = FakeContactsProvider.NUM_TOTAL_CONTACTS;
-        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
-                mDataFilePath.getParent().toFile());
-
-        instance.doDeltaUpdateForTest();
-
-        PersistedData loadedData = instance.getPersistedStateForTest();
-        assertThat(loadedData.mLastDeltaUpdateTimestampMillis).isEqualTo(
-                expectedNewLastUpdatedTimestamp);
-        assertThat(loadedData.mLastDeltaDeleteTimestampMillis).isEqualTo(
-                expectedNewLastDeletedTimestamp);
-
-        // Create another indexer to load data from disk.
-        instance = ContactsIndexerUserInstance.createInstance(mContext,
-                mDataFilePath.getParent().toFile());
-        loadedData = instance.getPersistedStateForTest();
-        assertThat(loadedData.mLastDeltaUpdateTimestampMillis).isEqualTo(
-                expectedNewLastUpdatedTimestamp);
-        assertThat(loadedData.mLastDeltaDeleteTimestampMillis).isEqualTo(
-                expectedNewLastDeletedTimestamp);
-    }
-
-    @Test
-    public void testContactsIndexerUserInstance_deltaUpdate_firstTime() throws Exception {
-        // Simulate a full update to enable non-deferred delta updates
-        PersistedData newData = new PersistedData();
-        newData.mLastFullUpdateTimestampMillis = 1;
-        clearAndWriteDataToTempFile(newData.toString(), mDataFilePath);
-
-        // In FakeContactsIndexer, we have contacts array [1, 2, ... NUM_TOTAL_CONTACTS], among
-        // them, [1, NUM_EXISTED_CONTACTS] is for updated contacts, and [NUM_EXISTED_CONTACTS +
-        // 1, NUM_TOTAL_CONTACTS] is for deleted contacts.
-        // And the number here is same for both contact_id, and last update/delete timestamp.
-        // So, if we have [1, 50] for updated, and [51, 100] for deleted, and lastUpdatedTime is
-        // 40, [41, 50] needs to be updated. Likewise, if lastDeletedTime is 55, we would delete
-        // [56, 100
-        int expectedUpdatedContactsFirstId = 1;
-        int expectedUpdatedContactsLastId = FakeContactsProvider.NUM_EXISTED_CONTACTS;
-        long expectedNewLastUpdatedTimestamp = FakeContactsProvider.NUM_EXISTED_CONTACTS;
-        long expectedNewLastDeletedTimestamp = FakeContactsProvider.NUM_TOTAL_CONTACTS;
-        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
-                mDataFilePath.getParent().toFile());
-
-        instance.doDeltaUpdateForTest();
-
-        PersistedData loadedData = instance.getPersistedStateForTest();
-        assertThat(loadedData.mLastDeltaUpdateTimestampMillis).isEqualTo(
-                expectedNewLastUpdatedTimestamp);
-        assertThat(loadedData.mLastDeltaDeleteTimestampMillis).isEqualTo(
-                expectedNewLastDeletedTimestamp);
-    }
-
-    @Test
-    public void testContactsIndexerUserInstance_deltaUpdate() throws Exception {
-        // In FakeContactsIndexer, we have contacts array [1, 2, ... NUM_TOTAL_CONTACTS], among
-        // them, [1, NUM_EXISTED_CONTACTS] is for updated contacts, and [NUM_EXISTED_CONTACTS +
-        // 1, NUM_TOTAL_CONTACTS] is for deleted contacts.
-        // And the number here is same for both contact_id, and last update/delete timestamp.
-        // So, if we have [1, 50] for updated, and [51, 100] for deleted, and lastUpdatedTime is
-        // 40, [41, 50] needs to be updated. Likewise, if lastDeletedTime is 55, we would delete
-        // [56, 100
-        int lastUpdatedTimestamp = 19;
-        int lastDeletedTimestamp = FakeContactsProvider.NUM_EXISTED_CONTACTS + 1;
-        int expectedUpdatedContactsFirstId = lastUpdatedTimestamp + 1;
-        int expectedUpdatedContactsLastId = FakeContactsProvider.NUM_EXISTED_CONTACTS;
-        long expectedNewLastUpdatedTimestamp = FakeContactsProvider.NUM_EXISTED_CONTACTS;
-        long expectedNewLastDeletedTimestamp = FakeContactsProvider.NUM_TOTAL_CONTACTS;
-        PersistedData persistedData = new PersistedData();
-        persistedData.mLastFullUpdateTimestampMillis = 1;
-        persistedData.mLastDeltaUpdateTimestampMillis = lastUpdatedTimestamp;
-        persistedData.mLastDeltaDeleteTimestampMillis = lastDeletedTimestamp;
-        clearAndWriteDataToTempFile(persistedData.toString(), mDataFilePath);
-        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
-                mDataFilePath.getParent().toFile());
-
-        instance.doDeltaUpdateForTest();
-
-        PersistedData loadedData = instance.getPersistedStateForTest();
-        assertThat(loadedData.mLastDeltaUpdateTimestampMillis).isEqualTo(
-                expectedNewLastUpdatedTimestamp);
-        assertThat(loadedData.mLastDeltaDeleteTimestampMillis).isEqualTo(
-                expectedNewLastDeletedTimestamp);
+        verifyZeroInteractions(mockJobScheduler);
     }
 
     @Test
     public void testFullUpdate() throws Exception {
-        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
-                mDataFilePath.getParent().toFile());
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues dummyValues = new ContentValues();
+        for (int i = 0; i < 500; i++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+        }
 
-        instance.doFullUpdateInternalAsync(new CancellationSignal()).get();
+        executeAndWaitForCompletion(mInstance.doFullUpdateInternalAsync(new CancellationSignal()),
+                mSingleThreadedExecutor);
 
         AppSearchHelper searchHelper = AppSearchHelper.createAppSearchHelper(mContext,
-                Executors.newSingleThreadExecutor());
+                mSingleThreadedExecutor);
         List<String> contactIds = searchHelper.getAllContactIdsAsync().get();
-        assertThat(contactIds.size()).isEqualTo(FakeContactsProvider.NUM_EXISTED_CONTACTS);
+        assertThat(contactIds.size()).isEqualTo(500);
     }
 
-    private void clearAndWriteDataToTempFile(String data, Path dataFilePath) throws IOException {
-        try (
-                BufferedWriter writer = Files.newBufferedWriter(
-                        dataFilePath,
-                        StandardCharsets.UTF_8);
-        ) {
-            // This would override the previous line. Since we won't delete deprecated fields, we
-            // don't need to clear the old content before doing this.
-            writer.write(data);
-            writer.flush();
+    @Test
+    public void testDeltaUpdate_insertedContacts() throws Exception {
+        // Trigger initial full update
+        executeAndWaitForCompletion(mInstance.doFullUpdateInternalAsync(new CancellationSignal()),
+                mSingleThreadedExecutor);
+
+        long timeBeforeDeltaChangeNotification = System.currentTimeMillis();
+        // Insert contacts to trigger delta update.
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues dummyValues = new ContentValues();
+        for (int i = 0; i < 250; i++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+        }
+
+        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(), mSingleThreadedExecutor);
+
+        AppSearchHelper searchHelper = AppSearchHelper.createAppSearchHelper(mContext,
+                mSingleThreadedExecutor);
+        List<String> contactIds = searchHelper.getAllContactIdsAsync().get();
+        assertThat(contactIds.size()).isEqualTo(250);
+
+        // TODO(b/222126568): verify state using logged events instead
+        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
+                mContactsDir, mSingleThreadedExecutor);
+        PersistedData data = instance.getPersistedStateForTest();
+        assertThat(data.mLastDeltaUpdateTimestampMillis).isAtLeast(
+                timeBeforeDeltaChangeNotification);
+    }
+
+    @Test
+    public void testDeltaUpdate_deletedContacts() throws Exception {
+        // Trigger initial full update
+        executeAndWaitForCompletion(mInstance.doFullUpdateInternalAsync(new CancellationSignal()),
+                mSingleThreadedExecutor);
+
+        long timeBeforeDeltaChangeNotification = System.currentTimeMillis();
+        // Insert contacts to trigger delta update.
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues dummyValues = new ContentValues();
+        for (int i = 0; i < 10; i++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+        }
+
+        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(), mSingleThreadedExecutor);
+
+        // Delete a few contacts to trigger delta update.
+        resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, 2),
+                /*extras=*/ null);
+        resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, 3),
+                /*extras=*/ null);
+        resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, 5),
+                /*extras=*/ null);
+        resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, 7),
+                /*extras=*/ null);
+
+        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(), mSingleThreadedExecutor);
+
+        AppSearchHelper searchHelper = AppSearchHelper.createAppSearchHelper(mContext,
+                mSingleThreadedExecutor);
+        List<String> contactIds = searchHelper.getAllContactIdsAsync().get();
+        assertThat(contactIds.size()).isEqualTo(6);
+        assertThat(contactIds).containsNoneOf("2", "3", "5", "7");
+
+        // TODO(b/222126568): verify state using logged events instead
+        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
+                mContactsDir, mSingleThreadedExecutor);
+        PersistedData data = instance.getPersistedStateForTest();
+        assertThat(data.mLastDeltaDeleteTimestampMillis).isAtLeast(
+                timeBeforeDeltaChangeNotification);
+    }
+
+    @Test
+    public void testDeltaUpdate_insertedAndDeletedContacts() throws Exception {
+        // Trigger initial full update
+        executeAndWaitForCompletion(mInstance.doFullUpdateInternalAsync(new CancellationSignal()),
+                mSingleThreadedExecutor);
+
+        long timeBeforeDeltaChangeNotification = System.currentTimeMillis();
+        // Insert contacts to trigger delta update.
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues dummyValues = new ContentValues();
+        for (int i = 0; i < 10; i++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+        }
+
+        // Delete a few contacts to trigger delta update.
+        resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, 2),
+                /*extras=*/ null);
+        resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, 3),
+                /*extras=*/ null);
+        resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, 5),
+                /*extras=*/ null);
+        resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, 7),
+                /*extras=*/ null);
+
+        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(), mSingleThreadedExecutor);
+
+        AppSearchHelper searchHelper = AppSearchHelper.createAppSearchHelper(mContext,
+                mSingleThreadedExecutor);
+        List<String> contactIds = searchHelper.getAllContactIdsAsync().get();
+        assertThat(contactIds.size()).isEqualTo(6);
+        assertThat(contactIds).containsNoneOf("2", "3", "5", "7");
+
+        // TODO(b/222126568): verify state using logged events instead
+        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
+                mContactsDir, mSingleThreadedExecutor);
+        PersistedData data = instance.getPersistedStateForTest();
+        assertThat(data.mLastDeltaUpdateTimestampMillis).isAtLeast(
+                timeBeforeDeltaChangeNotification);
+        assertThat(data.mLastDeltaDeleteTimestampMillis).isAtLeast(
+                timeBeforeDeltaChangeNotification);
+    }
+
+    /**
+     * Executes given {@link CompletionStage} on the {@code executor} and waits for its completion.
+     *
+     * <p>There are 2 steps in this implementation. The first step is to execute the stage on the
+     * executor, and wait for its execution. The second step is to wait for the completion of the
+     * stage itself.
+     */
+    private void executeAndWaitForCompletion(CompletionStage<Void> stage, ExecutorService executor)
+            throws Exception {
+        AtomicReference<CompletableFuture<Void>> future = new AtomicReference<>(
+                CompletableFuture.completedFuture(null));
+        executor.submit(() -> {
+            // Chain the given stage inside the runnable task so that it executes on the executor.
+            CompletableFuture<Void> chainedFuture = future.get().thenCompose(x -> stage);
+            future.set(chainedFuture);
+        }).get();
+        // Wait for the task to complete on the executor, and wait for the stage to complete also.
+        future.get().get();
+    }
+
+    static final class ContextWrapper extends android.content.ContextWrapper {
+
+        @Nullable ContentResolver mResolver;
+        @Nullable JobScheduler mScheduler;
+
+        public ContextWrapper(Context base) {
+            super(base);
+        }
+
+        @Override
+        public Context getApplicationContext() {
+            return this;
+        }
+
+        @Override
+        public ContentResolver getContentResolver() {
+            if (mResolver != null) {
+                return mResolver;
+            }
+            return getBaseContext().getContentResolver();
+        }
+
+        @Override
+        @Nullable
+        public Object getSystemService(String name) {
+            if (mScheduler != null && Context.JOB_SCHEDULER_SERVICE.equals(name)) {
+                return mScheduler;
+            }
+            return getBaseContext().getSystemService(name);
+        }
+
+        public void setContentResolver(ContentResolver resolver) {
+            mResolver = resolver;
+        }
+
+        public void setJobScheduler(JobScheduler scheduler) {
+            mScheduler = scheduler;
         }
     }
 }

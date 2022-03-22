@@ -18,15 +18,11 @@ package com.android.server.appsearch.contactsindexer;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import android.app.appsearch.AppSearchBatchResult;
 import android.app.appsearch.AppSearchResult;
 import android.app.appsearch.AppSearchSession;
-import android.app.appsearch.GenericDocument;
 import android.app.appsearch.GetSchemaResponse;
-import android.app.appsearch.SearchSpec;
 import android.app.appsearch.SetSchemaRequest;
 import android.content.Context;
-import android.util.ArraySet;
 
 import androidx.test.core.app.ApplicationProvider;
 
@@ -40,29 +36,30 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 // Since AppSearchHelper mainly just calls AppSearch's api to index/remove files, we shouldn't
 // worry too much about it since AppSearch has good test coverage. Here just add some simple checks.
 public class AppSearchHelperTest {
-    private Context mContext;
+
+    private final Executor mSingleThreadedExecutor = Executors.newSingleThreadExecutor();
+
     private AppSearchHelper mAppSearchHelper;
 
     @Before
     public void setUp() throws Exception {
-        mContext = ApplicationProvider.getApplicationContext();
-        mAppSearchHelper = AppSearchHelper.createAppSearchHelper(mContext, Runnable::run);
+        Context context = ApplicationProvider.getApplicationContext();
+        mAppSearchHelper = AppSearchHelper.createAppSearchHelper(context, mSingleThreadedExecutor);
     }
 
     @After
     public void tearDown() throws Exception {
         AppSearchSession session = mAppSearchHelper.getSession();
         SetSchemaRequest request = new SetSchemaRequest.Builder().setForceOverride(true).build();
-        session.setSchema(request, Runnable::run, Runnable::run, result -> {
+        session.setSchema(request, mSingleThreadedExecutor, mSingleThreadedExecutor, result -> {
             if (!result.isSuccess()) {
                 throw new RuntimeException("Failed to wipe the test data in AppSearch");
             }
@@ -79,7 +76,7 @@ public class AppSearchHelperTest {
 
         // TODO(b/203605504) Considering using AppSearchShim, which is our test utility that
         //  glues AppSearchSession to the Future API
-        session.getSchema(Runnable::run, responseFuture::complete);
+        session.getSchema(mSingleThreadedExecutor, responseFuture::complete);
 
         AppSearchResult<GetSchemaResponse> result = responseFuture.get();
         assertThat(result.isSuccess()).isTrue();
@@ -94,82 +91,47 @@ public class AppSearchHelperTest {
 
     @Test
     public void testIndexContacts() throws Exception {
-        int contactsExisted = 10;
-        int contactsDeleted = 10;
-        Person[] contactData = new FakeContactsProvider(mContext.getResources(),
-                contactsExisted, contactsExisted + contactsDeleted).getAllContactData();
-        List<String> ids = new ArrayList<>();
-        for (int i = 1; i <= contactsExisted; ++i) {
-            ids.add(String.valueOf(i));
-        }
+        mAppSearchHelper.indexContactsAsync(generatePersonData(50)).get();
 
-        mAppSearchHelper.indexContactsAsync(Arrays.asList(contactData)).get();
-
-        AppSearchBatchResult<String, GenericDocument> result = TestUtils.getDocsByIdAsync(
-                mAppSearchHelper.getSession(),
-                ids, Runnable::run).get();
-        assertThat(result.getSuccesses()).hasSize(contactsExisted);
-        for (int i = 1; i <= contactsExisted; ++i) {
-            String contactId = String.valueOf(i);
-            TestUtils.assertEquals(new Person(result.getSuccesses().get(contactId)),
-                    contactData[i - 1]);
-        }
+        List<String> appsearchIds = mAppSearchHelper.getAllContactIdsAsync().get();
+        assertThat(appsearchIds.size()).isEqualTo(50);
     }
 
     @Test
     public void testIndexContacts_clearAfterIndex() throws Exception {
-        int numAvailableContacts = 50;
-        List<Person> contacts = new ArrayList<>(Arrays.asList(
-                new FakeContactsProvider(mContext.getResources(), numAvailableContacts,
-                        /*contactsTotal=*/ numAvailableContacts).getAllContactData()));
+        List<Person> contacts = generatePersonData(50);
 
         CompletableFuture<Void> indexContactsFuture = mAppSearchHelper.indexContactsAsync(contacts);
         contacts.clear();
         indexContactsFuture.get();
 
-        Set<String> appSearchIds = TestUtils.getDocIdsByQuery(mAppSearchHelper.getSession(),
-                /*query=*/ "", new SearchSpec.Builder().build(), Runnable::run);
-        assertThat(appSearchIds.size()).isEqualTo(numAvailableContacts);
-
+        List<String> appsearchIds = mAppSearchHelper.getAllContactIdsAsync().get();
+        assertThat(appsearchIds.size()).isEqualTo(50);
     }
 
     @Test
     public void testAppSearchHelper_removeContacts() throws Exception {
-        int contactsExisted = 10;
-        int contactsDeleted = 10;
-        Person[] contactData = new FakeContactsProvider(mContext.getResources(),
-                contactsExisted, contactsExisted + contactsDeleted).getAllContactData();
-        List<String> ids = new ArrayList<>();
-        for (int i = 1; i <= contactsExisted; ++i) {
-            ids.add(String.valueOf(i));
+        mAppSearchHelper.indexContactsAsync(generatePersonData(50)).get();
+        List<String> indexedIds = mAppSearchHelper.getAllContactIdsAsync().get();
+
+        List<String> deletedIds = new ArrayList<>();
+        for (int i = 0; i < 50; i += 5) {
+            deletedIds.add(String.valueOf(i));
         }
-        mAppSearchHelper.indexContactsAsync(Arrays.asList(contactData)).get();
-        AppSearchBatchResult<String, GenericDocument> resultBeforeRemove =
-                TestUtils.getDocsByIdAsync(mAppSearchHelper.getSession(), ids, Runnable::run).get();
+        mAppSearchHelper.removeContactsByIdAsync(deletedIds).get();
 
-        mAppSearchHelper.removeContactsByIdAsync(ids).get();
-
-        AppSearchBatchResult<String, GenericDocument> resultAfterRemove =
-                TestUtils.getDocsByIdAsync(mAppSearchHelper.getSession(), ids, Runnable::run).get();
-        assertThat(resultBeforeRemove.getSuccesses()).hasSize(contactsExisted);
-        assertThat(resultAfterRemove.getSuccesses()).hasSize(0);
+        assertThat(indexedIds.size()).isEqualTo(50);
+        List<String> appsearchIds = mAppSearchHelper.getAllContactIdsAsync().get();
+        assertThat(appsearchIds).containsNoneIn(deletedIds);
     }
 
     @Test
     public void testGetAllContactIds() throws Exception {
-        int numDeletedContacts = 250;
-        int numAvailableContacts = 2500;
-        int numTotalContactsIds = numAvailableContacts + numDeletedContacts;
-
-        FakeContactsProvider contactsProvider = new FakeContactsProvider(mContext.getResources(),
-                numAvailableContacts, numTotalContactsIds);
-        ArrayList<Person> contacts = new ArrayList<>(
-                Arrays.asList(contactsProvider.getAllContactData()));
-        indexContactsInBatchesAsync(contacts).get();
+        indexContactsInBatchesAsync(generatePersonData(200)).get();
 
         List<String> appSearchContactIds = mAppSearchHelper.getAllContactIdsAsync().get();
 
-        assertThat(appSearchContactIds.size()).isEqualTo(numAvailableContacts);
+        assertThat(appSearchContactIds.size()).isEqualTo(200);
     }
 
     private CompletableFuture<Void> indexContactsInBatchesAsync(List<Person> contacts) {
@@ -186,5 +148,14 @@ public class AppSearchHelperTest {
             startIndex = batchEndIndex;
         }
         return indexContactsInBatchesFuture;
+    }
+
+    List<Person> generatePersonData(int numContacts) {
+        List<Person> personList = new ArrayList<>();
+        for (int i = 0; i < numContacts; i++) {
+            personList.add(
+                    new Person.Builder(/*namespace=*/ "", String.valueOf(i), "name" + i).build());
+        }
+        return personList;
     }
 }
