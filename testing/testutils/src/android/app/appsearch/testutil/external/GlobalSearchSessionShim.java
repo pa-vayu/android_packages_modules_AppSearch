@@ -16,7 +16,9 @@
 
 package android.app.appsearch;
 
+import android.annotation.CallbackExecutor;
 import android.annotation.NonNull;
+import android.annotation.SuppressLint;
 import android.app.appsearch.exceptions.AppSearchException;
 import android.app.appsearch.observer.AppSearchObserverCallback;
 import android.app.appsearch.observer.ObserverSpec;
@@ -35,6 +37,13 @@ import java.util.concurrent.Executor;
  * @see AppSearchSessionShim
  */
 public interface GlobalSearchSessionShim extends Closeable {
+
+    @NonNull
+    ListenableFuture<AppSearchBatchResult<String, GenericDocument>> getByDocumentId(
+            @NonNull String packageName,
+            @NonNull String databaseName,
+            @NonNull GetByDocumentIdRequest request);
+
     /**
      * Retrieves documents from all AppSearch databases that the querying application has access to.
      *
@@ -81,6 +90,26 @@ public interface GlobalSearchSessionShim extends Closeable {
     ListenableFuture<Void> reportSystemUsage(@NonNull ReportSystemUsageRequest request);
 
     /**
+     * Retrieves the collection of schemas most recently successfully provided to {@link
+     * AppSearchSessionShim#setSchema} for any types belonging to the requested package and database
+     * that the caller has been granted access to.
+     *
+     * <p>If the requested package/database combination does not exist or the caller has not been
+     * granted access to it, then an empty GetSchemaResponse will be returned.
+     *
+     * @param packageName the package that owns the requested {@link AppSearchSchema} instances.
+     * @param databaseName the database that owns the requested {@link AppSearchSchema} instances.
+     * @return The pending {@link GetSchemaResponse} containing the schemas that the caller has
+     *     access to or an empty GetSchemaResponse if the request package and database does not
+     *     exist, has not set a schema or contains no schemas that are accessible to the caller.
+     */
+    // This call hits disk; async API prevents us from treating these calls as properties.
+    @SuppressLint("KotlinPropertyAccess")
+    @NonNull
+    ListenableFuture<GetSchemaResponse> getSchema(
+            @NonNull String packageName, @NonNull String databaseName);
+
+    /**
      * Returns the {@link Features} to check for the availability of certain features for this
      * session.
      */
@@ -89,42 +118,56 @@ public interface GlobalSearchSessionShim extends Closeable {
 
     /**
      * Adds an {@link AppSearchObserverCallback} to monitor changes within the databases owned by
-     * {@code observedPackage} if they match the given {@link
+     * {@code targetPackageName} if they match the given {@link
      * android.app.appsearch.observer.ObserverSpec}.
      *
-     * <p>If the data owned by {@code observedPackage} is not visible to you, the registration call
-     * will succeed but no notifications will be dispatched. Notifications could start flowing later
-     * if {@code observedPackage} changes its schema visibility settings.
+     * <p>If the data owned by {@code targetPackageName} is not visible to you, the registration
+     * call will succeed but no notifications will be dispatched. Notifications could start flowing
+     * later if {@code targetPackageName} changes its schema visibility settings.
      *
-     * <p>If no package matching {@code observedPackage} exists on the system, the registration call
-     * will succeed but no notifications will be dispatched. Notifications could start flowing later
-     * if {@code observedPackage} is installed and starts indexing data.
+     * <p>If no package matching {@code targetPackageName} exists on the system, the registration
+     * call will succeed but no notifications will be dispatched. Notifications could start flowing
+     * later if {@code targetPackageName} is installed and starts indexing data.
      *
-     * @param observedPackage Package whose changes to monitor
+     * <p>This feature may not be available in all implementations. Check {@link
+     * Features#GLOBAL_SEARCH_SESSION_ADD_REMOVE_OBSERVER} before calling this method.
+     *
+     * @param targetPackageName Package whose changes to monitor
      * @param spec Specification of what types of changes to listen for
      * @param executor Executor on which to call the {@code observer} callback methods.
      * @param observer Callback to trigger when a schema or document changes
+     * @throws AppSearchException if an error occurs trying to register the observer
+     * @throws UnsupportedOperationException if this feature is not available on this AppSearch
+     *     implementation.
      */
     void addObserver(
-            @NonNull String observedPackage,
+            @NonNull String targetPackageName,
             @NonNull ObserverSpec spec,
             @NonNull Executor executor,
-            @NonNull AppSearchObserverCallback observer) throws AppSearchException;
+            @NonNull AppSearchObserverCallback observer)
+            throws AppSearchException;
 
     /**
      * Removes previously registered {@link AppSearchObserverCallback} instances from the system.
      *
-     * <p>All instances of {@link AppSearchObserverCallback} which are equal to the provided
-     * callback using {@link AppSearchObserverCallback#equals} will be removed.
+     * <p>All instances of {@link AppSearchObserverCallback} which are registered to observe {@code
+     * targetPackageName} and compare equal to the provided callback using {@link
+     * AppSearchObserverCallback#equals} will be removed.
      *
      * <p>If no matching observers have been registered, this method has no effect. If multiple
      * matching observers have been registered, all will be removed.
      *
-     * @param observedPackage Package in which the observers to be removed are registered
-     * @param observer Callback to unregister
+     * <p>This feature may not be available in all implementations. Check {@link
+     * Features#GLOBAL_SEARCH_SESSION_ADD_REMOVE_OBSERVER} before calling this method.
+     *
+     * @param targetPackageName Package which the observers to be removed are listening to.
+     * @param observer Callback to unregister.
+     * @throws UnsupportedOperationException if this feature is not available on this AppSearch
+     *     implementation.
      */
     void removeObserver(
-            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer);
+            @NonNull String targetPackageName, @NonNull AppSearchObserverCallback observer)
+            throws AppSearchException;
 
     /** Closes the {@link GlobalSearchSessionShim}. */
     @Override

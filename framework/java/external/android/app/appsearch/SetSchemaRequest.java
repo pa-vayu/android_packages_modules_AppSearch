@@ -16,6 +16,7 @@
 
 package android.app.appsearch;
 
+import android.annotation.IntDef;
 import android.annotation.IntRange;
 import android.annotation.NonNull;
 import android.annotation.SuppressLint;
@@ -24,6 +25,8 @@ import android.util.ArraySet;
 
 import com.android.internal.util.Preconditions;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -81,9 +84,82 @@ import java.util.Set;
  * @see Migrator
  */
 public final class SetSchemaRequest {
+
+    /**
+     * List of Android Roles are supported in {@code
+     * SetSchemaRequest.Builder#addAllowedRoleForSchemaTypeVisibility}
+     *
+     * @see android.app.role.RoleManager
+     * @hide
+     */
+    @IntDef(
+            value = {
+                ROLE_HOME,
+                ROLE_ASSISTANT,
+            })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface AppSearchSupportedRole {}
+
+    /**
+     * The {@link android.app.role.RoleManager#ROLE_HOME} AppSearch supported in {@code
+     * SetSchemaRequest.Builder#addAllowedRoleForSchemaTypeVisibility}
+     * @hide
+     */
+    public static final int ROLE_HOME = 1;
+
+    /**
+     * The {@link android.app.role.RoleManager#ROLE_ASSISTANT} AppSearch supported in {@code
+     * SetSchemaRequest.Builder#addAllowedRoleForSchemaTypeVisibility}
+     * @hide
+     */
+    public static final int ROLE_ASSISTANT = 2;
+
+    /**
+     * List of Android Permission are supported in {@link
+     * SetSchemaRequest.Builder#setRequiredPermissionsForSchemaTypeVisibility}
+     *
+     * @see android.Manifest.permission
+     * @hide
+     */
+    @IntDef(
+            value = {
+                READ_SMS,
+                READ_CALENDAR,
+                READ_CONTACTS,
+                READ_EXTERNAL_STORAGE,
+            })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface AppSearchSupportedPermission {}
+
+    /**
+     * The {@link android.Manifest.permission#READ_SMS} AppSearch supported in {@link
+     * SetSchemaRequest.Builder#setRequiredPermissionsForSchemaTypeVisibility}
+     */
+    public static final int READ_SMS = 1;
+
+    /**
+     * The {@link android.Manifest.permission#READ_CALENDAR} AppSearch supported in {@link
+     * SetSchemaRequest.Builder#setRequiredPermissionsForSchemaTypeVisibility}
+     */
+    public static final int READ_CALENDAR = 2;
+
+    /**
+     * The {@link android.Manifest.permission#READ_CONTACTS} AppSearch supported in {@link
+     * SetSchemaRequest.Builder#setRequiredPermissionsForSchemaTypeVisibility}
+     */
+    public static final int READ_CONTACTS = 3;
+
+    /**
+     * The {@link android.Manifest.permission#READ_EXTERNAL_STORAGE} AppSearch supported in {@link
+     * SetSchemaRequest.Builder#setRequiredPermissionsForSchemaTypeVisibility}
+     */
+    public static final int READ_EXTERNAL_STORAGE = 4;
+
     private final Set<AppSearchSchema> mSchemas;
     private final Set<String> mSchemasNotDisplayedBySystem;
     private final Map<String, Set<PackageIdentifier>> mSchemasVisibleToPackages;
+    private final Map<String, Set<Integer>> mSchemasVisibleToRoles;
+    private final Map<String, Set<Integer>> mSchemasVisibleToPermissions;
     private final Map<String, Migrator> mMigrators;
     private final boolean mForceOverride;
     private final int mVersion;
@@ -92,12 +168,16 @@ public final class SetSchemaRequest {
             @NonNull Set<AppSearchSchema> schemas,
             @NonNull Set<String> schemasNotDisplayedBySystem,
             @NonNull Map<String, Set<PackageIdentifier>> schemasVisibleToPackages,
+            @NonNull Map<String, Set<Integer>> schemasVisibleToRoles,
+            @NonNull Map<String, Set<Integer>> schemasVisibleToPermissions,
             @NonNull Map<String, Migrator> migrators,
             boolean forceOverride,
             int version) {
         mSchemas = Objects.requireNonNull(schemas);
         mSchemasNotDisplayedBySystem = Objects.requireNonNull(schemasNotDisplayedBySystem);
         mSchemasVisibleToPackages = Objects.requireNonNull(schemasVisibleToPackages);
+        mSchemasVisibleToRoles = Objects.requireNonNull(schemasVisibleToRoles);
+        mSchemasVisibleToPermissions = Objects.requireNonNull(schemasVisibleToPermissions);
         mMigrators = Objects.requireNonNull(migrators);
         mForceOverride = forceOverride;
         mVersion = version;
@@ -127,8 +207,51 @@ public final class SetSchemaRequest {
     @NonNull
     public Map<String, Set<PackageIdentifier>> getSchemasVisibleToPackages() {
         Map<String, Set<PackageIdentifier>> copy = new ArrayMap<>();
-        for (String key : mSchemasVisibleToPackages.keySet()) {
-            copy.put(key, new ArraySet<>(mSchemasVisibleToPackages.get(key)));
+        for (Map.Entry<String, Set<PackageIdentifier>> entry :
+                mSchemasVisibleToPackages.entrySet()) {
+            copy.put(entry.getKey(), new ArraySet<>(entry.getValue()));
+        }
+        return copy;
+    }
+
+    /**
+     * Returns the map of schema types to the set of Roles that have access to that schema type.
+     *
+     * <p>The querier will have access to the schema type if they hold ANY of allowed Roles.
+     *
+     * <p>It’s inefficient to call this method repeatedly.
+     *
+     * @return The map contains schema type and all allowed role can access it. The supported Role
+     *     are {@link #ROLE_HOME} and {@link #ROLE_ASSISTANT}
+     * @hide
+     */
+    @NonNull
+    public Map<String, Set<Integer>> getAllowedRolesForSchemaTypeVisibility() {
+        Map<String, Set<Integer>> copy = new ArrayMap<>();
+        for (Map.Entry<String, Set<Integer>> entry : mSchemasVisibleToRoles.entrySet()) {
+            copy.put(entry.getKey(), new ArraySet<>(entry.getValue()));
+        }
+        return copy;
+    }
+
+    /**
+     * Returns the map of schema types to the set of {@link android.Manifest.permission} that
+     * querier must hold to have access to that schema type.
+     *
+     * <p>To get {@link GenericDocument} of a schema type, the call must hold ALL of the required
+     * permissions for that schema type.
+     *
+     * <p>It’s inefficient to call this method repeatedly.
+     *
+     * @return The map contains schema type and all required permission for querier to access it.
+     *     The supported Permission are {@link #READ_SMS}, {@link #READ_CALENDAR}, {@link
+     *     #READ_CONTACTS}, {@link #READ_EXTERNAL_STORAGE}.
+     */
+    @NonNull
+    public Map<String, Set<Integer>> getRequiredPermissionsForSchemaTypeVisibility() {
+        Map<String, Set<Integer>> copy = new ArrayMap<>();
+        for (Map.Entry<String, Set<Integer>> entry : mSchemasVisibleToPermissions.entrySet()) {
+            copy.put(entry.getKey(), new ArraySet<>(entry.getValue()));
         }
         return copy;
     }
@@ -174,6 +297,8 @@ public final class SetSchemaRequest {
         private ArraySet<String> mSchemasNotDisplayedBySystem = new ArraySet<>();
         private ArrayMap<String, Set<PackageIdentifier>> mSchemasVisibleToPackages =
                 new ArrayMap<>();
+        private ArrayMap<String, Set<Integer>> mSchemasVisibleToRoles = new ArrayMap<>();
+        private ArrayMap<String, Set<Integer>> mSchemasVisibleToPermissions = new ArrayMap<>();
         private ArrayMap<String, Migrator> mMigrators = new ArrayMap<>();
         private boolean mForceOverride = false;
         private int mVersion = DEFAULT_VERSION;
@@ -232,6 +357,94 @@ public final class SetSchemaRequest {
             } else {
                 mSchemasNotDisplayedBySystem.add(schemaType);
             }
+            return this;
+        }
+
+        /**
+         * Add an Android Role who can read documents from the provided {@code schemaType}.
+         *
+         * <p>The querier could read documents from the provided {@code schemaType} if they hold ANY
+         * of allowed Roles.
+         *
+         * <p>The supported Role are {@link #ROLE_HOME} and {@link #ROLE_ASSISTANT}.
+         *
+         * @see android.app.role.RoleManager
+         * @see android.app.role.RoleManager#ROLE_HOME
+         * @see android.app.role.RoleManager#ROLE_ASSISTANT
+         * @param schemaType The schema type to set visibility on.
+         * @param role The Android role who can access the {@link GenericDocument} objects that
+         *     under the given schema. The allowed values are {@link
+         *     android.app.role.RoleManager#ROLE_HOME} and {@link
+         *     android.app.role.RoleManager#ROLE_ASSISTANT}.
+         * @throws IllegalArgumentException – if input unsupported role.
+         * @hide
+         */
+        // Merged map available from getAllowedRolesForSchemaTypeVisibility
+        @SuppressLint("MissingGetterMatchingBuilder")
+        @NonNull
+        public Builder addAllowedRoleForSchemaTypeVisibility(
+                @NonNull String schemaType, @AppSearchSupportedRole int role) {
+            Objects.requireNonNull(schemaType);
+            Preconditions.checkArgumentInRange(role, ROLE_HOME, ROLE_ASSISTANT, "role");
+            // TODO(b/202194495) check the input role are in the allowed list.
+            resetIfBuilt();
+            Set<Integer> allowedRole = mSchemasVisibleToRoles.get(schemaType);
+            if (allowedRole == null) {
+                allowedRole = new ArraySet<>();
+                mSchemasVisibleToRoles.put(schemaType, allowedRole);
+            }
+            allowedRole.add(role);
+            return this;
+        }
+
+        /**
+         * Clears all allowed roles for the given schema type.
+         *
+         * @param schemaType The schema type to set visibility on.
+         * @hide
+         */
+        @NonNull
+        public Builder clearAllowedRolesForSchemaTypeVisibility(@NonNull String schemaType) {
+            Objects.requireNonNull(schemaType);
+            resetIfBuilt();
+            mSchemasVisibleToRoles.remove(schemaType);
+            return this;
+        }
+
+        /**
+         * Sets a set of required Android {@link android.Manifest.permission} to the given schema
+         * type.
+         *
+         * <p>To get {@link GenericDocument} of the given schema type, the call must hold ALL of the
+         * required permissions.
+         *
+         * <p>The supported Permission are {@link #READ_SMS}, {@link #READ_CALENDAR}, {@link
+         * #READ_CONTACTS}, {@link #READ_EXTERNAL_STORAGE}.
+         *
+         * @see android.Manifest.permission#READ_SMS
+         * @see android.Manifest.permission#READ_CALENDAR
+         * @see android.Manifest.permission#READ_CONTACTS
+         * @see android.Manifest.permission#READ_EXTERNAL_STORAGE
+         * @param schemaType The schema type to set visibility on.
+         * @param permissions A set of required Android permissions the caller need to hold to
+         *     access {@link GenericDocument} objects that under the given schema.
+         * @throws IllegalArgumentException – if input unsupported permission.
+         */
+        // Merged list available from getRequiredPermissionsForSchemaTypeVisibility
+        @SuppressLint("MissingGetterMatchingBuilder")
+        @NonNull
+        public Builder setRequiredPermissionsForSchemaTypeVisibility(
+                @NonNull String schemaType,
+                @AppSearchSupportedPermission @NonNull Set<Integer> permissions) {
+            Objects.requireNonNull(schemaType);
+            Objects.requireNonNull(permissions);
+            for (int permission : permissions) {
+                Preconditions.checkArgumentInRange(
+                        permission, READ_SMS, READ_EXTERNAL_STORAGE, "permission");
+            }
+            resetIfBuilt();
+            // TODO(b/181908338) check input permissions in our allow list
+            mSchemasVisibleToPermissions.put(schemaType, permissions);
             return this;
         }
 
@@ -417,6 +630,8 @@ public final class SetSchemaRequest {
             // Create a copy because we're going to remove from the set for verification purposes.
             Set<String> referencedSchemas = new ArraySet<>(mSchemasNotDisplayedBySystem);
             referencedSchemas.addAll(mSchemasVisibleToPackages.keySet());
+            referencedSchemas.addAll(mSchemasVisibleToRoles.keySet());
+            referencedSchemas.addAll(mSchemasVisibleToPermissions.keySet());
 
             for (AppSearchSchema schema : mSchemas) {
                 referencedSchemas.remove(schema.getSchemaType());
@@ -436,6 +651,8 @@ public final class SetSchemaRequest {
                     mSchemas,
                     mSchemasNotDisplayedBySystem,
                     mSchemasVisibleToPackages,
+                    mSchemasVisibleToRoles,
+                    mSchemasVisibleToPermissions,
                     mMigrators,
                     mForceOverride,
                     mVersion);
@@ -450,6 +667,22 @@ public final class SetSchemaRequest {
                     schemasVisibleToPackages.put(entry.getKey(), new ArraySet<>(entry.getValue()));
                 }
                 mSchemasVisibleToPackages = schemasVisibleToPackages;
+
+                ArrayMap<String, Set<Integer>> schemasVisibleToRoles =
+                        new ArrayMap<>(mSchemasVisibleToRoles.size());
+                for (Map.Entry<String, Set<Integer>> entry : mSchemasVisibleToRoles.entrySet()) {
+                    schemasVisibleToRoles.put(entry.getKey(), new ArraySet<>(entry.getValue()));
+                }
+                mSchemasVisibleToRoles = schemasVisibleToRoles;
+
+                ArrayMap<String, Set<Integer>> schemasVisibleToPermissions =
+                        new ArrayMap<>(mSchemasVisibleToPermissions.size());
+                for (Map.Entry<String, Set<Integer>> entry :
+                        mSchemasVisibleToPermissions.entrySet()) {
+                    schemasVisibleToPermissions.put(
+                            entry.getKey(), new ArraySet<>(entry.getValue()));
+                }
+                mSchemasVisibleToPermissions = schemasVisibleToPermissions;
 
                 mSchemas = new ArraySet<>(mSchemas);
                 mSchemasNotDisplayedBySystem = new ArraySet<>(mSchemasNotDisplayedBySystem);
