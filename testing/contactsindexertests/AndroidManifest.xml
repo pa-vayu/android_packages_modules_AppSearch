@@ -17,10 +17,16 @@
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           package="com.android.appsearch.contactsindexertests" >
+    <uses-sdk android:minSdkVersion="33" android:targetSdkVersion="33" />
+    <uses-permission android:name="android.permission.INTERACT_ACROSS_USERS_FULL" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.READ_DEVICE_CONFIG" />
+    <uses-permission android:name="android.permission.READ_SYNC_STATS" />
     <application android:label="ContactsIndexerTests">
         <uses-library android:name="android.test.runner"/>
+        <service android:name="com.android.server.appsearch.contactsindexer.ContactsIndexerMaintenanceService"
+                 android:permission="android.permission.BIND_JOB_SERVICE">
+        </service>
     </application>
     <instrumentation android:name="androidx.test.runner.AndroidJUnitRunner"
                      android:targetPackage="com.android.appsearch.contactsindexertests"

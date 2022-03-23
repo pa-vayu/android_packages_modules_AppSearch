@@ -25,6 +25,7 @@ android_test {
         "androidx.test.rules",
         "compatibility-device-util-axt",
         "service-appsearch",
+        "services.core",
         "truth-prebuilt",
     ],
     libs: [
