@@ -225,6 +225,30 @@ public class ContactDataHandlerTest {
     }
 
     @Test
+    public void testConvertCurrentRowToPerson_note() {
+        String name = "name";
+        String note = "note";
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Note.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Note.NOTE, note);
+        Cursor cursor = makeCursorFromContentValues(values);
+
+        Person personExpected = new Person.Builder(TEST_NAMESPACE, TEST_ID, name)
+                .setCreationTimestampMillis(0)
+                .setNote(note)
+                .build();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+        Person personTested = helperTested.buildPerson();
+
+        assertThat(personTested.getNote()).isEqualTo(note);
+        TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
     public void testConvertCurrentRowToPerson_phone() {
         String name = "name";
         String number = "phoneNumber";
@@ -335,6 +359,31 @@ public class ContactDataHandlerTest {
         Person personExpected = new PersonBuilderHelper(
                 new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
                         0)).getPersonBuilder().addAffiliation(company).build();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+        Person personTested = helperTested.buildPerson();
+
+        TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
+    public void testConvertCurrentRowToPerson_organizationWithJobTitle() {
+        String name = "name";
+        String title = "Software Engineer";
+        String company = "Google Inc";
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Organization.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Organization.TITLE, title);
+        values.put(CommonDataKinds.Organization.COMPANY, company);
+        Cursor cursor = makeCursorFromContentValues(values);
+
+        Person personExpected = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
+                        0)).getPersonBuilder().addAffiliation(
+                "Software Engineer, Google Inc").build();
 
         PersonBuilderHelper helperTested = new PersonBuilderHelper(
                 new Person.Builder(TEST_NAMESPACE, TEST_ID,

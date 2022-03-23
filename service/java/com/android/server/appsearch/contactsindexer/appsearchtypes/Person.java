@@ -49,6 +49,7 @@ public class Person extends GenericDocument {
     public static final String PERSON_PROPERTY_CONTACT_POINTS = "contactPoints";
     public static final String PERSON_PROPERTY_AFFILIATIONS = "affiliations";
     public static final String PERSON_PROPERTY_RELATIONS = "relations";
+    public static final String PERSON_PROPERTY_NOTE = "note";
 
     public static final AppSearchSchema SCHEMA = new AppSearchSchema.Builder(SCHEMA_TYPE)
             // full display name
@@ -121,6 +122,13 @@ public class Person extends GenericDocument {
                     PERSON_PROPERTY_RELATIONS)
                     .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
                     .build())
+            // Note
+            .addProperty(new AppSearchSchema.StringPropertyConfig.Builder(PERSON_PROPERTY_NOTE)
+                    .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_OPTIONAL)
+                    .setIndexingType(
+                            AppSearchSchema.StringPropertyConfig.INDEXING_TYPE_PREFIXES)
+                    .setTokenizerType(AppSearchSchema.StringPropertyConfig.TOKENIZER_TYPE_PLAIN)
+                    .build())
             .build();
 
     /** Constructs a {@link Person}. */
@@ -173,6 +181,11 @@ public class Person extends GenericDocument {
 
     public boolean isBot() {
         return getPropertyBoolean(PERSON_PROPERTY_IS_BOT);
+    }
+
+    @Nullable
+    public String getNote() {
+        return getPropertyString(PERSON_PROPERTY_NOTE);
     }
 
     @NonNull
@@ -268,6 +281,13 @@ public class Person extends GenericDocument {
         @NonNull
         public Builder setIsBot(boolean isBot) {
             setPropertyBoolean(PERSON_PROPERTY_IS_BOT, isBot);
+            return this;
+        }
+
+        /** Sets a note about this {@link Person}. */
+        @NonNull
+        public Builder setNote(@NonNull String note) {
+            setPropertyString(Person.PERSON_PROPERTY_NOTE, Objects.requireNonNull(note));
             return this;
         }
 
