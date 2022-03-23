@@ -34,13 +34,13 @@ import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
 import android.os.CancellationSignal;
+import android.os.PersistableBundle;
 import android.provider.ContactsContract;
 import android.test.ProviderTestCase2;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
-import com.android.server.appsearch.contactsindexer.ContactsIndexerUserInstance.PersistedData;
 import com.android.server.appsearch.contactsindexer.appsearchtypes.Person;
 
 import org.junit.After;
@@ -51,7 +51,6 @@ import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 
 import java.io.File;
-import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -75,7 +74,7 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
 
     private ContextWrapper mContextWrapper;
     private File mContactsDir;
-    private Path mDataFilePath;
+    private File mSettingsFile;
     private SearchSpec mSpecForQueryAllContacts;
     private ContactsIndexerUserInstance mInstance;
 
@@ -90,8 +89,7 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
 
         // Setup the file path to the persisted data
         mContactsDir = new File(mTemporaryFolder.newFolder(), "appsearch/contacts");
-        mDataFilePath = new File(mContactsDir, ContactsIndexerUserInstance.CONTACTS_INDEXER_STATE)
-                .toPath();
+        mSettingsFile = new File(mContactsDir, ContactsIndexerSettings.SETTINGS_FILE_NAME);
 
         mContextWrapper = new ContextWrapper(ApplicationProvider.getApplicationContext());
         mContextWrapper.setContentResolver(getMockContentResolver());
@@ -206,11 +204,9 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         assertThat(contactIds.size()).isEqualTo(250);
 
         // TODO(b/222126568): verify state using logged events instead
-        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
-                mContactsDir, mSingleThreadedExecutor);
-        PersistedData data = instance.getPersistedStateForTest();
-        assertThat(data.mLastDeltaUpdateTimestampMillis).isAtLeast(
-                timeBeforeDeltaChangeNotification);
+        PersistableBundle settingsBundle = ContactsIndexerSettings.readBundle(mSettingsFile);
+        assertThat(settingsBundle.getLong(ContactsIndexerSettings.LAST_DELTA_UPDATE_TIMESTAMP_KEY))
+                .isAtLeast(timeBeforeDeltaChangeNotification);
     }
 
     @Test
@@ -248,11 +244,9 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         assertThat(contactIds).containsNoneOf("2", "3", "5", "7");
 
         // TODO(b/222126568): verify state using logged events instead
-        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
-                mContactsDir, mSingleThreadedExecutor);
-        PersistedData data = instance.getPersistedStateForTest();
-        assertThat(data.mLastDeltaDeleteTimestampMillis).isAtLeast(
-                timeBeforeDeltaChangeNotification);
+        PersistableBundle settingsBundle = ContactsIndexerSettings.readBundle(mSettingsFile);
+        assertThat(settingsBundle.getLong(ContactsIndexerSettings.LAST_DELTA_UPDATE_TIMESTAMP_KEY))
+                .isAtLeast(timeBeforeDeltaChangeNotification);
     }
 
     @Test
@@ -288,13 +282,11 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         assertThat(contactIds).containsNoneOf("2", "3", "5", "7");
 
         // TODO(b/222126568): verify state using logged events instead
-        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
-                mContactsDir, mSingleThreadedExecutor);
-        PersistedData data = instance.getPersistedStateForTest();
-        assertThat(data.mLastDeltaUpdateTimestampMillis).isAtLeast(
-                timeBeforeDeltaChangeNotification);
-        assertThat(data.mLastDeltaDeleteTimestampMillis).isAtLeast(
-                timeBeforeDeltaChangeNotification);
+        PersistableBundle settingsBundle = ContactsIndexerSettings.readBundle(mSettingsFile);
+        assertThat(settingsBundle.getLong(ContactsIndexerSettings.LAST_DELTA_UPDATE_TIMESTAMP_KEY))
+                .isAtLeast(timeBeforeDeltaChangeNotification);
+        assertThat(settingsBundle.getLong(ContactsIndexerSettings.LAST_DELTA_DELETE_TIMESTAMP_KEY))
+                .isAtLeast(timeBeforeDeltaChangeNotification);
     }
 
     /**
