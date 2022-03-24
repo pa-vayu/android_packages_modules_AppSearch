@@ -65,47 +65,6 @@ public class AppSearchSessionUnitTest {
     }
 
     @Test
-    public void testPutDocument_throwsNullException() throws Exception {
-        // Create a document
-        AppSearchEmail inEmail =
-                new AppSearchEmail.Builder("namespace", "uri1")
-                        .setFrom("from@example.com")
-                        .setTo("to1@example.com", "to2@example.com")
-                        .setSubject("testPut example")
-                        .setBody("This is the body of the testPut email")
-                        .build();
-
-        // clear the document bundle to make our service crash and throw an NullPointerException.
-        inEmail.getBundle().clear();
-        CompletableFuture<AppSearchBatchResult<String, Void>> putDocumentsFuture =
-                new CompletableFuture<>();
-
-        // Index the broken document.
-        mSearchSession.put(
-                new PutDocumentsRequest.Builder().addGenericDocuments(inEmail).build(),
-                mExecutor, new BatchResultCallback<String, Void>() {
-                    @Override
-                    public void onResult(AppSearchBatchResult<String, Void> result) {
-                        putDocumentsFuture.complete(result);
-                    }
-
-                    @Override
-                    public void onSystemError(Throwable throwable) {
-                        putDocumentsFuture.completeExceptionally(throwable);
-                    }
-                });
-
-        // Verify the NullPointException has been thrown.
-        ExecutionException executionException =
-                expectThrows(ExecutionException.class, putDocumentsFuture::get);
-        assertThat(executionException.getCause()).isInstanceOf(AppSearchException.class);
-        AppSearchException appSearchException = (AppSearchException) executionException.getCause();
-        assertThat(appSearchException.getResultCode())
-                .isEqualTo(AppSearchResult.RESULT_INTERNAL_ERROR);
-        assertThat(appSearchException.getMessage()).startsWith("NullPointerException");
-    }
-
-    @Test
     public void testGetEmptyNextPage() throws Exception {
         // Set the schema.
         CompletableFuture<AppSearchResult<SetSchemaResponse>> schemaFuture =

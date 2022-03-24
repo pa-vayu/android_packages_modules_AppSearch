@@ -23,6 +23,7 @@ import android.app.appsearch.aidl.AppSearchResultParcel;
 import android.app.appsearch.aidl.IAppSearchBatchResultCallback;
 import android.app.appsearch.aidl.IAppSearchManager;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
+import android.app.appsearch.aidl.DocumentsParcel;
 import android.app.appsearch.util.SchemaMigrationUtil;
 import android.content.AttributionSource;
 import android.os.Bundle;
@@ -281,13 +282,10 @@ public final class AppSearchSession implements Closeable {
         Objects.requireNonNull(executor);
         Objects.requireNonNull(callback);
         Preconditions.checkState(!mIsClosed, "AppSearchSession has already been closed");
-        List<GenericDocument> documents = request.getGenericDocuments();
-        List<Bundle> documentBundles = new ArrayList<>(documents.size());
-        for (int i = 0; i < documents.size(); i++) {
-            documentBundles.add(documents.get(i).getBundle());
-        }
+        DocumentsParcel documentsParcel =
+                new DocumentsParcel(request.getGenericDocuments());
         try {
-            mService.putDocuments(mCallerAttributionSource, mDatabaseName, documentBundles,
+            mService.putDocuments(mCallerAttributionSource, mDatabaseName, documentsParcel,
                     mUserHandle,
                     /*binderCallStartTimeMillis=*/ SystemClock.elapsedRealtime(),
                     new IAppSearchBatchResultCallback.Stub() {
