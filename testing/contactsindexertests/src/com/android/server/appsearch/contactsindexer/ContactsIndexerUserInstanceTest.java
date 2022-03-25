@@ -38,7 +38,6 @@ import android.os.CancellationSignal;
 import android.os.PersistableBundle;
 import android.provider.ContactsContract;
 import android.test.ProviderTestCase2;
-import android.util.Log;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -138,7 +137,7 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
     }
 
     @Test
-    public void testCreateInstance_initialRun_schedulesFullUpdateJob() throws Exception {
+    public void testStart_initialRun_schedulesFullUpdateJob() throws Exception {
         JobScheduler mockJobScheduler = mock(JobScheduler.class);
         mContextWrapper.setJobScheduler(mockJobScheduler);
         ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
@@ -153,7 +152,7 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
     }
 
     @Test
-    public void testCreateInstance_subsequentRun_doesNotScheduleFullUpdateJob() throws Exception {
+    public void testStart_subsequentRun_doesNotScheduleFullUpdateJob() throws Exception {
         executeAndWaitForCompletion(
                 mInstance.doFullUpdateInternalAsync(new CancellationSignal(), mUpdateStats),
                 mSingleThreadedExecutor);
@@ -191,11 +190,6 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
 
     @Test
     public void testDeltaUpdate_insertedContacts() throws Exception {
-        // Trigger initial full update
-        executeAndWaitForCompletion(
-                mInstance.doFullUpdateInternalAsync(new CancellationSignal(), mUpdateStats),
-                mSingleThreadedExecutor);
-
         long timeBeforeDeltaChangeNotification = System.currentTimeMillis();
         // Insert contacts to trigger delta update.
         ContentResolver resolver = mContext.getContentResolver();
@@ -204,7 +198,8 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
             resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
         }
 
-        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(mUpdateStats),
+        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(/*indexingLimit=*/ -1,
+                        mUpdateStats),
                 mSingleThreadedExecutor);
 
         AppSearchHelper searchHelper = AppSearchHelper.createAppSearchHelper(mContext,
@@ -232,12 +227,26 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
     }
 
     @Test
-    public void testDeltaUpdate_deletedContacts() throws Exception {
-        // Trigger initial full update
-        executeAndWaitForCompletion(
-                mInstance.doFullUpdateInternalAsync(new CancellationSignal(), mUpdateStats),
+    public void testDeltaUpdateWithLimit_fewerContactsIndexed() throws Exception {
+        // Insert contacts to trigger delta update.
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues dummyValues = new ContentValues();
+        for (int i = 0; i < 250; i++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+        }
+
+        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(/*indexingLimit=*/ 100,
+                        mUpdateStats),
                 mSingleThreadedExecutor);
 
+        AppSearchHelper searchHelper = AppSearchHelper.createAppSearchHelper(mContext,
+                mSingleThreadedExecutor);
+        List<String> contactIds = searchHelper.getAllContactIdsAsync().get();
+        assertThat(contactIds.size()).isEqualTo(100);
+    }
+
+    @Test
+    public void testDeltaUpdate_deletedContacts() throws Exception {
         long timeBeforeDeltaChangeNotification = System.currentTimeMillis();
         // Insert contacts to trigger delta update.
         ContentResolver resolver = mContext.getContentResolver();
@@ -246,7 +255,8 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
             resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
         }
 
-        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(mUpdateStats),
+        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(/*indexingLimit=*/ -1,
+                        mUpdateStats),
                 mSingleThreadedExecutor);
 
         // Delete a few contacts to trigger delta update.
@@ -259,7 +269,8 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, 7),
                 /*extras=*/ null);
 
-        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(mUpdateStats),
+        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(/*indexingLimit=*/ -1,
+                        mUpdateStats),
                 mSingleThreadedExecutor);
 
         AppSearchHelper searchHelper = AppSearchHelper.createAppSearchHelper(mContext,
@@ -276,11 +287,6 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
 
     @Test
     public void testDeltaUpdate_insertedAndDeletedContacts() throws Exception {
-        // Trigger initial full update
-        executeAndWaitForCompletion(
-                mInstance.doFullUpdateInternalAsync(new CancellationSignal(), mUpdateStats),
-                mSingleThreadedExecutor);
-
         long timeBeforeDeltaChangeNotification = System.currentTimeMillis();
         // Insert contacts to trigger delta update.
         ContentResolver resolver = mContext.getContentResolver();
@@ -300,7 +306,8 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
                 /*extras=*/ null);
 
         mUpdateStats.clear();
-        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(mUpdateStats),
+        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(/*indexingLimit=*/ -1,
+                        mUpdateStats),
                 mSingleThreadedExecutor);
 
         AppSearchHelper searchHelper = AppSearchHelper.createAppSearchHelper(mContext,
@@ -332,7 +339,6 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
 
     @Test
     public void testDeltaUpdate_insertedAndDeletedContacts_withDeletionSucceed() throws Exception {
-        // Trigger initial full update
         ContentResolver resolver = mContext.getContentResolver();
         ContentValues dummyValues = new ContentValues();
         // Index 10 documents before testing.
@@ -348,7 +354,6 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         for (int i = 0; i < 5; i++) {
             resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
         }
-
         // Delete a few contacts to trigger delta update.
         resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, 2),
                 /*extras=*/ null);
@@ -360,7 +365,8 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
                 /*extras=*/ null);
 
         mUpdateStats.clear();
-        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(mUpdateStats),
+        executeAndWaitForCompletion(mInstance.doDeltaUpdateAsync(/*indexingLimit=*/ -1,
+                        mUpdateStats),
                 mSingleThreadedExecutor);
 
         AppSearchHelper searchHelper = AppSearchHelper.createAppSearchHelper(mContext,

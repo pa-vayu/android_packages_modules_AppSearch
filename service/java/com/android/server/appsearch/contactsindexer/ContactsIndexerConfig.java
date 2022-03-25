@@ -27,12 +27,18 @@ import java.util.concurrent.TimeUnit;
  */
 public class ContactsIndexerConfig {
     private static final String CONTACTS_INDEXER_ENABLED = "contacts_indexer_enabled";
+    private static final String CONTACTS_INSTANT_INDEXING_LIMIT = "contacts_instant_indexing_limit";
     private static final String CONTACTS_FULL_UPDATE_INTERVAL_MILLIS
             = "contacts_full_update_interval_millis";
 
     public static boolean isContactsIndexerEnabled() {
         return DeviceConfig.getBoolean(DeviceConfig.NAMESPACE_APPSEARCH, CONTACTS_INDEXER_ENABLED,
                 /*defaultValue=*/ true);
+    }
+
+    public static int getContactsInstantIndexingLimit() {
+        return DeviceConfig.getInt(DeviceConfig.NAMESPACE_APPSEARCH,
+                CONTACTS_INSTANT_INDEXING_LIMIT, /*defaultValue=*/ 1000);
     }
 
     public static long getContactsFullUpdateIntervalMillis() {

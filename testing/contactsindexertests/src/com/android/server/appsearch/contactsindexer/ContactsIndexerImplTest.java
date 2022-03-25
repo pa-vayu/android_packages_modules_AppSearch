@@ -23,18 +23,13 @@ import static org.mockito.Mockito.mock;
 
 import android.annotation.NonNull;
 import android.app.appsearch.AppSearchManager;
-import android.app.appsearch.AppSearchResult;
-import android.app.appsearch.AppSearchSession;
 import android.app.appsearch.AppSearchSessionShim;
 import android.app.appsearch.SetSchemaRequest;
-import android.app.appsearch.SetSchemaResponse;
 import android.app.appsearch.testutil.AppSearchSessionShimImpl;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.test.ProviderTestCase2;
-import android.util.ArraySet;
 import android.content.ContextWrapper;
-import android.test.ProviderTestCase2;
 import android.util.Pair;
 
 import androidx.test.core.app.ApplicationProvider;
@@ -42,14 +37,9 @@ import androidx.test.core.app.ApplicationProvider;
 import com.android.server.appsearch.contactsindexer.ContactsIndexerImpl.ContactsBatcher;
 import com.android.server.appsearch.contactsindexer.appsearchtypes.Person;
 
-import com.android.server.appsearch.contactsindexer.FakeContactsProvider;
-import com.android.server.appsearch.contactsindexer.FakeAppSearchHelper;
-import com.android.server.appsearch.contactsindexer.TestUtils;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvider> {
