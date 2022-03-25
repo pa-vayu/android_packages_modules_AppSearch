@@ -1498,6 +1498,10 @@ public class AppSearchManagerService extends SystemService {
             @NonNull UserHandle targetUser,
             @NonNull AppSearchUserInstance instance,
             int mutateBatchSize) {
+        if (mServiceImplHelper.isUserLocked(targetUser)) {
+            // We shouldn't schedule any task to locked user.
+            return;
+        }
         mExecutorManager.getOrCreateUserExecutor(targetUser).execute(() -> {
             long totalLatencyStartMillis = SystemClock.elapsedRealtime();
             OptimizeStats.Builder builder = new OptimizeStats.Builder();
@@ -1522,6 +1526,10 @@ public class AppSearchManagerService extends SystemService {
     private void checkForOptimize(
             @NonNull UserHandle targetUser,
             @NonNull AppSearchUserInstance instance) {
+        if (mServiceImplHelper.isUserLocked(targetUser)) {
+            // We shouldn't schedule any task to locked user.
+            return;
+        }
         mExecutorManager.getOrCreateUserExecutor(targetUser).execute(() -> {
             long totalLatencyStartMillis = SystemClock.elapsedRealtime();
             OptimizeStats.Builder builder = new OptimizeStats.Builder();
