@@ -16,14 +16,13 @@
   -->
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-          package="com.android.appsearch.coretests" >
-
-    <application>
-        <uses-library android:name="android.test.runner" />
+          package="com.android.appsearch.contactsindexertests" >
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.READ_DEVICE_CONFIG" />
+    <application android:label="ContactsIndexerTests">
+        <uses-library android:name="android.test.runner"/>
     </application>
-
     <instrumentation android:name="androidx.test.runner.AndroidJUnitRunner"
-                     android:targetPackage="com.android.appsearch.coretests"
-                     android:label="AppSearch core tests"/>
-
+                     android:targetPackage="com.android.appsearch.contactsindexertests"
+                     android:label="ContactsIndexerTests"/>
 </manifest>

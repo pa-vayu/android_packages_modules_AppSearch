@@ -37,8 +37,15 @@ import java.util.concurrent.TimeUnit;
 public class ContactsIndexerMaintenanceService extends JobService {
     private static final String TAG = "ContactsIndexerMaintenanceService";
 
-    /** This job ID must be unique within the system server. */
-    private static final int FULL_UPDATE_JOB_ID = 0x1B7DED30; // 461237552
+    /**
+     * Generate job ids in the range (MIN_INDEXER_JOB_ID, MAX_INDEXER_JOB_ID) to avoid conflicts
+     * with other jobs scheduled by the system service. The range corresponds to 21475 job ids,
+     * which is the maximum number of user ids in the system.
+     *
+     * @see UserManagerService.MAX_USER_ID
+     */
+    public static final int MIN_INDEXER_JOB_ID = 16942831; // corresponds to ag/16942831
+    private static final int MAX_INDEXER_JOB_ID = 16964306; // 16942831 + 21475
 
     private static final String EXTRA_USER_ID = "user_id";
 
@@ -52,19 +59,27 @@ public class ContactsIndexerMaintenanceService extends JobService {
      * Schedules a full update job for the given device-user.
      */
     static void scheduleFullUpdateJob(Context context, @UserIdInt int userId) {
+        int jobId = MIN_INDEXER_JOB_ID + userId;
         JobScheduler jobScheduler = context.getSystemService(JobScheduler.class);
         ComponentName component =
                 new ComponentName(context, ContactsIndexerMaintenanceService.class);
         final Bundle extras = new Bundle();
         extras.putInt(EXTRA_USER_ID, userId);
         JobInfo jobInfo =
-                new JobInfo.Builder(FULL_UPDATE_JOB_ID, component)
+                new JobInfo.Builder(jobId, component)
                         .setTransientExtras(extras)
                         .setRequiresBatteryNotLow(true)
                         .setRequiresDeviceIdle(true)
                         .build();
         jobScheduler.schedule(jobInfo);
-        Log.v(TAG, "Scheduled full update job for " + userId);
+        Log.v(TAG, "Scheduled full update job " + jobId + " for user " + userId);
+    }
+
+    static void cancelFullUpdateJob(Context context, @UserIdInt int userId) {
+        int jobId = MIN_INDEXER_JOB_ID + userId;
+        JobScheduler jobScheduler = context.getSystemService(JobScheduler.class);
+        jobScheduler.cancel(jobId);
+        Log.v(TAG, "Canceled full update job " + jobId + " for user " + userId);
     }
 
     @Override
@@ -74,7 +89,7 @@ public class ContactsIndexerMaintenanceService extends JobService {
             return false;
         }
 
-        Log.v(TAG, "Full update job started for " + userId);
+        Log.v(TAG, "Full update job started for user " + userId);
         mSignal = new CancellationSignal();
         EXECUTOR.execute(() -> {
             ContactsIndexerManagerService.LocalService service =

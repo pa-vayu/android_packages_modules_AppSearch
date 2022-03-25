@@ -64,24 +64,24 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
 
     /** Creates the SearchSessionShim with given SearchContext. */
     @NonNull
-    public static ListenableFuture<AppSearchSessionShim> createSearchSession(
+    public static ListenableFuture<AppSearchSessionShim> createSearchSessionAsync(
             @NonNull AppSearchManager.SearchContext searchContext) {
         Context context = ApplicationProvider.getApplicationContext();
-        return createSearchSession(context, searchContext, Executors.newCachedThreadPool());
+        return createSearchSessionAsync(context, searchContext, Executors.newCachedThreadPool());
     }
 
     /** Creates the SearchSessionShim with given SearchContext for the given user. */
     @NonNull
-    public static ListenableFuture<AppSearchSessionShim> createSearchSession(
+    public static ListenableFuture<AppSearchSessionShim> createSearchSessionAsync(
             @NonNull AppSearchManager.SearchContext searchContext, @UserIdInt int userId) {
         Context context = ApplicationProvider.getApplicationContext()
                 .createContextAsUser(new UserHandle(userId), /*flags=*/ 0);
-        return createSearchSession(context, searchContext, Executors.newCachedThreadPool());
+        return createSearchSessionAsync(context, searchContext, Executors.newCachedThreadPool());
     }
 
     /**  Creates the SearchSession with given Context and ExecutorService. */
     @NonNull
-    public static ListenableFuture<AppSearchSessionShim> createSearchSession(
+    public static ListenableFuture<AppSearchSessionShim> createSearchSessionAsync(
             @NonNull Context context,
             @NonNull AppSearchManager.SearchContext searchContext,
             @NonNull ExecutorService executor) {
@@ -102,7 +102,7 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
 
     @Override
     @NonNull
-    public ListenableFuture<SetSchemaResponse> setSchema(@NonNull SetSchemaRequest request) {
+    public ListenableFuture<SetSchemaResponse> setSchemaAsync(@NonNull SetSchemaRequest request) {
         SettableFuture<AppSearchResult<SetSchemaResponse>> future = SettableFuture.create();
         mAppSearchSession.setSchema(request, mExecutor, mExecutor, future::set);
         return Futures.transformAsync(future, this::transformResult, mExecutor);
@@ -110,7 +110,7 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
 
     @Override
     @NonNull
-    public ListenableFuture<GetSchemaResponse> getSchema() {
+    public ListenableFuture<GetSchemaResponse> getSchemaAsync() {
         SettableFuture<AppSearchResult<GetSchemaResponse>> future = SettableFuture.create();
         mAppSearchSession.getSchema(mExecutor, future::set);
         return Futures.transformAsync(future, this::transformResult, mExecutor);
@@ -118,7 +118,7 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
 
     @NonNull
     @Override
-    public ListenableFuture<Set<String>> getNamespaces() {
+    public ListenableFuture<Set<String>> getNamespacesAsync() {
         SettableFuture<AppSearchResult<Set<String>>> future = SettableFuture.create();
         mAppSearchSession.getNamespaces(mExecutor, future::set);
         return Futures.transformAsync(future, this::transformResult, mExecutor);
@@ -126,7 +126,7 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
 
     @Override
     @NonNull
-    public ListenableFuture<AppSearchBatchResult<String, Void>> put(
+    public ListenableFuture<AppSearchBatchResult<String, Void>> putAsync(
             @NonNull PutDocumentsRequest request) {
         SettableFuture<AppSearchBatchResult<String, Void>> future = SettableFuture.create();
         mAppSearchSession.put(
@@ -136,7 +136,7 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
 
     @Override
     @NonNull
-    public ListenableFuture<AppSearchBatchResult<String, GenericDocument>> getByDocumentId(
+    public ListenableFuture<AppSearchBatchResult<String, GenericDocument>> getByDocumentIdAsync(
             @NonNull GetByDocumentIdRequest request) {
         SettableFuture<AppSearchBatchResult<String, GenericDocument>> future =
                 SettableFuture.create();
@@ -155,7 +155,7 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
 
     @Override
     @NonNull
-    public ListenableFuture<Void> reportUsage(@NonNull ReportUsageRequest request) {
+    public ListenableFuture<Void> reportUsageAsync(@NonNull ReportUsageRequest request) {
         SettableFuture<AppSearchResult<Void>> future = SettableFuture.create();
         mAppSearchSession.reportUsage(request, mExecutor, future::set);
         return Futures.transformAsync(future, this::transformResult, mExecutor);
@@ -163,7 +163,7 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
 
     @Override
     @NonNull
-    public ListenableFuture<AppSearchBatchResult<String, Void>> remove(
+    public ListenableFuture<AppSearchBatchResult<String, Void>> removeAsync(
             @NonNull RemoveByDocumentIdRequest request) {
         SettableFuture<AppSearchBatchResult<String, Void>> future = SettableFuture.create();
         mAppSearchSession.remove(request, mExecutor, new BatchResultCallbackAdapter<>(future));
@@ -172,7 +172,7 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
 
     @Override
     @NonNull
-    public ListenableFuture<Void> remove(
+    public ListenableFuture<Void> removeAsync(
             @NonNull String queryExpression, @NonNull SearchSpec searchSpec) {
         SettableFuture<AppSearchResult<Void>> future = SettableFuture.create();
         mAppSearchSession.remove(queryExpression, searchSpec, mExecutor, future::set);
@@ -181,7 +181,7 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
 
     @NonNull
     @Override
-    public ListenableFuture<StorageInfo> getStorageInfo() {
+    public ListenableFuture<StorageInfo> getStorageInfoAsync() {
         SettableFuture<AppSearchResult<StorageInfo>> future = SettableFuture.create();
         mAppSearchSession.getStorageInfo(mExecutor, future::set);
         return Futures.transformAsync(future, this::transformResult, mExecutor);
@@ -189,7 +189,7 @@ public class AppSearchSessionShimImpl implements AppSearchSessionShim {
 
     @Override
     @NonNull
-    public ListenableFuture<Void> requestFlush() {
+    public ListenableFuture<Void> requestFlushAsync() {
         SettableFuture<AppSearchResult<Void>> future = SettableFuture.create();
         // The data in platform will be flushed by scheduled task. AppSearchSession won't do
         // anything extra flush.

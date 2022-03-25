@@ -30,7 +30,7 @@ import java.util.List;
  * objects, referred to as a "page", limited by the size configured by {@link
  * SearchSpec.Builder#setResultCountPerPage}.
  *
- * <p>To fetch a page of results, call {@link #getNextPage()}.
+ * <p>To fetch a page of results, call {@link #getNextPageAsync()}.
  *
  * <p>All instances of {@link SearchResultsShim} must call {@link SearchResultsShim#close()} after
  * the results are fetched.
@@ -49,7 +49,17 @@ public interface SearchResultsShim extends Closeable {
      * @return a {@link ListenableFuture} which resolves to a list of {@link SearchResult} objects.
      */
     @NonNull
-    ListenableFuture<List<SearchResult>> getNextPage();
+    ListenableFuture<List<SearchResult>> getNextPageAsync();
+
+    /**
+     * @deprecated use {@link #getNextPage}.
+     * @return a {@link ListenableFuture} which resolves to a list of {@link SearchResult} objects.
+     */
+    @NonNull
+    @Deprecated
+    default ListenableFuture<List<SearchResult>> getNextPage() {
+        return getNextPageAsync();
+    }
 
     @Override
     void close();
