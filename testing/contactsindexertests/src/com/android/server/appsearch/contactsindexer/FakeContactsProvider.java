@@ -16,9 +16,6 @@
 
 package com.android.server.appsearch.contactsindexer;
 
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-
 import android.content.ContentProvider;
 import android.content.ContentUris;
 import android.content.ContentValues;
@@ -44,8 +41,6 @@ import android.util.Log;
 
 import androidx.test.core.app.ApplicationProvider;
 
-import com.android.server.appsearch.contactsindexer.appsearchtypes.Person;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -55,9 +50,7 @@ import java.util.List;
  * Fake Contacts Provider that provides basic insert, delete, and query functionality.
  */
 public class FakeContactsProvider extends ContentProvider {
-
     private static final String TAG = "ContactsIndexerFakeContactsProvider";
-
     public static final String AUTHORITY = "com.android.contacts";
 
     private static final String DATABASE_NAME = "contacts.db";

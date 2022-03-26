@@ -48,11 +48,13 @@ public class AppSearchHelperTest {
     private final Executor mSingleThreadedExecutor = Executors.newSingleThreadExecutor();
 
     private AppSearchHelper mAppSearchHelper;
+    private ContactsUpdateStats mUpdateStats;
 
     @Before
     public void setUp() throws Exception {
         Context context = ApplicationProvider.getApplicationContext();
         mAppSearchHelper = AppSearchHelper.createAppSearchHelper(context, mSingleThreadedExecutor);
+        mUpdateStats = new ContactsUpdateStats();
     }
 
     @After
@@ -91,7 +93,7 @@ public class AppSearchHelperTest {
 
     @Test
     public void testIndexContacts() throws Exception {
-        mAppSearchHelper.indexContactsAsync(generatePersonData(50)).get();
+        mAppSearchHelper.indexContactsAsync(generatePersonData(50), mUpdateStats).get();
 
         List<String> appsearchIds = mAppSearchHelper.getAllContactIdsAsync().get();
         assertThat(appsearchIds.size()).isEqualTo(50);
@@ -101,7 +103,8 @@ public class AppSearchHelperTest {
     public void testIndexContacts_clearAfterIndex() throws Exception {
         List<Person> contacts = generatePersonData(50);
 
-        CompletableFuture<Void> indexContactsFuture = mAppSearchHelper.indexContactsAsync(contacts);
+        CompletableFuture<Void> indexContactsFuture = mAppSearchHelper.indexContactsAsync(contacts,
+                mUpdateStats);
         contacts.clear();
         indexContactsFuture.get();
 
@@ -111,14 +114,14 @@ public class AppSearchHelperTest {
 
     @Test
     public void testAppSearchHelper_removeContacts() throws Exception {
-        mAppSearchHelper.indexContactsAsync(generatePersonData(50)).get();
+        mAppSearchHelper.indexContactsAsync(generatePersonData(50), mUpdateStats).get();
         List<String> indexedIds = mAppSearchHelper.getAllContactIdsAsync().get();
 
         List<String> deletedIds = new ArrayList<>();
         for (int i = 0; i < 50; i += 5) {
             deletedIds.add(String.valueOf(i));
         }
-        mAppSearchHelper.removeContactsByIdAsync(deletedIds).get();
+        mAppSearchHelper.removeContactsByIdAsync(deletedIds, mUpdateStats).get();
 
         assertThat(indexedIds.size()).isEqualTo(50);
         List<String> appsearchIds = mAppSearchHelper.getAllContactIdsAsync().get();
@@ -144,7 +147,8 @@ public class AppSearchHelperTest {
                     contacts.size());
             List<Person> batchedContacts = contacts.subList(startIndex, batchEndIndex);
             indexContactsInBatchesFuture = indexContactsInBatchesFuture
-                    .thenCompose(x -> mAppSearchHelper.indexContactsAsync(batchedContacts));
+                    .thenCompose(x -> mAppSearchHelper.indexContactsAsync(batchedContacts,
+                            mUpdateStats));
             startIndex = batchEndIndex;
         }
         return indexContactsInBatchesFuture;
