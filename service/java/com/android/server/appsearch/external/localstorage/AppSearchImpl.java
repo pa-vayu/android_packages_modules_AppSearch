@@ -41,7 +41,7 @@ import android.app.appsearch.SetSchemaResponse;
 import android.app.appsearch.StorageInfo;
 import android.app.appsearch.VisibilityDocument;
 import android.app.appsearch.exceptions.AppSearchException;
-import android.app.appsearch.observer.AppSearchObserverCallback;
+import android.app.appsearch.observer.ObserverCallback;
 import android.app.appsearch.observer.ObserverSpec;
 import android.app.appsearch.util.LogUtil;
 import android.os.Bundle;
@@ -2371,8 +2371,8 @@ public final class AppSearchImpl implements Closeable {
     }
 
     /**
-     * Adds an {@link AppSearchObserverCallback} to monitor changes within the databases owned by
-     * {@code targetPackageName} if they match the given {@link
+     * Adds an {@link ObserverCallback} to monitor changes within the databases owned by {@code
+     * targetPackageName} if they match the given {@link
      * android.app.appsearch.observer.ObserverSpec}.
      *
      * <p>If the data owned by {@code targetPackageName} is not visible to you, the registration
@@ -2396,34 +2396,34 @@ public final class AppSearchImpl implements Closeable {
      *     notifications.
      * @param observer The callback to trigger on notifications.
      */
-    public void addObserver(
+    public void registerObserverCallback(
             @NonNull CallerAccess listeningPackageAccess,
             @NonNull String targetPackageName,
             @NonNull ObserverSpec spec,
             @NonNull Executor executor,
-            @NonNull AppSearchObserverCallback observer) {
+            @NonNull ObserverCallback observer) {
         // This method doesn't consult mSchemaMap or mNamespaceMap, and it will register
         // observers for types that don't exist. This is intentional because we notify for types
         // being created or removed. If we only registered observer for existing types, it would
         // be impossible to ever dispatch a notification of a type being added.
-        mObserverManager.addObserver(
+        mObserverManager.registerObserverCallback(
                 listeningPackageAccess, targetPackageName, spec, executor, observer);
     }
 
     /**
-     * Removes an {@link AppSearchObserverCallback} from watching the databases owned by {@code
+     * Removes an {@link ObserverCallback} from watching the databases owned by {@code
      * targetPackageName}.
      *
      * <p>All observers which compare equal to the given observer via {@link
-     * AppSearchObserverCallback#equals} are removed. This may be 0, 1, or many observers.
+     * ObserverCallback#equals} are removed. This may be 0, 1, or many observers.
      *
      * <p>Note that this method does not take the standard read/write lock that guards I/O, so it
      * will not queue behind I/O. Therefore it is safe to call from any thread including UI or
      * binder threads.
      */
-    public void removeObserver(
-            @NonNull String targetPackageName, @NonNull AppSearchObserverCallback observer) {
-        mObserverManager.removeObserver(targetPackageName, observer);
+    public void unregisterObserverCallback(
+            @NonNull String targetPackageName, @NonNull ObserverCallback observer) {
+        mObserverManager.unregisterObserverCallback(targetPackageName, observer);
     }
 
     /**

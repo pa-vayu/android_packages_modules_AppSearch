@@ -39,7 +39,7 @@ apex {
     systemserverclasspath_fragments: ["com.android.appsearch-systemserverclasspath-fragment"],
     key: "com.android.appsearch.key",
     certificate: ":com.android.appsearch.certificate",
-    updatable: false,
+    defaults: ["t-launched-apex-module"],
     jni_libs: ["libicing"],
 }
 
@@ -75,6 +75,21 @@ bootclasspath_fragment {
     additional_stubs: [
         "android-non-updatable",
     ],
+
+    hidden_api: {
+        // This module does not contain any split packages.
+        split_packages: [],
+
+        // The following packages and all their subpackages currently only
+        // contain classes from this bootclasspath_fragment. Listing a package
+        // here won't prevent other bootclasspath modules from adding classes in
+        // any of those packages but it will prevent them from adding those
+        // classes into an API surface, e.g. public, system, etc.. Doing so will
+        // result in a build failure due to inconsistent flags.
+        package_prefixes: [
+            "android.app.appsearch",
+        ],
+    },
 }
 
 // Encapsulate the contributions made by the com.android.appsearch to the systemserverclasspath.

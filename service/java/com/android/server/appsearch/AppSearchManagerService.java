@@ -1244,7 +1244,7 @@ public class AppSearchManagerService extends SystemService {
         }
 
         @Override
-        public AppSearchResultParcel<Void> addObserver(
+        public AppSearchResultParcel<Void> registerObserverCallback(
                 @NonNull AttributionSource callerAttributionSource,
                 @NonNull String targetPackageName,
                 @NonNull Bundle observerSpecBundle,
@@ -1256,7 +1256,8 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(observerProxyStub);
 
-            // Note: addObserver is performed on the binder thread, unlike most AppSearch APIs
+            // Note: registerObserverCallback is performed on the binder thread, unlike most
+            // AppSearch APIs
             try {
                 UserHandle targetUser = mServiceImplHelper.verifyIncomingCall(
                         callerAttributionSource, userHandle);
@@ -1266,7 +1267,7 @@ public class AppSearchManagerService extends SystemService {
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
                     boolean callerHasSystemAccess = instance.getVisibilityChecker()
                             .doesCallerHaveSystemAccess(callerAttributionSource.getPackageName());
-                    instance.getAppSearchImpl().addObserver(
+                    instance.getAppSearchImpl().registerObserverCallback(
                             new FrameworkCallerAccess(
                                     callerAttributionSource, callerHasSystemAccess),
                             targetPackageName,
@@ -1283,7 +1284,7 @@ public class AppSearchManagerService extends SystemService {
         }
 
         @Override
-        public AppSearchResultParcel<Void> removeObserver(
+        public AppSearchResultParcel<Void> unregisterObserverCallback(
                 @NonNull AttributionSource callerAttributionSource,
                 @NonNull String observedPackage,
                 @NonNull UserHandle userHandle,
@@ -1293,7 +1294,8 @@ public class AppSearchManagerService extends SystemService {
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(observerProxyStub);
 
-            // Note: removeObserver is performed on the binder thread, unlike most AppSearch APIs
+            // Note: unregisterObserverCallback is performed on the binder thread, unlike most
+            // AppSearch APIs
             try {
                 UserHandle targetUser = mServiceImplHelper.verifyIncomingCall(
                         callerAttributionSource, userHandle);
@@ -1301,7 +1303,7 @@ public class AppSearchManagerService extends SystemService {
                 try {
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
-                    instance.getAppSearchImpl().removeObserver(
+                    instance.getAppSearchImpl().unregisterObserverCallback(
                             observedPackage,
                             new AppSearchObserverProxy(observerProxyStub));
                     return new AppSearchResultParcel<>(AppSearchResult.newSuccessfulResult(null));

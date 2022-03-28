@@ -14,15 +14,20 @@
   ~ See the License for the specific language governing permissions and
   ~ limitations under the License.
   -->
-<configuration description="Runs AppSearch core tests">
+<configuration description="Runs Contacts Indexer tests">
+    <option name="config-descriptor:metadata" key="component" value="framework" />
+    <option name="config-descriptor:metadata" key="parameter" value="no_foldable_states" />
+    <option name="config-descriptor:metadata" key="parameter" value="not_instant_app" />
+    <option name="config-descriptor:metadata" key="parameter" value="not_multi_abi" />
+    <option name="config-descriptor:metadata" key="parameter" value="secondary_user" />
+
     <target_preparer class="com.android.tradefed.targetprep.suite.SuiteApkInstaller">
         <option name="cleanup-apks" value="true"/>
-        <option name="test-file-name" value="AppSearchCoreTests.apk"/>
+        <option name="test-file-name" value="ContactsIndexerTests.apk"/>
     </target_preparer>
 
     <test class="com.android.tradefed.testtype.AndroidJUnitTest">
-        <option name="package" value="com.android.appsearch.coretests"/>
-        <option name="runner" value="androidx.test.runner.AndroidJUnitRunner" />
+        <option name="package" value="com.android.appsearch.contactsindexertests"/>
     </test>
 
     <object type="module_controller"
