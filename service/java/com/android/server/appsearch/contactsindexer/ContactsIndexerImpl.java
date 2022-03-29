@@ -139,6 +139,7 @@ public final class ContactsIndexerImpl {
         CompletableFuture<Void> batchRemoveFuture = CompletableFuture.completedFuture(null);
         int startIndex = 0;
         int unWantedSize = unWantedIds.size();
+        updateStats.mTotalContactsToBeDeleted += unWantedSize;
         while (startIndex < unWantedSize) {
             int endIndex = Math.min(startIndex + NUM_DELETED_CONTACTS_PER_BATCH_FOR_APPSEARCH,
                     unWantedSize);
@@ -162,6 +163,7 @@ public final class ContactsIndexerImpl {
         int startIndex = 0;
         int wantedIdListSize = wantedContactIds.size();
         CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
+        updateStats.mTotalContactsToBeUpdated += wantedIdListSize;
 
         //
         // Batch reading the contacts from CP2, and index the created documents to AppSearch
@@ -171,9 +173,6 @@ public final class ContactsIndexerImpl {
                     wantedIdListSize);
             Collection<String> currentContactIds = wantedContactIds.subList(startIndex, endIndex);
             // Read NUM_CONTACTS_PER_BATCH contacts every time from CP2.
-            // TODO(b/203605504) log the total latency for the query once we have the logger
-            //  configured. Since a big "IN" might cause a slowdown. Also we can make
-            //  NUM_CONTACTS_PER_BATCH configurable.
             String selection = ContactsContract.Data.CONTACT_ID + " IN (" + TextUtils.join(
                     /*delimiter=*/ ",", currentContactIds) + ")";
             startIndex = endIndex;
@@ -202,7 +201,6 @@ public final class ContactsIndexerImpl {
                 // The ContactsProvider sometimes propagates RuntimeExceptions to us
                 // for when their database fails to open. Behave as if there was no
                 // ContactsProvider, and flag that we were not successful.
-                // TODO(b/203605504) log the error once we have the logger configured.
                 Log.e(TAG, "ContentResolver.query threw an exception.", e);
                 updateStats.mUpdateStatuses.add(AppSearchResult.RESULT_INTERNAL_ERROR);
                 return CompletableFuture.failedFuture(e);
@@ -210,6 +208,15 @@ public final class ContactsIndexerImpl {
         }
 
         return future;
+    }
+
+    /**
+     * Cancels the {@link #updatePersonCorpusAsync(List, List, ContactsUpdateStats)} in case of
+     * error. This will clean up the states in the batcher so it can get ready for the following
+     * updates.
+     */
+    void cancelUpdatePersonCorpus() {
+        mBatcher.clearBatchedContacts();
     }
 
     /**
@@ -366,6 +373,11 @@ public final class ContactsIndexerImpl {
             return mPendingIndexContacts.size();
         }
 
+        void clearBatchedContacts() {
+            mPendingDiffContactBuilders.clear();
+            mPendingIndexContacts.clear();
+        }
+
         public void add(@NonNull PersonBuilderHelper builderHelper,
                 @NonNull ContactsUpdateStats updateStats) {
             Objects.requireNonNull(builderHelper);
@@ -440,11 +452,11 @@ public final class ContactsIndexerImpl {
                                             contactsToBeIndexed.add(person);
                                         } else {
                                             // Fingerprint is same. So this update is skipped.
-                                            ++updateStats.mContactsSkippedCount;
+                                            ++updateStats.mContactsUpdateSkippedCount;
                                         }
                                     } else {
                                         // New contact.
-                                        ++updateStats.mContactsInsertedCount;
+                                        ++updateStats.mNewContactsToBeUpdated;
                                         contactsToBeIndexed.add(builderHelper.buildPerson());
                                     }
                                 }
@@ -457,10 +469,13 @@ public final class ContactsIndexerImpl {
         /** Flushes the contacts batched in {@link #mPendingIndexContacts} to AppSearch. */
         private CompletableFuture<Void> flushPendingIndexAsync(
                 @NonNull ContactsUpdateStats updateStats) {
-            CompletableFuture<Void> future =
-                    mAppSearchHelper.indexContactsAsync(mPendingIndexContacts, updateStats);
-            mPendingIndexContacts.clear();
-            return future;
+            if (mPendingIndexContacts.size() > 0) {
+                CompletableFuture<Void> future =
+                        mAppSearchHelper.indexContactsAsync(mPendingIndexContacts, updateStats);
+                mPendingIndexContacts.clear();
+                return future;
+            }
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

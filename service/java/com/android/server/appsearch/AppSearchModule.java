@@ -21,7 +21,6 @@ import android.annotation.Nullable;
 import android.content.Context;
 import android.os.Environment;
 import android.os.UserHandle;
-import android.provider.DeviceConfig;
 import android.util.Log;
 
 import com.android.server.SystemService;
@@ -48,7 +47,8 @@ public class AppSearchModule {
 
     public static final class Lifecycle extends SystemService {
         private AppSearchManagerService mAppSearchManagerService;
-        @Nullable private ContactsIndexerManagerService mContactsIndexerManagerService;
+        @Nullable
+        private ContactsIndexerManagerService mContactsIndexerManagerService;
 
         public Lifecycle(Context context) {
             super(context);

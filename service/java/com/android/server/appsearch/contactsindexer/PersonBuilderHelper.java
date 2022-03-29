@@ -42,8 +42,6 @@ import com.android.internal.util.Preconditions;
  *
  * @hide
  */
-// TODO(b/203605504) We can also make it only generates a list of contact points. And move the
-//  building of a Person out to the caller.
 public final class PersonBuilderHelper {
     static final String TAG = "PersonBuilderHelper";
     static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
