@@ -20,12 +20,10 @@ import static com.google.common.truth.Truth.assertThat;
 
 import android.net.Uri;
 
-import com.android.server.appsearch.contactsindexer.appsearchtypes.ContactPoint;
-import com.android.server.appsearch.contactsindexer.appsearchtypes.Person;
+import com.google.common.collect.ImmutableList;
 
 import org.junit.Test;
 
-import java.util.Arrays;
 import java.util.List;
 
 public class PersonTest {
@@ -39,9 +37,8 @@ public class PersonTest {
         String lastName = "lastName";
         Uri externalUri = Uri.parse("http://external.com");
         Uri imageUri = Uri.parse("http://image.com");
-        List<String> additionalNames = Arrays.asList("name1", "name2");
-        List<String> affiliations = Arrays.asList("Org1", "Org2", "Org3");
-        List<String> relations = Arrays.asList("relation1", "relation2");
+        List<String> affiliations = ImmutableList.of("Org1", "Org2", "Org3");
+        List<String> relations = ImmutableList.of("relation1", "relation2");
         boolean isImportant = true;
         boolean isBot = true;
         String note = "note";
@@ -57,6 +54,10 @@ public class PersonTest {
                 .addEmail("email2")
                 .addAppId("appId2")
                 .build();
+        List<String> additionalNames = ImmutableList.of("nickname", "phoneticName");
+        @Person.NameType
+        List<Long> additionalNameTypes = ImmutableList.of((long) Person.TYPE_NICKNAME,
+                (long) Person.TYPE_PHONETIC_NAME);
 
         Person person = new Person.Builder(namespace, id, name)
                 .setGivenName(givenName)
@@ -64,8 +65,8 @@ public class PersonTest {
                 .setFamilyName(lastName)
                 .setExternalUri(externalUri)
                 .setImageUri(imageUri)
-                .addAdditionalName(additionalNames.get(0))
-                .addAdditionalName(additionalNames.get(1))
+                .addAdditionalName(additionalNameTypes.get(0), additionalNames.get(0))
+                .addAdditionalName(additionalNameTypes.get(1), additionalNames.get(1))
                 .addAffiliation(affiliations.get(0))
                 .addAffiliation(affiliations.get(1))
                 .addAffiliation(affiliations.get(2))
@@ -78,6 +79,7 @@ public class PersonTest {
                 .addContactPoint(contact2)
                 .build();
 
+        // Additional names would also include nicknames and phoneticNames for the contacts indexer.
         assertThat(person.getName()).isEqualTo(name);
         assertThat(person.getGivenName()).isEqualTo(givenName);
         assertThat(person.getMiddleName()).isEqualTo(middleName);
@@ -86,6 +88,7 @@ public class PersonTest {
         assertThat(person.getImageUri().toString()).isEqualTo(imageUri.toString());
         assertThat(person.getNote()).isEqualTo(note);
         assertThat(person.getAdditionalNames()).asList().isEqualTo(additionalNames);
+        assertThat(person.getAdditionalNameTypes()).asList().isEqualTo(additionalNameTypes);
         assertThat(person.getAffiliations()).asList().isEqualTo(affiliations);
         assertThat(person.getRelations()).asList().isEqualTo(relations);
         assertThat(person.getContactPoints()).asList().containsExactly(contact1, contact2);

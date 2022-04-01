@@ -349,7 +349,7 @@ public final class ContactDataHandler {
                 @NonNull String data) {
             Objects.requireNonNull(builder);
             Objects.requireNonNull(data);
-            builder.getPersonBuilder().addAdditionalName(data);
+            builder.getPersonBuilder().addAdditionalName(Person.TYPE_NICKNAME, data);
         }
     }
 

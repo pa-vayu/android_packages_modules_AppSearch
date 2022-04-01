@@ -270,6 +270,10 @@ public final class ContactsIndexerImpl {
                     if (imageUri != null) {
                         personBuilder.setImageUri(Uri.parse(imageUri));
                     }
+                    String phoneticName = getStringFromCursor(cursor, phoneticNameIndex);
+                    if (phoneticName != null) {
+                        personBuilder.addAdditionalName(Person.TYPE_PHONETIC_NAME, phoneticName);
+                    }
                     personBuilderHelper = new PersonBuilderHelper(personBuilder);
                 }
                 if (personBuilderHelper != null) {
