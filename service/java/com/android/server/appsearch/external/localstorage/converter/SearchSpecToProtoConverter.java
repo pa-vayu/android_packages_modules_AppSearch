@@ -226,7 +226,7 @@ public final class SearchSpecToProtoConverter {
                                         .setNumToSnippet(mSearchSpec.getSnippetCount())
                                         .setNumMatchesPerProperty(
                                                 mSearchSpec.getSnippetCountPerProperty())
-                                        .setMaxWindowBytes(mSearchSpec.getMaxSnippetSize()));
+                                        .setMaxWindowUtf32Length(mSearchSpec.getMaxSnippetSize()));
 
         // Rewrites the typePropertyMasks that exist in {@code prefixes}.
         int groupingType = mSearchSpec.getResultGroupingTypeFlags();

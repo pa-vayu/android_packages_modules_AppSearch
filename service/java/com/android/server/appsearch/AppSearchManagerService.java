@@ -40,6 +40,7 @@ import android.app.appsearch.aidl.IAppSearchBatchResultCallback;
 import android.app.appsearch.aidl.IAppSearchManager;
 import android.app.appsearch.aidl.IAppSearchObserverProxy;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
+import android.app.appsearch.aidl.DocumentsParcel;
 import android.app.appsearch.exceptions.AppSearchException;
 import android.app.appsearch.observer.ObserverSpec;
 import android.content.AttributionSource;
@@ -445,13 +446,13 @@ public class AppSearchManagerService extends SystemService {
         public void putDocuments(
                 @NonNull AttributionSource callerAttributionSource,
                 @NonNull String databaseName,
-                @NonNull List<Bundle> documentBundles,
+                @NonNull DocumentsParcel documentsParcel,
                 @NonNull UserHandle userHandle,
                 @ElapsedRealtimeLong long binderCallStartTimeMillis,
                 @NonNull IAppSearchBatchResultCallback callback) {
             Objects.requireNonNull(callerAttributionSource);
             Objects.requireNonNull(databaseName);
-            Objects.requireNonNull(documentBundles);
+            Objects.requireNonNull(documentsParcel);
             Objects.requireNonNull(userHandle);
             Objects.requireNonNull(callback);
 
@@ -470,8 +471,9 @@ public class AppSearchManagerService extends SystemService {
                     AppSearchBatchResult.Builder<String, Void> resultBuilder =
                             new AppSearchBatchResult.Builder<>();
                     instance = mAppSearchUserInstanceManager.getUserInstance(targetUser);
-                    for (int i = 0; i < documentBundles.size(); i++) {
-                        GenericDocument document = new GenericDocument(documentBundles.get(i));
+                    List<GenericDocument> documents = documentsParcel.getDocuments();
+                    for (int i = 0; i < documents.size(); i++) {
+                        GenericDocument document = documents.get(i);
                         try {
                             instance.getAppSearchImpl().putDocument(
                                     callerAttributionSource.getPackageName(),
@@ -501,7 +503,7 @@ public class AppSearchManagerService extends SystemService {
                     // The existing documents with same ID will be deleted, so there may be some
                     // resources that could be released after optimize().
                     checkForOptimize(
-                            targetUser, instance, /*mutateBatchSize=*/ documentBundles.size());
+                            targetUser, instance, /*mutateBatchSize=*/ documents.size());
                 } catch (Throwable t) {
                     ++operationFailureCount;
                     statusCode = throwableToFailedResult(t).getResultCode();
@@ -1498,6 +1500,10 @@ public class AppSearchManagerService extends SystemService {
             @NonNull UserHandle targetUser,
             @NonNull AppSearchUserInstance instance,
             int mutateBatchSize) {
+        if (mServiceImplHelper.isUserLocked(targetUser)) {
+            // We shouldn't schedule any task to locked user.
+            return;
+        }
         mExecutorManager.getOrCreateUserExecutor(targetUser).execute(() -> {
             long totalLatencyStartMillis = SystemClock.elapsedRealtime();
             OptimizeStats.Builder builder = new OptimizeStats.Builder();
@@ -1522,6 +1528,10 @@ public class AppSearchManagerService extends SystemService {
     private void checkForOptimize(
             @NonNull UserHandle targetUser,
             @NonNull AppSearchUserInstance instance) {
+        if (mServiceImplHelper.isUserLocked(targetUser)) {
+            // We shouldn't schedule any task to locked user.
+            return;
+        }
         mExecutorManager.getOrCreateUserExecutor(targetUser).execute(() -> {
             long totalLatencyStartMillis = SystemClock.elapsedRealtime();
             OptimizeStats.Builder builder = new OptimizeStats.Builder();
