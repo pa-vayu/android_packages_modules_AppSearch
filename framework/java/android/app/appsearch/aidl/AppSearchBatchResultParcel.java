@@ -19,7 +19,6 @@ package android.app.appsearch.aidl;
 import android.annotation.NonNull;
 import android.app.appsearch.AppSearchBatchResult;
 import android.app.appsearch.AppSearchResult;
-import android.os.Bundle;
 import android.os.Parcel;
 import android.os.Parcelable;
 
@@ -46,14 +45,23 @@ public final class AppSearchBatchResultParcel<ValueType> implements Parcelable {
     }
 
     private AppSearchBatchResultParcel(@NonNull Parcel in) {
-        Bundle bundle = in.readBundle();
-        AppSearchBatchResult.Builder<String, ValueType> builder =
-                new AppSearchBatchResult.Builder<>();
-        for (String key : bundle.keySet()) {
-            AppSearchResultParcel<ValueType> resultParcel = bundle.getParcelable(key);
-            builder.setResult(key, resultParcel.getResult());
+        Parcel unmarshallParcel = Parcel.obtain();
+        try {
+            byte[] dataBlob = in.readBlob();
+            unmarshallParcel.unmarshall(dataBlob, 0, dataBlob.length);
+            unmarshallParcel.setDataPosition(0);
+            AppSearchBatchResult.Builder<String, ValueType> builder =
+                    new AppSearchBatchResult.Builder<>();
+            int size = unmarshallParcel.dataSize();
+            while (unmarshallParcel.dataPosition() < size) {
+                String key = unmarshallParcel.readString();
+                builder.setResult(key, (AppSearchResult<ValueType>) AppSearchResultParcel
+                        .directlyReadFromParcel(unmarshallParcel));
+            }
+            mResult = builder.build();
+        } finally {
+            unmarshallParcel.recycle();
         }
-        mResult = builder.build();
     }
 
     @NonNull
@@ -64,12 +72,22 @@ public final class AppSearchBatchResultParcel<ValueType> implements Parcelable {
     /** @hide */
     @Override
     public void writeToParcel(@NonNull Parcel dest, int flags) {
-        Bundle bundle = new Bundle();
-        for (Map.Entry<String, AppSearchResult<ValueType>> entry
-                : mResult.getAll().entrySet()) {
-            bundle.putParcelable(entry.getKey(), new AppSearchResultParcel<>(entry.getValue()));
+        byte[] bytes;
+        // Create a parcel object to serialize results. So that we can use Parcel.writeBlob() to
+        // send data. WriteBlob() could take care of whether to pass data via binder directly or
+        // Android shared memory if the data is large.
+        Parcel data = Parcel.obtain();
+        try {
+            for (Map.Entry<String, AppSearchResult<ValueType>> entry
+                    : mResult.getAll().entrySet()) {
+                data.writeString(entry.getKey());
+                AppSearchResultParcel.directlyWriteToParcel(data, entry.getValue());
+            }
+            bytes = data.marshall();
+        } finally {
+            data.recycle();
         }
-        dest.writeBundle(bundle);
+        dest.writeBlob(bytes);
     }
 
     /** @hide */

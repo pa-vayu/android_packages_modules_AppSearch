@@ -20,10 +20,12 @@ android_test {
     name: "ContactsIndexerTests",
     srcs: ["src/**/*.java"],
     static_libs: [
+        "AppSearchTestUtils",
         "androidx.test.ext.junit",
         "androidx.test.rules",
         "compatibility-device-util-axt",
         "service-appsearch",
+        "services.core",
         "truth-prebuilt",
     ],
     libs: [
