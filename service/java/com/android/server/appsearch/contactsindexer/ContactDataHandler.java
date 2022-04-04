@@ -401,6 +401,7 @@ public final class ContactDataHandler {
     private static final class OrganizationDataHandler extends DataHandler {
         private static final String[] COLUMNS = {
                 Organization.TITLE,
+                Organization.DEPARTMENT,
                 Organization.COMPANY,
         };
 

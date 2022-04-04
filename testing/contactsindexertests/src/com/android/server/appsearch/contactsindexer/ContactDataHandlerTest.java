@@ -397,6 +397,33 @@ public class ContactDataHandlerTest {
     }
 
     @Test
+    public void testConvertCurrentRowToPerson_organizationWithJobTitleAndDepartment() {
+        String name = "name";
+        String title = "Software Engineer";
+        String department = "Google Cloud";
+        String company = "Google Inc";
+        ContentValues values = new ContentValues();
+        values.put(Data.MIMETYPE, CommonDataKinds.Organization.CONTENT_ITEM_TYPE);
+        values.put(CommonDataKinds.Organization.TITLE, title);
+        values.put(CommonDataKinds.Organization.DEPARTMENT, department);
+        values.put(CommonDataKinds.Organization.COMPANY, company);
+        Cursor cursor = makeCursorFromContentValues(values);
+
+        Person personExpected = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID, name).setCreationTimestampMillis(
+                        0)).getPersonBuilder().addAffiliation(
+                "Software Engineer, Google Cloud, Google Inc").build();
+
+        PersonBuilderHelper helperTested = new PersonBuilderHelper(
+                new Person.Builder(TEST_NAMESPACE, TEST_ID,
+                        name).setCreationTimestampMillis(0));
+        convertRowToPerson(cursor, helperTested);
+        Person personTested = helperTested.buildPerson();
+
+        TestUtils.assertEquals(personTested, personExpected);
+    }
+
+    @Test
     public void testConvertCurrentRowToPerson_relation_nameNotNull() {
         String name = "name";
         String relationName = "relationName";
