@@ -237,7 +237,7 @@ public class ContactDataHandlerTest {
 
         Person personExpected = new Person.Builder(TEST_NAMESPACE, TEST_ID, name)
                 .setCreationTimestampMillis(0)
-                .setNote(note)
+                .addNote(note)
                 .build();
 
         PersonBuilderHelper helperTested = new PersonBuilderHelper(
@@ -246,7 +246,7 @@ public class ContactDataHandlerTest {
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
-        assertThat(personTested.getNote()).isEqualTo(note);
+        assertThat(personTested.getNotes()).asList().containsExactly(note);
         TestUtils.assertEquals(personTested, personExpected);
     }
 

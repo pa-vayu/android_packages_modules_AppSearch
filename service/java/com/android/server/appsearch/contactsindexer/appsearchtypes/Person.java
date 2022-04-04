@@ -77,7 +77,7 @@ public class Person extends GenericDocument {
     public static final String PERSON_PROPERTY_CONTACT_POINTS = "contactPoints";
     public static final String PERSON_PROPERTY_AFFILIATIONS = "affiliations";
     public static final String PERSON_PROPERTY_RELATIONS = "relations";
-    public static final String PERSON_PROPERTY_NOTE = "note";
+    public static final String PERSON_PROPERTY_NOTES = "notes";
 
     public static final AppSearchSchema SCHEMA = new AppSearchSchema.Builder(SCHEMA_TYPE)
             // full display name
@@ -155,9 +155,9 @@ public class Person extends GenericDocument {
                     PERSON_PROPERTY_RELATIONS)
                     .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
                     .build())
-            // Note
-            .addProperty(new AppSearchSchema.StringPropertyConfig.Builder(PERSON_PROPERTY_NOTE)
-                    .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_OPTIONAL)
+            // Notes
+            .addProperty(new AppSearchSchema.StringPropertyConfig.Builder(PERSON_PROPERTY_NOTES)
+                    .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
                     .setIndexingType(
                             AppSearchSchema.StringPropertyConfig.INDEXING_TYPE_PREFIXES)
                     .setTokenizerType(AppSearchSchema.StringPropertyConfig.TOKENIZER_TYPE_PLAIN)
@@ -216,11 +216,6 @@ public class Person extends GenericDocument {
         return getPropertyBoolean(PERSON_PROPERTY_IS_BOT);
     }
 
-    @Nullable
-    public String getNote() {
-        return getPropertyString(PERSON_PROPERTY_NOTE);
-    }
-
     @NonNull
     @NameType
     public long[] getAdditionalNameTypes() {
@@ -242,6 +237,11 @@ public class Person extends GenericDocument {
         return getPropertyStringArray(PERSON_PROPERTY_RELATIONS);
     }
 
+    @Nullable
+    public String[] getNotes() {
+        return getPropertyStringArray(PERSON_PROPERTY_NOTES);
+    }
+
     // This method is expensive, and is intended to be used in tests only.
     @NonNull
     public ContactPoint[] getContactPoints() {
@@ -260,6 +260,7 @@ public class Person extends GenericDocument {
         private final List<String> mAdditionalNames = new ArrayList<>();
         private final List<String> mAffiliations = new ArrayList<>();
         private final List<String> mRelations = new ArrayList<>();
+        private final List<String> mNotes = new ArrayList<>();
         private final List<ContactPoint> mContactPoints = new ArrayList<>();
 
         /**
@@ -325,13 +326,6 @@ public class Person extends GenericDocument {
             return this;
         }
 
-        /** Sets a note about this {@link Person}. */
-        @NonNull
-        public Builder setNote(@NonNull String note) {
-            setPropertyString(Person.PERSON_PROPERTY_NOTE, Objects.requireNonNull(note));
-            return this;
-        }
-
         @NonNull
         public Builder addAdditionalName(@NameType long nameType, @NonNull String name) {
             mAdditionalNameTypes.add(nameType);
@@ -353,6 +347,13 @@ public class Person extends GenericDocument {
         @NonNull
         public Builder addRelation(@NonNull String relation) {
             mRelations.add(Objects.requireNonNull(relation));
+            return this;
+        }
+
+        /** Adds a note about this {@link Person}. */
+        @NonNull
+        public Builder addNote(@NonNull String note) {
+            mNotes.add(Objects.requireNonNull(note));
             return this;
         }
 
@@ -379,6 +380,8 @@ public class Person extends GenericDocument {
                     mAffiliations.toArray(new String[0]));
             setPropertyString(PERSON_PROPERTY_RELATIONS,
                     mRelations.toArray(new String[0]));
+            setPropertyString(PERSON_PROPERTY_NOTES,
+                    mNotes.toArray(new String[0]));
             setPropertyDocument(PERSON_PROPERTY_CONTACT_POINTS,
                     mContactPoints.toArray(new ContactPoint[0]));
             // TODO(b/203605504) calculate score here.
