@@ -41,7 +41,8 @@ public class PersonTest {
         List<String> relations = ImmutableList.of("relation1", "relation2");
         boolean isImportant = true;
         boolean isBot = true;
-        String note = "note";
+        String note1 = "note";
+        String note2 = "note2";
         ContactPoint contact1 = new ContactPoint.Builder(namespace, id + "1", "Home")
                 .addAddress("addr1")
                 .addPhone("phone1")
@@ -74,7 +75,8 @@ public class PersonTest {
                 .addRelation(relations.get(1))
                 .setIsImportant(isImportant)
                 .setIsBot(isBot)
-                .setNote(note)
+                .addNote(note1)
+                .addNote(note2)
                 .addContactPoint(contact1)
                 .addContactPoint(contact2)
                 .build();
@@ -86,7 +88,7 @@ public class PersonTest {
         assertThat(person.getFamilyName()).isEqualTo(lastName);
         assertThat(person.getExternalUri().toString()).isEqualTo(externalUri.toString());
         assertThat(person.getImageUri().toString()).isEqualTo(imageUri.toString());
-        assertThat(person.getNote()).isEqualTo(note);
+        assertThat(person.getNotes()).asList().containsExactly(note1, note2);
         assertThat(person.getAdditionalNames()).asList().isEqualTo(additionalNames);
         assertThat(person.getAdditionalNameTypes()).asList().isEqualTo(additionalNameTypes);
         assertThat(person.getAffiliations()).asList().isEqualTo(affiliations);

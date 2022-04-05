@@ -401,6 +401,7 @@ public final class ContactDataHandler {
     private static final class OrganizationDataHandler extends DataHandler {
         private static final String[] COLUMNS = {
                 Organization.TITLE,
+                Organization.DEPARTMENT,
                 Organization.COMPANY,
         };
 
@@ -478,7 +479,7 @@ public final class ContactDataHandler {
                 @NonNull String data) {
             Objects.requireNonNull(builder);
             Objects.requireNonNull(data);
-            builder.getPersonBuilder().setNote(data);
+            builder.getPersonBuilder().addNote(data);
         }
     }
 }
