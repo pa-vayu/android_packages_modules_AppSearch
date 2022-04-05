@@ -208,7 +208,7 @@ public class AppSearchManager {
                 searchContext,
                 mService,
                 mContext.getUser(),
-                getPackageName(),
+                mContext.getAttributionSource(),
                 executor,
                 callback);
     }
@@ -231,12 +231,9 @@ public class AppSearchManager {
         Objects.requireNonNull(executor);
         Objects.requireNonNull(callback);
         GlobalSearchSession.createGlobalSearchSession(
-                mService, mContext.getUser(), getPackageName(), executor, callback);
-    }
-
-    /** Returns the package name that should be used for uid verification. */
-    @NonNull
-    private String getPackageName() {
-        return mContext.getOpPackageName();
+                mService,
+                mContext.getUser(),
+                mContext.getAttributionSource(),
+                executor, callback);
     }
 }

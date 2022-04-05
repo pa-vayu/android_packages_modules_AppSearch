@@ -30,6 +30,8 @@ android_test {
     libs: [
         "android.test.runner",
         "framework-appsearch.impl",
+        "android.test.mock",
+        "android.test.base",
     ],
     // jni libs are not normally accessible from apps so they must be explicitly included.
     jni_libs: ["libicing"],
@@ -39,6 +41,7 @@ android_test {
         "device-tests",
         "mts-appsearch",
     ],
+    compile_multilib: "both",
     // TODO(b/203690505): Remove the platform certificate when tests no longer
     //  need READ_DEVICE_CONFIG permission.
     certificate: "platform",

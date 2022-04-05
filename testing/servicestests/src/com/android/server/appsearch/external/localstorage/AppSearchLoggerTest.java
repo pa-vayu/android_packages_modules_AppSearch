@@ -351,11 +351,12 @@ public class AppSearchLoggerTest {
         appSearchImpl.close();
 
         assertThat(iStats).isNotNull();
+        // If the process goes really fast, the total latency could be 0. Since the default of total
+        // latency is also 0, we just remove the assert about NativeLatencyMillis.
         assertThat(iStats.getStatusCode()).isEqualTo(AppSearchResult.RESULT_OK);
         // Total latency captured in LocalStorage
         assertThat(iStats.getTotalLatencyMillis()).isEqualTo(0);
         assertThat(iStats.hasDeSync()).isFalse();
-        assertThat(iStats.getNativeLatencyMillis()).isGreaterThan(0);
         assertThat(iStats.getDocumentStoreDataStatus())
                 .isEqualTo(InitializeStatsProto.DocumentStoreDataStatus.NO_DATA_LOSS_VALUE);
         assertThat(iStats.getDocumentCount()).isEqualTo(0);
@@ -407,15 +408,16 @@ public class AppSearchLoggerTest {
         InitializeStats iStats = initStatsBuilder.build();
 
         assertThat(iStats).isNotNull();
+        // If the process goes really fast, the total latency could be 0. Since the default of total
+        // latency is also 0, we just remove the assert about NativeLatencyMillis.
         assertThat(iStats.getStatusCode()).isEqualTo(AppSearchResult.RESULT_OK);
         // Total latency captured in LocalStorage
         assertThat(iStats.getTotalLatencyMillis()).isEqualTo(0);
         assertThat(iStats.hasDeSync()).isFalse();
-        assertThat(iStats.getNativeLatencyMillis()).isGreaterThan(0);
         assertThat(iStats.getDocumentStoreDataStatus())
                 .isEqualTo(InitializeStatsProto.DocumentStoreDataStatus.NO_DATA_LOSS_VALUE);
         assertThat(iStats.getDocumentCount()).isEqualTo(2);
-        assertThat(iStats.getSchemaTypeCount()).isEqualTo(3); // +1 for VisibilitySchema
+        assertThat(iStats.getSchemaTypeCount()).isEqualTo(4); // +2 for VisibilitySchema
         assertThat(iStats.hasReset()).isEqualTo(false);
         assertThat(iStats.getResetStatusCode()).isEqualTo(AppSearchResult.RESULT_OK);
         appSearchImpl.close();
@@ -639,10 +641,11 @@ public class AppSearchLoggerTest {
         SearchStats sStats = mLogger.mSearchStats;
 
         assertThat(sStats).isNotNull();
+        // If the process goes really fast, the total latency could be 0. Since the default of total
+        // latency is also 0, we just remove the assert about TotalLatencyMillis.
         assertThat(sStats.getPackageName()).isEqualTo(testPackageName);
         assertThat(sStats.getDatabase()).isEqualTo(testDatabase);
         assertThat(sStats.getStatusCode()).isEqualTo(AppSearchResult.RESULT_OK);
-        assertThat(sStats.getTotalLatencyMillis()).isGreaterThan(0);
         assertThat(sStats.getVisibilityScope()).isEqualTo(SearchStats.VISIBILITY_SCOPE_LOCAL);
         assertThat(sStats.getTermCount()).isEqualTo(2);
         assertThat(sStats.getQueryLength()).isEqualTo(queryStr.length());

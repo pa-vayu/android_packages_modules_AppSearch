@@ -36,4 +36,5 @@ android_test {
         "general-tests",
         "mts-appsearch",
     ],
+    compile_multilib: "both",
 }

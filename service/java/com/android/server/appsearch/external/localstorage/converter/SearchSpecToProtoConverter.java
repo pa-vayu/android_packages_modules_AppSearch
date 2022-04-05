@@ -28,6 +28,7 @@ import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Log;
 
+import com.android.server.appsearch.external.localstorage.visibilitystore.CallerAccess;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityChecker;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityStore;
 import com.android.server.appsearch.external.localstorage.visibilitystore.VisibilityUtil;
@@ -155,18 +156,14 @@ public final class SearchSpecToProtoConverter {
      * For each target schema, we will check visibility store is that accessible to the caller. And
      * remove this schemas if it is not allowed for caller to query.
      *
-     * @param callerPackageName The package name of caller
-     * @param callerUid The uid of the caller.
-     * @param callerHasSystemAccess Whether the caller has system access.
+     * @param callerAccess Visibility access info of the calling app
      * @param visibilityStore The {@link VisibilityStore} that store all visibility information.
      * @param visibilityChecker Optional visibility checker to check whether the caller could access
      *     target schemas. Pass {@code null} will reject access for all documents which doesn't
      *     belong to the calling package.
      */
     public void removeInaccessibleSchemaFilter(
-            @NonNull String callerPackageName,
-            int callerUid,
-            boolean callerHasSystemAccess,
+            @NonNull CallerAccess callerAccess,
             @Nullable VisibilityStore visibilityStore,
             @Nullable VisibilityChecker visibilityChecker) {
         Iterator<String> targetPrefixedSchemaFilterIterator =
@@ -176,9 +173,7 @@ public final class SearchSpecToProtoConverter {
             String packageName = getPackageName(targetPrefixedSchemaFilter);
 
             if (!VisibilityUtil.isSchemaSearchableByCaller(
-                    callerPackageName,
-                    callerUid,
-                    callerHasSystemAccess,
+                    callerAccess,
                     packageName,
                     targetPrefixedSchemaFilter,
                     visibilityStore,
