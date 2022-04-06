@@ -29,6 +29,7 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.database.sqlite.SQLiteQueryBuilder;
 import android.net.Uri;
+import android.provider.ContactsContract;
 import android.provider.ContactsContract.CommonDataKinds.Email;
 import android.provider.ContactsContract.CommonDataKinds.Nickname;
 import android.provider.ContactsContract.CommonDataKinds.Phone;
@@ -426,8 +427,9 @@ public class FakeContactsProvider extends ContentProvider {
                 throw new UnsupportedOperationException();
         }
 
+        String limit = uri.getQueryParameter(ContactsContract.LIMIT_PARAM_KEY);
         Cursor cursor = qb.query(db, projection, selection, selectionArgs, /*groupBy=*/ null,
-                /*having=*/null, orderBy);
+                /*having=*/null, orderBy, limit);
         if (cursor == null) {
             Log.w(TAG, "query failed");
             return null;
