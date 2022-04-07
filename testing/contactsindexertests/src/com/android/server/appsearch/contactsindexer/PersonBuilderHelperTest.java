@@ -240,4 +240,42 @@ public class PersonBuilderHelperTest {
 
         assertThat(person.getFingerprint()).isNotEqualTo(person2.getFingerprint());
     }
+
+    @Test
+    public void testScore_setCorrectly() {
+        String namespace = "namespace";
+        String id = "id";
+        String name = "name";
+        List<String> additionalNames = Arrays.asList("name1", "name2");
+        Person.Builder personBuilder = new Person.Builder(namespace, id, name)
+                .addAdditionalName(Person.TYPE_NICKNAME, additionalNames.get(0))
+                .addAdditionalName(Person.TYPE_PHONETIC_NAME, additionalNames.get(1));
+        ContactPoint contact1 = new ContactPoint.Builder(namespace, id + "1", "Home")
+                .addAddress("addr1")
+                .addPhone("phone1")
+                .addEmail("email1")
+                .addAppId("appId1")
+                .build();
+        ContactPoint contact2 = new ContactPoint.Builder(namespace, id + "2", "Work")
+                .addAddress("addr2")
+                .addPhone("phone2")
+                .addEmail("email2")
+                .addAppId("appId2")
+                .build();
+        ContactPoint contact3 = new ContactPoint.Builder(namespace, id + "3", "Other")
+                .addAddress("addr3")
+                .addPhone("phone3")
+                .addEmail("email3")
+                .addAppId("appId3")
+                .build();
+        personBuilder.addContactPoint(contact1)
+                .addContactPoint(contact2)
+                .addContactPoint(contact3);
+
+        Person person = new PersonBuilderHelper(id, personBuilder).setCreationTimestampMillis(
+                0).setCreationTimestampMillis(0).buildPerson();
+
+        // Score should be set as base(1) + # of contactPoints + # of additionalNames.
+        assertThat(person.getScore()).isEqualTo(6);
+    }
 }
