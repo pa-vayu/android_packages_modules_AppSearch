@@ -41,6 +41,8 @@ import android.util.Log;
 
 import androidx.test.core.app.ApplicationProvider;
 
+import com.android.server.appsearch.contactsindexer.appsearchtypes.Person;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -161,7 +163,6 @@ public class FakeContactsProvider extends ContentProvider {
     private static void addNickname(long contactId, ContentValues values) {
         values.put(Data.MIMETYPE, Nickname.CONTENT_ITEM_TYPE);
         values.put(Nickname.NAME, String.format("nicknameName%d", contactId));
-        values.put(Nickname.NAME, String.format("nicknameName%d", contactId));
     }
 
     // Add fake phone information into the ContentValues.
@@ -240,7 +241,7 @@ public class FakeContactsProvider extends ContentProvider {
     }
 
     private void addNicknameToBuilder(PersonBuilderHelper builderHelper, long contactId) {
-        builderHelper.getPersonBuilder().addAdditionalName(
+        builderHelper.getPersonBuilder().addAdditionalName(Person.TYPE_NICKNAME,
                 String.format("nicknameName%d", contactId));
     }
 

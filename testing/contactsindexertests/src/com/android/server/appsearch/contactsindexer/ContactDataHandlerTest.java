@@ -211,7 +211,7 @@ public class ContactDataHandlerTest {
 
         Person personExpected = new Person.Builder(TEST_NAMESPACE, TEST_ID, name)
                 .setCreationTimestampMillis(0)
-                .addAdditionalName(nick)
+                .addAdditionalName(Person.TYPE_NICKNAME, nick)
                 .build();
 
         PersonBuilderHelper helperTested = new PersonBuilderHelper(
@@ -220,6 +220,8 @@ public class ContactDataHandlerTest {
         convertRowToPerson(cursor, helperTested);
         Person personTested = helperTested.buildPerson();
 
+        assertThat(personTested.getAdditionalNameTypes()).asList().containsExactly(
+                (long) Person.TYPE_NICKNAME);
         assertThat(personTested.getAdditionalNames()).asList().containsExactly(nick);
         TestUtils.assertEquals(personTested, personExpected);
     }

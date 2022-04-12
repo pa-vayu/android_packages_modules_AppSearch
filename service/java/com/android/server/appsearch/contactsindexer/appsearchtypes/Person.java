@@ -16,6 +16,7 @@
 
 package com.android.server.appsearch.contactsindexer.appsearchtypes;
 
+import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.app.appsearch.AppSearchSchema;
@@ -23,7 +24,10 @@ import android.app.appsearch.GenericDocument;
 import android.net.Uri;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.internal.util.Preconditions;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -36,12 +40,36 @@ import java.util.Objects;
 public class Person extends GenericDocument {
     public static final String SCHEMA_TYPE = "builtin:Person";
 
+    /**
+     * The type of the name stored in additionalNames list. We have two parallel lists to store
+     * different names, like nicknames and phonetic names as searchable field in additionalNames.
+     *
+     * <p>Having this type for each name stored in additionalNames, so clients can distinguish the
+     * type of those names in the search result.
+     *
+     * @hide
+     */
+    @IntDef(
+            value = {
+                    TYPE_UNKNOWN,
+                    TYPE_NICKNAME,
+                    TYPE_PHONETIC_NAME,
+            })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface NameType {
+    }
+
+    public static final int TYPE_UNKNOWN = 0;
+    public static final int TYPE_NICKNAME = 1;
+    public static final int TYPE_PHONETIC_NAME = 2;
+
     // Properties
     public static final String PERSON_PROPERTY_NAME = "name";
     public static final String PERSON_PROPERTY_GIVEN_NAME = "givenName";
     public static final String PERSON_PROPERTY_MIDDLE_NAME = "middleName";
     public static final String PERSON_PROPERTY_FAMILY_NAME = "familyName";
     public static final String PERSON_PROPERTY_EXTERNAL_URI = "externalUri";
+    public static final String PERSON_PROPERTY_ADDITIONAL_NAME_TYPES = "additionalNameTypes";
     public static final String PERSON_PROPERTY_ADDITIONAL_NAMES = "additionalNames";
     public static final String PERSON_PROPERTY_IS_IMPORTANT = "isImportant";
     public static final String PERSON_PROPERTY_IS_BOT = "isBot";
@@ -78,6 +106,11 @@ public class Person extends GenericDocument {
             .addProperty(new AppSearchSchema.StringPropertyConfig.Builder(
                     PERSON_PROPERTY_EXTERNAL_URI)
                     .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_OPTIONAL)
+                    .build())
+            // corresponding name types for the names stored in additional names below.
+            .addProperty(new AppSearchSchema.LongPropertyConfig.Builder(
+                    PERSON_PROPERTY_ADDITIONAL_NAME_TYPES)
+                    .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
                     .build())
             // additional names e.g. nick names and phonetic names.
             .addProperty(new AppSearchSchema.StringPropertyConfig.Builder(
@@ -189,6 +222,12 @@ public class Person extends GenericDocument {
     }
 
     @NonNull
+    @NameType
+    public long[] getAdditionalNameTypes() {
+        return getPropertyLongArray(PERSON_PROPERTY_ADDITIONAL_NAME_TYPES);
+    }
+
+    @NonNull
     public String[] getAdditionalNames() {
         return getPropertyStringArray(PERSON_PROPERTY_ADDITIONAL_NAMES);
     }
@@ -216,6 +255,8 @@ public class Person extends GenericDocument {
 
     /** Builder for {@link Person}. */
     public static final class Builder extends GenericDocument.Builder<Builder> {
+        @NameType
+        private final List<Long> mAdditionalNameTypes = new ArrayList<>();
         private final List<String> mAdditionalNames = new ArrayList<>();
         private final List<String> mAffiliations = new ArrayList<>();
         private final List<String> mRelations = new ArrayList<>();
@@ -292,8 +333,9 @@ public class Person extends GenericDocument {
         }
 
         @NonNull
-        public Builder addAdditionalName(@NonNull String additionalName) {
-            mAdditionalNames.add(Objects.requireNonNull(additionalName));
+        public Builder addAdditionalName(@NameType long nameType, @NonNull String name) {
+            mAdditionalNameTypes.add(nameType);
+            mAdditionalNames.add(Objects.requireNonNull(name));
             return this;
         }
 
@@ -323,8 +365,16 @@ public class Person extends GenericDocument {
 
         @NonNull
         public Person build() {
+            Preconditions.checkState(
+                    mAdditionalNameTypes.size() == mAdditionalNames.size());
+            long[] primitiveNameTypes = new long[mAdditionalNameTypes.size()];
+            for (int i = 0; i < mAdditionalNameTypes.size(); i++) {
+                primitiveNameTypes[i] = mAdditionalNameTypes.get(i).longValue();
+            }
+            setPropertyLong(PERSON_PROPERTY_ADDITIONAL_NAME_TYPES, primitiveNameTypes);
             setPropertyString(PERSON_PROPERTY_ADDITIONAL_NAMES,
                     mAdditionalNames.toArray(new String[0]));
+
             setPropertyString(PERSON_PROPERTY_AFFILIATIONS,
                     mAffiliations.toArray(new String[0]));
             setPropertyString(PERSON_PROPERTY_RELATIONS,
