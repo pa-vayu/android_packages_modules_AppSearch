@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package contactsindexertests.src.com.android.server.appsearch.contactsindexer;
+package com.android.server.appsearch.contactsindexer;
 
 import android.net.Uri;
 

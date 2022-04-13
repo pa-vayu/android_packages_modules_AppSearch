@@ -56,6 +56,7 @@ public final class ContactsIndexerManagerService extends SystemService {
             "com.android.providers.contacts";
 
     private final Context mContext;
+    private final ContactsIndexerConfig mContactsIndexerConfig;
     private final LocalService mLocalService;
     // Sparse array of ContactsIndexerUserInstance indexed by the device-user ID.
     private final SparseArray<ContactsIndexerUserInstance> mContactsIndexersLocked =
@@ -64,9 +65,11 @@ public final class ContactsIndexerManagerService extends SystemService {
     private String mContactsProviderPackageName;
 
     /** Constructs a {@link ContactsIndexerManagerService}. */
-    public ContactsIndexerManagerService(@NonNull Context context) {
+    public ContactsIndexerManagerService(@NonNull Context context,
+            @NonNull ContactsIndexerConfig contactsIndexerConfig) {
         super(context);
         mContext = Objects.requireNonNull(context);
+        mContactsIndexerConfig = Objects.requireNonNull(contactsIndexerConfig);
         mLocalService = new LocalService();
     }
 
@@ -89,7 +92,8 @@ public final class ContactsIndexerManagerService extends SystemService {
                 File appSearchDir = AppSearchModule.getAppSearchDir(userHandle);
                 File contactsDir = new File(appSearchDir, "contacts");
                 try {
-                    instance = ContactsIndexerUserInstance.createInstance(userContext, contactsDir);
+                    instance = ContactsIndexerUserInstance.createInstance(userContext, contactsDir,
+                            mContactsIndexerConfig);
                     Log.d(TAG, "Created Contacts Indexer instance for user " + userHandle);
                 } catch (Throwable t) {
                     Log.e(TAG, "Failed to create Contacts Indexer instance for user "

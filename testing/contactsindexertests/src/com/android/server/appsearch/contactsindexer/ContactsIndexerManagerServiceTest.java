@@ -41,6 +41,8 @@ import androidx.annotation.NonNull;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
+import static android.Manifest.permission.INTERACT_ACROSS_USERS_FULL;
+import static android.Manifest.permission.READ_DEVICE_CONFIG;
 
 import com.android.compatibility.common.util.SystemUtil;
 import com.android.server.SystemService;
@@ -93,7 +95,11 @@ public class ContactsIndexerManagerServiceTest extends ProviderTestCase2<FakeCon
                 return getMockContentResolver();
             }
         };
-        mContactsIndexerManagerService = new ContactsIndexerManagerService(mContext);
+        // INTERACT_ACROSS_USERS_FULL: needed when we do registerReceiverForAllUsers for getting
+        // package change notifications.
+        mUiAutomation.adoptShellPermissionIdentity(INTERACT_ACROSS_USERS_FULL);
+        mContactsIndexerManagerService = new ContactsIndexerManagerService(mContext,
+                new TestContactsIndexerConfig());
         mContactsIndexerManagerService.onStart();
         UserInfo userInfo = new UserInfo(userHandle.getIdentifier(), /*name=*/ "default",
                 /*flags=*/ 0);
@@ -108,6 +114,7 @@ public class ContactsIndexerManagerServiceTest extends ProviderTestCase2<FakeCon
                 new AppSearchManager.SearchContext.Builder(AppSearchHelper.DATABASE_NAME).build(),
                 mSingleThreadedExecutor).get();
         db.setSchemaAsync(new SetSchemaRequest.Builder().setForceOverride(true).build()).get();
+        mUiAutomation.dropShellPermissionIdentity();
         super.tearDown();
     }
 

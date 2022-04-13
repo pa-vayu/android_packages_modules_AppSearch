@@ -67,6 +67,7 @@ public final class ContactsIndexerUserInstance {
 
     private final AppSearchHelper mAppSearchHelper;
     private final ContactsIndexerImpl mContactsIndexerImpl;
+    private final ContactsIndexerConfig mContactsIndexerConfig;
 
     /**
      * Single threaded executor to make sure there is only one active sync for this {@link
@@ -83,27 +84,30 @@ public final class ContactsIndexerUserInstance {
      */
     @NonNull
     public static ContactsIndexerUserInstance createInstance(@NonNull Context userContext,
-            @NonNull File contactsDir) {
+            @NonNull File contactsDir, @NonNull ContactsIndexerConfig contactsIndexerConfig) {
         Objects.requireNonNull(userContext);
         Objects.requireNonNull(contactsDir);
+        Objects.requireNonNull(contactsIndexerConfig);
 
         ExecutorService singleThreadedExecutor = Executors.newSingleThreadExecutor();
-        return createInstance(userContext, contactsDir, singleThreadedExecutor);
+        return createInstance(userContext, contactsDir, contactsIndexerConfig,
+                singleThreadedExecutor);
     }
 
     @VisibleForTesting
     @NonNull
     /*package*/ static ContactsIndexerUserInstance createInstance(@NonNull Context context,
-            @NonNull File contactsDir,
+            @NonNull File contactsDir, @NonNull ContactsIndexerConfig contactsIndexerConfig,
             @NonNull ExecutorService executorService) {
         Objects.requireNonNull(context);
         Objects.requireNonNull(contactsDir);
+        Objects.requireNonNull(contactsIndexerConfig);
         Objects.requireNonNull(executorService);
 
         AppSearchHelper appSearchHelper = AppSearchHelper.createAppSearchHelper(context,
                 executorService);
         ContactsIndexerUserInstance indexer = new ContactsIndexerUserInstance(context,
-                contactsDir, appSearchHelper, executorService);
+                contactsDir, appSearchHelper, contactsIndexerConfig, executorService);
         indexer.loadSettingsAsync();
 
         return indexer;
@@ -112,17 +116,20 @@ public final class ContactsIndexerUserInstance {
     /**
      * Constructs a {@link ContactsIndexerUserInstance}.
      *
-     * @param context                Context object passed from
-     *                               {@link ContactsIndexerManagerService}
-     * @param dataDir                data directory for storing contacts indexer state.
-     * @param singleThreadedExecutor an {@link ExecutorService} with at most one thread to ensure
-     *                               the thread safety of this class.
+     * @param context                 Context object passed from
+     *                                {@link ContactsIndexerManagerService}
+     * @param dataDir                 data directory for storing contacts indexer state.
+     * @param contactsIndexerConfig   configuration for the Contacts Indexer.
+     * @param singleThreadedExecutor  an {@link ExecutorService} with at most one thread to ensure
+     *                                the thread safety of this class.
      */
     private ContactsIndexerUserInstance(@NonNull Context context, @NonNull File dataDir,
             @NonNull AppSearchHelper appSearchHelper,
+            @NonNull ContactsIndexerConfig contactsIndexerConfig,
             @NonNull ExecutorService singleThreadedExecutor) {
         mContext = Objects.requireNonNull(context);
         mDataDir = Objects.requireNonNull(dataDir);
+        mContactsIndexerConfig = Objects.requireNonNull(contactsIndexerConfig);
         mSettings = new ContactsIndexerSettings(mDataDir);
         mAppSearchHelper = Objects.requireNonNull(appSearchHelper);
         mSingleThreadedExecutor = Objects.requireNonNull(singleThreadedExecutor);
@@ -172,7 +179,7 @@ public final class ContactsIndexerUserInstance {
             // TODO(b/222126568): refactor doDeltaUpdateAsync() to return a future value of
             // ContactsUpdateStats so that it can be checked and logged here, instead of the
             // placeholder exceptionally() block that only logs to the console.
-            doDeltaUpdateAsync(ContactsIndexerConfig.getContactsInstantIndexingLimit(),
+            doDeltaUpdateAsync(mContactsIndexerConfig.getContactsFirstRunIndexingLimit(),
                     new ContactsUpdateStats()).exceptionally(t -> {
                 Log.d(TAG, "Failed to bootstrap Person corpus with CP2 contacts", t);
                 return null;
@@ -181,7 +188,8 @@ public final class ContactsIndexerUserInstance {
 
         // If a configurable amount of time has passed since the last full sync, schedule a job
         // to do a full update. That is, sync all CP2 contacts into AppSearch.
-        long fullUpdateIntervalMillis = ContactsIndexerConfig.getContactsFullUpdateIntervalMillis();
+        long fullUpdateIntervalMillis =
+                mContactsIndexerConfig.getContactsFullUpdateIntervalMillis();
         long lastFullUpdateTimestampMillis = mSettings.getLastFullUpdateTimestampMillis();
         if (lastFullUpdateTimestampMillis + fullUpdateIntervalMillis
                 <= System.currentTimeMillis()) {
@@ -216,7 +224,7 @@ public final class ContactsIndexerUserInstance {
         // TODO(b/203605504): reconsider whether the most recent
         //  updated and deleted timestamps are useful.
         ContactsProviderUtil.getUpdatedContactIds(mContext, /*sinceFilter=*/ 0,
-                ContactsIndexerConfig.getContactsFullUpdateLimit(), cp2ContactIds,
+                mContactsIndexerConfig.getContactsFullUpdateLimit(), cp2ContactIds,
                 updateStats);
         return mAppSearchHelper.getAllContactIdsAsync()
                 .thenCompose(appsearchContactIds -> {
@@ -288,7 +296,7 @@ public final class ContactsIndexerUserInstance {
                 // TODO(b/222126568): refactor doDeltaUpdateAsync() to return a future value of
                 //  ContactsUpdateStats so that it can be checked and logged here, instead of the
                 //  placeholder exceptionally() block that only logs to the console.
-                doDeltaUpdateAsync(ContactsIndexerConfig.getContactsDeltaUpdateLimit(),
+                doDeltaUpdateAsync(mContactsIndexerConfig.getContactsDeltaUpdateLimit(),
                         updateStats).exceptionally(t -> {
                     Log.d(TAG, "Failed to index CP2 change", t);
                     return null;
