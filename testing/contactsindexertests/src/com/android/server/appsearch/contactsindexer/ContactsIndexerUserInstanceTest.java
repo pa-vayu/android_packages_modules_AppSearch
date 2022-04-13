@@ -39,6 +39,7 @@ import android.app.appsearch.observer.ObserverSpec;
 import android.app.appsearch.observer.SchemaChangeInfo;
 import android.app.appsearch.testutil.AppSearchSessionShimImpl;
 import android.app.appsearch.testutil.GlobalSearchSessionShimImpl;
+import android.app.job.JobInfo;
 import android.app.job.JobScheduler;
 import android.content.ContentResolver;
 import android.content.ContentUris;
@@ -64,6 +65,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 
 import java.io.File;
 import java.util.Arrays;
@@ -165,7 +167,13 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         mSingleThreadedExecutor.submit(() -> {
         }).get();
 
-        verify(mockJobScheduler).schedule(any());
+        ArgumentCaptor<JobInfo> jobInfoArgumentCaptor = ArgumentCaptor.forClass(JobInfo.class);
+        verify(mockJobScheduler).schedule(jobInfoArgumentCaptor.capture());
+        JobInfo fullUpdateJob = jobInfoArgumentCaptor.getValue();
+        assertThat(fullUpdateJob.isRequireBatteryNotLow()).isTrue();
+        assertThat(fullUpdateJob.isRequireDeviceIdle()).isTrue();
+        assertThat(fullUpdateJob.isPersisted()).isTrue();
+        assertThat(fullUpdateJob.isPeriodic()).isFalse();
     }
 
     @Test

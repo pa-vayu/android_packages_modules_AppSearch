@@ -16,6 +16,12 @@
 
 package com.android.server.appsearch.contactsindexer;
 
+import static android.Manifest.permission.RECEIVE_BOOT_COMPLETED;
+
+import static com.android.server.appsearch.contactsindexer.ContactsIndexerMaintenanceService.MIN_INDEXER_JOB_ID;
+
+import static com.google.common.truth.Truth.assertThat;
+
 import android.app.UiAutomation;
 import android.app.appsearch.AppSearchManager;
 import android.app.appsearch.AppSearchSessionShim;
@@ -28,6 +34,7 @@ import android.app.appsearch.observer.SchemaChangeInfo;
 import android.app.appsearch.testutil.AppSearchSessionShimImpl;
 import android.app.appsearch.testutil.GlobalSearchSessionShimImpl;
 import android.content.ContentResolver;
+import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.ContextWrapper;
@@ -76,7 +83,6 @@ public class ContactsIndexerManagerServiceTest extends ProviderTestCase2<FakeCon
     public void setUp() throws Exception {
         super.setUp();
         Context context = ApplicationProvider.getApplicationContext();
-        UserHandle userHandle = context.getUser();
         mUiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         mContext = new ContextWrapper(context) {
 
@@ -101,9 +107,6 @@ public class ContactsIndexerManagerServiceTest extends ProviderTestCase2<FakeCon
         mContactsIndexerManagerService = new ContactsIndexerManagerService(mContext,
                 new TestContactsIndexerConfig());
         mContactsIndexerManagerService.onStart();
-        UserInfo userInfo = new UserInfo(userHandle.getIdentifier(), /*name=*/ "default",
-                /*flags=*/ 0);
-        mContactsIndexerManagerService.onUserUnlocking(new SystemService.TargetUser(userInfo));
     }
 
     @Override
@@ -120,7 +123,50 @@ public class ContactsIndexerManagerServiceTest extends ProviderTestCase2<FakeCon
 
     @Test
     public void testCP2Clear_runsFullUpdate() throws Exception {
-        CountDownLatch latch = new CountDownLatch(100);
+        int userId = mContext.getUser().getIdentifier();
+
+        // Populate fake CP2 with 100 contacts.
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues values = new ContentValues();
+        for (int i = 0; i < 100; i++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, values);
+        }
+
+        // Contacts indexer schedules a full-update job for bootstrapping from CP2,
+        // and JobScheduler API requires BOOT_COMPLETED permission for persisting the job.
+        mUiAutomation.adoptShellPermissionIdentity(RECEIVE_BOOT_COMPLETED);
+        try {
+            CountDownLatch bootstrapLatch = countDownAppSearchDocumentChanges(100);
+            UserInfo userInfo = new UserInfo(mContext.getUser().getIdentifier(),
+                    /*name=*/ "default", /*flags=*/ 0);
+            mContactsIndexerManagerService.onUserUnlocking(new SystemService.TargetUser(userInfo));
+            bootstrapLatch.await(30L, TimeUnit.SECONDS);
+        } finally {
+            mUiAutomation.dropShellPermissionIdentity();
+        }
+
+        // Clear fake CP2.
+        for (int i = 0; i < 100; i++) {
+            resolver.delete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, i),
+                    /*extras=*/ null);
+        }
+        CountDownLatch fullUpdateLatch = countDownAppSearchDocumentChanges(100);
+        SystemUtil.runShellCommand("pm clear --user " + userId + " com.android.providers.contacts");
+        // Wait for full-update to run and delete all 100 contacts.
+        fullUpdateLatch.await(30L, TimeUnit.SECONDS);
+        // Verify that a periodic full-update job is scheduled still.
+        assertThat(getJobState(MIN_INDEXER_JOB_ID + userId)).contains("waiting");
+    }
+
+    /**
+     * Returns a latch to count down the given number of document changes in the Person corpus.
+     *
+     * <p>The latch counts down to 0, and can be used to wait until the expected number of document
+     * changes have occurred.
+     */
+    @NonNull
+    private CountDownLatch countDownAppSearchDocumentChanges(int numChanges) throws Exception {
+        CountDownLatch latch = new CountDownLatch(numChanges);
         GlobalSearchSessionShim shim =
                 GlobalSearchSessionShimImpl.createGlobalSearchSessionAsync(mContext).get();
         ObserverCallback callback = new ObserverCallback() {
@@ -140,22 +186,17 @@ public class ContactsIndexerManagerServiceTest extends ProviderTestCase2<FakeCon
                 new ObserverSpec.Builder().addFilterSchemas("builtin:Person").build(),
                 mSingleThreadedExecutor,
                 callback);
+        return latch;
+    }
 
-        long now = System.currentTimeMillis();
-        ContentResolver resolver = mContext.getContentResolver();
-        ContentValues values = new ContentValues();
-        for (int i = 0; i < 100; i++) {
-            resolver.insert(ContactsContract.Contacts.CONTENT_URI, values);
-        }
-        mUiAutomation.adoptShellPermissionIdentity();
-        try {
-            SystemUtil.runShellCommand("pm clear com.android.providers.contacts");
-        } finally {
-            mUiAutomation.dropShellPermissionIdentity();
-        }
-
-        // Wait for full-update to run and index 100 contacts
-        latch.await(30L, TimeUnit.SECONDS);
-        Log.d(TAG, "Full update completed in " + (System.currentTimeMillis() - now) + " ms");
+    /**
+     * Returns the current state of a job, which may be "pending", "active", "ready", or "waiting".
+     *
+     * <p>See "adb shell cmd jobscheduler -h" for more details.
+     */
+    @NonNull
+    private String getJobState(int jobId) throws Exception {
+        return SystemUtil.runShellCommand(mUiAutomation,
+                "cmd jobscheduler get-job-state android " + jobId).trim();
     }
 }
