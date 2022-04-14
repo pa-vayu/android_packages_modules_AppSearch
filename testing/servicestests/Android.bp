@@ -24,25 +24,21 @@ android_test {
         "androidx.test.ext.junit",
         "androidx.test.rules",
         "compatibility-device-util-axt",
+        "framework-appsearch.impl",
         "service-appsearch",
         "truth-prebuilt",
     ],
     libs: [
         "android.test.runner",
-        "framework-appsearch.impl",
         "android.test.mock",
         "android.test.base",
     ],
     // jni libs are not normally accessible from apps so they must be explicitly included.
     jni_libs: ["libicing"],
-    // TODO(b/203690505): Move to general-tests when tests no longer need
-    //  READ_DEVICE_CONFIG permission.
+    jarjar_rules: "jarjar-rules.txt",
     test_suites: [
-        "device-tests",
+        "general-tests",
         "mts-appsearch",
     ],
     compile_multilib: "both",
-    // TODO(b/203690505): Remove the platform certificate when tests no longer
-    //  need READ_DEVICE_CONFIG permission.
-    certificate: "platform",
 }

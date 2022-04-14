@@ -20,6 +20,7 @@ import static com.android.internal.util.ConcurrentUtils.DIRECT_EXECUTOR;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import android.app.appsearch.testutil.FakeAppSearchConfig;
 import android.provider.DeviceConfig;
 
 import com.android.modules.utils.testing.TestableDeviceConfig;
@@ -39,7 +40,7 @@ public class FrameworkLimitConfigTest {
 
     @Test
     public void testDefaultValues() {
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = new FakeAppSearchConfig();
         FrameworkLimitConfig config = new FrameworkLimitConfig(appSearchConfig);
         assertThat(config.getMaxDocumentSizeBytes()).isEqualTo(
                 AppSearchConfig.DEFAULT_LIMIT_CONFIG_MAX_DOCUMENT_SIZE_BYTES);
@@ -49,16 +50,16 @@ public class FrameworkLimitConfigTest {
 
     @Test
     public void testCustomizedValues() {
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = FrameworkAppSearchConfig.create(DIRECT_EXECUTOR);
         FrameworkLimitConfig config = new FrameworkLimitConfig(appSearchConfig);
         DeviceConfig.setProperty(
                 DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_LIMIT_CONFIG_MAX_DOCUMENT_SIZE_BYTES,
+                FrameworkAppSearchConfig.KEY_LIMIT_CONFIG_MAX_DOCUMENT_SIZE_BYTES,
                 "2001",
                 /*makeDefault=*/ false);
         DeviceConfig.setProperty(
                 DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_LIMIT_CONFIG_MAX_DOCUMENT_COUNT,
+                FrameworkAppSearchConfig.KEY_LIMIT_CONFIG_MAX_DOCUMENT_COUNT,
                 "2002",
                 /*makeDefault=*/ false);
 
