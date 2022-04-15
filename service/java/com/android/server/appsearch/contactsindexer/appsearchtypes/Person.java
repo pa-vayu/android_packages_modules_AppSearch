@@ -405,7 +405,6 @@ public class Person extends GenericDocument {
             setPropertyLong(PERSON_PROPERTY_ADDITIONAL_NAME_TYPES, primitiveNameTypes);
             setPropertyString(PERSON_PROPERTY_ADDITIONAL_NAMES,
                     mAdditionalNames.toArray(new String[0]));
-
             setPropertyString(PERSON_PROPERTY_AFFILIATIONS,
                     mAffiliations.toArray(new String[0]));
             setPropertyString(PERSON_PROPERTY_RELATIONS,

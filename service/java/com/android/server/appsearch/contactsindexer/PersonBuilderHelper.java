@@ -47,6 +47,7 @@ import com.android.internal.util.Preconditions;
 public final class PersonBuilderHelper {
     static final String TAG = "PersonBuilderHelper";
     static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
+    static final int BASE_SCORE = 1;
 
     // We want to store id separately even if we do have it set in the builder, since we
     // can't get its value out of the builder, which will be used to fetch fingerprints.
@@ -80,12 +81,19 @@ public final class PersonBuilderHelper {
             mBuilder.addContactPoint(builder.build());
         }
         // Set the fingerprint and creationTimestamp to 0 to calculate the actual fingerprint.
+        mBuilder.setScore(0);
         mBuilder.setFingerprint(EMPTY_BYTE_ARRAY);
         mBuilder.setCreationTimestampMillis(0);
         // Build a person for generating the fingerprint.
         Person contactForFingerPrint = mBuilder.build();
         try {
             byte[] fingerprint = generateFingerprintMD5(contactForFingerPrint);
+            // This is an "a priori" document score that doesn't take any usage into account.
+            // Hence, the heuristic that's used to assign the document score is to add the
+            // presence or count of all the salient properties of the contact.
+            int score = BASE_SCORE + contactForFingerPrint.getContactPoints().length
+                    + contactForFingerPrint.getAdditionalNames().length;
+            mBuilder.setScore(score);
             mBuilder.setFingerprint(fingerprint);
             mBuilder.setCreationTimestampMillis(mCreationTimestampMillis);
         } catch (NoSuchAlgorithmException e) {
