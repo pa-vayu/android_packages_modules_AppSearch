@@ -18,8 +18,8 @@ package com.android.server.appsearch.external.localstorage;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
-import android.app.appsearch.observer.AppSearchObserverCallback;
 import android.app.appsearch.observer.DocumentChangeInfo;
+import android.app.appsearch.observer.ObserverCallback;
 import android.app.appsearch.observer.ObserverSpec;
 import android.app.appsearch.observer.SchemaChangeInfo;
 import android.util.ArrayMap;
@@ -42,8 +42,7 @@ import java.util.Set;
 import java.util.concurrent.Executor;
 
 /**
- * Manages {@link AppSearchObserverCallback} instances and queues notifications to them for later
- * dispatch.
+ * Manages {@link ObserverCallback} instances and queues notifications to them for later dispatch.
  *
  * <p>This class is thread-safe.
  *
@@ -93,7 +92,7 @@ public class ObserverManager {
 
         final ObserverSpec mObserverSpec;
         final Executor mExecutor;
-        final AppSearchObserverCallback mObserver;
+        final ObserverCallback mObserverCallback;
         // Values is a set of document IDs
         volatile Map<DocumentChangeGroupKey, Set<String>> mDocumentChanges = new ArrayMap<>();
         // Keys are database prefixes, values are a set of schema names
@@ -103,11 +102,11 @@ public class ObserverManager {
                 @NonNull CallerAccess listeningPackageAccess,
                 @NonNull ObserverSpec observerSpec,
                 @NonNull Executor executor,
-                @NonNull AppSearchObserverCallback observer) {
+                @NonNull ObserverCallback observerCallback) {
             mListeningPackageAccess = Objects.requireNonNull(listeningPackageAccess);
             mObserverSpec = Objects.requireNonNull(observerSpec);
             mExecutor = Objects.requireNonNull(executor);
-            mObserver = Objects.requireNonNull(observer);
+            mObserverCallback = Objects.requireNonNull(observerCallback);
         }
     }
 
@@ -120,8 +119,8 @@ public class ObserverManager {
     private volatile boolean mHasNotifications = false;
 
     /**
-     * Adds an {@link AppSearchObserverCallback} to monitor changes within the databases owned by
-     * {@code targetPackageName} if they match the given {@link
+     * Adds an {@link ObserverCallback} to monitor changes within the databases owned by {@code
+     * targetPackageName} if they match the given {@link
      * android.app.appsearch.observer.ObserverSpec}.
      *
      * <p>If the data owned by {@code targetPackageName} is not visible to you, the registration
@@ -138,44 +137,44 @@ public class ObserverManager {
      *
      * @param listeningPackageAccess Visibility information about the app that wants to receive
      *     notifications.
-     * @param targetPackageName The package that owns the data the observer wants to be notified
-     *     for.
-     * @param spec Describes the kind of data changes the observer should trigger for.
-     * @param executor The executor on which to trigger the observer callback to deliver
+     * @param targetPackageName The package that owns the data the observerCallback wants to be
+     *     notified for.
+     * @param spec Describes the kind of data changes the observerCallback should trigger for.
+     * @param executor The executor on which to trigger the observerCallback callback to deliver
      *     notifications.
-     * @param observer The callback to trigger on notifications.
+     * @param observerCallback The callback to trigger on notifications.
      */
-    public void addObserver(
+    public void registerObserverCallback(
             @NonNull CallerAccess listeningPackageAccess,
             @NonNull String targetPackageName,
             @NonNull ObserverSpec spec,
             @NonNull Executor executor,
-            @NonNull AppSearchObserverCallback observer) {
+            @NonNull ObserverCallback observerCallback) {
         synchronized (mLock) {
             List<ObserverInfo> infos = mObserversLocked.get(targetPackageName);
             if (infos == null) {
                 infos = new ArrayList<>();
                 mObserversLocked.put(targetPackageName, infos);
             }
-            infos.add(new ObserverInfo(listeningPackageAccess, spec, executor, observer));
+            infos.add(new ObserverInfo(listeningPackageAccess, spec, executor, observerCallback));
         }
     }
 
     /**
-     * Removes all observers that match via {@link AppSearchObserverCallback#equals} to the given
-     * observer from watching the targetPackageName.
+     * Removes all observers that match via {@link ObserverCallback#equals} to the given observer
+     * from watching the targetPackageName.
      *
      * <p>Pending notifications queued for this observer, if any, are discarded.
      */
-    public void removeObserver(
-            @NonNull String targetPackageName, @NonNull AppSearchObserverCallback observer) {
+    public void unregisterObserverCallback(
+            @NonNull String targetPackageName, @NonNull ObserverCallback observer) {
         synchronized (mLock) {
             List<ObserverInfo> infos = mObserversLocked.get(targetPackageName);
             if (infos == null) {
                 return;
             }
             for (int i = 0; i < infos.size(); i++) {
-                if (infos.get(i).mObserver.equals(observer)) {
+                if (infos.get(i).mObserverCallback.equals(observer)) {
                     infos.remove(i);
                     i--;
                 }
@@ -412,12 +411,9 @@ public class ObserverManager {
                                             /*changedSchemaNames=*/ entry.getValue());
 
                             try {
-                                observerInfo.mObserver.onSchemaChanged(schemaChangeInfo);
+                                observerInfo.mObserverCallback.onSchemaChanged(schemaChangeInfo);
                             } catch (Throwable t) {
-                                Log.w(
-                                        TAG,
-                                        "AppSearchObserverCallback threw exception during dispatch",
-                                        t);
+                                Log.w(TAG, "ObserverCallback threw exception during dispatch", t);
                             }
                         }
                     }
@@ -435,12 +431,10 @@ public class ObserverManager {
                                             entry.getValue());
 
                             try {
-                                observerInfo.mObserver.onDocumentChanged(documentChangeInfo);
+                                observerInfo.mObserverCallback.onDocumentChanged(
+                                        documentChangeInfo);
                             } catch (Throwable t) {
-                                Log.w(
-                                        TAG,
-                                        "AppSearchObserverCallback threw exception during dispatch",
-                                        t);
+                                Log.w(TAG, "ObserverCallback threw exception during dispatch", t);
                             }
                         }
                     }

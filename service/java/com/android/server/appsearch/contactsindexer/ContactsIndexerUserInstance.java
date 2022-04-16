@@ -17,31 +17,25 @@
 package com.android.server.appsearch.contactsindexer;
 
 import android.annotation.NonNull;
-import android.annotation.WorkerThread;
+import android.app.appsearch.AppSearchResult;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.CancellationSignal;
 import android.provider.ContactsContract;
-import android.util.ArraySet;
 import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.server.appsearch.stats.AppSearchStatsLog;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -58,13 +52,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @hide
  */
 public final class ContactsIndexerUserInstance {
-    static final String TAG = "ContactsIndexerUserInstance";
-    static final String CONTACTS_INDEXER_STATE = "contacts_indexer_state";
+
+    private static final String TAG = "ContactsIndexerUserInstance";
 
     private final Context mContext;
     private final File mDataDir;
+    private final ContactsIndexerSettings mSettings;
     private final ContactsObserver mContactsObserver;
-    private final PersistedData mPersistedData = new PersistedData();
     // Used for batching/throttling the contact change notification so we won't schedule too many
     // delta updates.
     private final AtomicBoolean mDeltaUpdatePending = new AtomicBoolean(/*initialValue=*/ false);
@@ -76,84 +70,6 @@ public final class ContactsIndexerUserInstance {
      * ContactsIndexerUserInstance}
      */
     private final ExecutorService mSingleThreadedExecutor;
-
-    /**
-     * Class to hold the persisted data.
-     */
-    public static final class PersistedData {
-        static final String DELIMITER = ",";
-        private static final int NUMBER_OF_SERIALIZED_FIELDS = 4;
-
-        // Fields need to be serialized.
-        private static final int PERSISTED_DATA_VERSION = 1;
-        volatile long mLastDeltaUpdateTimestampMillis = 0;
-        volatile long mLastDeltaDeleteTimestampMillis = 0;
-        volatile long mLastFullUpdateTimestampMillis = 0;
-
-        /**
-         * Serializes the fields into a {@link String}.
-         *
-         * <p>Format would be:
-         * VERSION,mLastDeltaUpdatedTimestampMillis,mLastDeltaDeleteTimestampMillis
-         */
-        @Override
-        @NonNull
-        public String toString() {
-            return PERSISTED_DATA_VERSION + DELIMITER
-                    + mLastDeltaUpdateTimestampMillis + DELIMITER
-                    + mLastDeltaDeleteTimestampMillis + DELIMITER
-                    + mLastFullUpdateTimestampMillis;
-        }
-
-        /**
-         * Reads the fields from the {@link String}.
-         *
-         * @param serializedPersistedData String in expected format.
-         * @throws IllegalArgumentException If the serialized string is not in expected format.
-         */
-        public void fromString(@NonNull String serializedPersistedData)
-                throws IllegalArgumentException {
-            String[] fields = serializedPersistedData.split(DELIMITER);
-            if (fields.length < NUMBER_OF_SERIALIZED_FIELDS) {
-                throw new IllegalArgumentException(
-                        "At least " + NUMBER_OF_SERIALIZED_FIELDS + " of fields is expected in "
-                                + serializedPersistedData);
-            }
-
-            // Print the information about version number. It is only for logging purpose and
-            // future usage. Right now values should still be valid even if the version doesn't
-            // match.
-            // To keep this assumption true, we would just keep appending the fields.
-            // The version will be reset to the one matching the current version of
-            // ContactsIndexer during the next time data is persisted.
-            try {
-                int versionNum = Integer.parseInt(fields[0]);
-                if (versionNum < PERSISTED_DATA_VERSION) {
-                    Log.d(TAG, "Read a past version of persisted data.");
-                } else if (versionNum > PERSISTED_DATA_VERSION) {
-                    Log.d(TAG, "Read a future version of persisted data.");
-                }
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException(
-                        "Failed to parse the version number for " + serializedPersistedData, e);
-            }
-
-            try {
-                mLastDeltaUpdateTimestampMillis = Long.parseLong(fields[1]);
-                mLastDeltaDeleteTimestampMillis = Long.parseLong(fields[2]);
-                mLastFullUpdateTimestampMillis = Long.parseLong(fields[3]);
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("Failed to parse the timestamps", e);
-            }
-        }
-
-        /** Resets all members. */
-        public void reset() {
-            mLastDeltaUpdateTimestampMillis = 0;
-            mLastDeltaDeleteTimestampMillis = 0;
-            mLastFullUpdateTimestampMillis = 0;
-        }
-    }
 
     /**
      * Constructs and initializes a {@link ContactsIndexerUserInstance}.
@@ -184,7 +100,7 @@ public final class ContactsIndexerUserInstance {
                 executorService);
         ContactsIndexerUserInstance indexer = new ContactsIndexerUserInstance(context,
                 contactsDir, appSearchHelper, executorService);
-        indexer.loadPersistedDataAsync();
+        indexer.loadSettingsAsync();
 
         return indexer;
     }
@@ -203,6 +119,7 @@ public final class ContactsIndexerUserInstance {
             @NonNull ExecutorService singleThreadedExecutor) {
         mContext = Objects.requireNonNull(context);
         mDataDir = Objects.requireNonNull(dataDir);
+        mSettings = new ContactsIndexerSettings(mDataDir);
         mAppSearchHelper = Objects.requireNonNull(appSearchHelper);
         mSingleThreadedExecutor = Objects.requireNonNull(singleThreadedExecutor);
         mContactsObserver = new ContactsObserver();
@@ -224,8 +141,9 @@ public final class ContactsIndexerUserInstance {
             // AppSearch.
             long fullUpdateIntervalMillis =
                     ContactsIndexerConfig.getContactsFullUpdateIntervalMillis();
-            if (mPersistedData.mLastFullUpdateTimestampMillis == 0
-                    || mPersistedData.mLastFullUpdateTimestampMillis + fullUpdateIntervalMillis
+            long lastFullUpdateTimestampMillis = mSettings.getLastFullUpdateTimestampMillis();
+            if (lastFullUpdateTimestampMillis == 0
+                    || lastFullUpdateTimestampMillis + fullUpdateIntervalMillis
                     <= System.currentTimeMillis()) {
                 ContactsIndexerMaintenanceService.scheduleFullUpdateJob(
                         mContext, mContext.getUser().getIdentifier());
@@ -237,6 +155,8 @@ public final class ContactsIndexerUserInstance {
         Log.d(TAG, "Unregistering ContactsObserver for " + mContext.getUser());
         mContext.getContentResolver().unregisterContentObserver(mContactsObserver);
 
+        ContactsIndexerMaintenanceService.cancelFullUpdateJob(mContext,
+                mContext.getUser().getIdentifier());
         mSingleThreadedExecutor.shutdown();
         mSingleThreadedExecutor.awaitTermination(30L, TimeUnit.SECONDS);
     }
@@ -263,35 +183,64 @@ public final class ContactsIndexerUserInstance {
     public void doFullUpdateAsync(@NonNull CancellationSignal signal) {
         Objects.requireNonNull(signal);
         // TODO(b/222126568): log stats
-        mSingleThreadedExecutor.execute(() -> doFullUpdateInternalAsync(signal).exceptionally(t -> {
-            Log.w("Failed to perform full update", t);
-            return null;
-        }));
+        mSingleThreadedExecutor.execute(() -> {
+            ContactsUpdateStats updateStats = new ContactsUpdateStats();
+            doFullUpdateInternalAsync(signal, updateStats);
+        });
     }
 
     @VisibleForTesting
-    CompletableFuture<Void> doFullUpdateInternalAsync(@NonNull CancellationSignal signal) {
+    CompletableFuture<Void> doFullUpdateInternalAsync(
+            @NonNull CancellationSignal signal, @NonNull ContactsUpdateStats updateStats) {
         // TODO(b/203605504): handle cancellation signal to abort the job.
         long currentTimeMillis = System.currentTimeMillis();
-        Set<String> cp2ContactIds = new ArraySet<>();
+        updateStats.mUpdateType = ContactsUpdateStats.FULL_UPDATE;
+        updateStats.mUpdateStartTimeMillis = currentTimeMillis;
+
+        List<String> cp2ContactIds = new ArrayList<>();
         // Get a list of all contact IDs from CP2. Ignore the return value which denotes the
-        // most recent updated timestamp. TODO(b/203605504): reconsider whether the most recent
+        // most recent updated timestamp.
+        // TODO(b/203605504): reconsider whether the most recent
         //  updated and deleted timestamps are useful.
-        ContactsProviderUtil.getUpdatedContactIds(mContext, /*sinceFilter=*/ 0, cp2ContactIds);
+        ContactsProviderUtil.getUpdatedContactIds(mContext, /*sinceFilter=*/ 0, cp2ContactIds,
+                updateStats);
         return mAppSearchHelper.getAllContactIdsAsync()
                 .thenCompose(appsearchContactIds -> {
-                    Set<String> unwantedContactIds = new ArraySet<>(appsearchContactIds);
-                    unwantedContactIds.removeAll(cp2ContactIds);
+                    // all_contacts_from_AppSearch - all_contacts_from_cp2 =
+                    // contacts_needs_to_be_removed_from_AppSearch.
+                    appsearchContactIds.removeAll(cp2ContactIds);
                     Log.d(TAG, "Performing a full sync (updated:" + cp2ContactIds.size()
-                            + ", deleted:" + unwantedContactIds.size()
+                            + ", deleted:" + appsearchContactIds.size()
                             + ") of CP2 contacts in AppSearch");
-                    return mContactsIndexerImpl.updatePersonCorpusAsync(
-                            /*wantedContactIds=*/ cp2ContactIds, unwantedContactIds);
-                }).thenAccept(x -> {
-                    persistTimestamps(
-                            /*lastDeltaUpdateTimestampMillis=*/ currentTimeMillis,
-                            /*lastDeltaDeleteTimestampMillis=*/ currentTimeMillis,
-                            /*lastFullUpdateTimestampMillis=*/ currentTimeMillis);
+                    return mContactsIndexerImpl.updatePersonCorpusAsync(/*wantedContactIds=*/
+                            cp2ContactIds, /*unwantedContactIds=*/ appsearchContactIds,
+                            updateStats);
+                }).handle((x, t) -> {
+                    if (t != null) {
+                        Log.w(TAG, "Failed to perform full update", t);
+                        if (updateStats.mUpdateStatuses.isEmpty()
+                                && updateStats.mDeleteStatuses.isEmpty()) {
+                            // Somehow this error is not reflected in the stats, and
+                            // unfortunately we don't know what part is wrong. Just add an error
+                            // code for the update.
+                            updateStats.mUpdateStatuses.add(
+                                    AppSearchResult.RESULT_UNKNOWN_ERROR);
+                        }
+                    }
+
+                    // Always persist the current timestamps for full update for both success and
+                    // failure. Right now we are taking the best effort to keep CP2 and AppSearch
+                    // in sync, without any retry in case of failure. We don't want an unexpected
+                    // error, like a bad document, prevent the timestamps getting updated, which
+                    // will make the indexer fetch a lot of contacts for EACH delta update.
+                    // TODO(b/226078966) Also finding the update timestamps for last success is
+                    //  not trivial, and we should think more about how to do that correctly.
+                    mSettings.setLastFullUpdateTimestampMillis(currentTimeMillis);
+                    mSettings.setLastDeltaUpdateTimestampMillis(currentTimeMillis);
+                    mSettings.setLastDeltaDeleteTimestampMillis(currentTimeMillis);
+                    persistSettings();
+                    logStats(updateStats);
+                    return null;
                 });
     }
 
@@ -308,7 +257,7 @@ public final class ContactsIndexerUserInstance {
     private void handleDeltaUpdate() {
         // Schedule delta updates only if a full update has been performed at least once to sync
         // all of CP2 contacts into AppSearch.
-        if (mPersistedData.mLastFullUpdateTimestampMillis == 0) {
+        if (mSettings.getLastFullUpdateTimestampMillis() == 0) {
             Log.v(TAG, "Deferring delta updates until the first full update is complete");
             return;
         } else if (!ContentResolver.getCurrentSyncs().isEmpty()) {
@@ -323,71 +272,121 @@ public final class ContactsIndexerUserInstance {
         // contacts from timestamp T" would catch all the unhandled contact change notifications.
         if (!mDeltaUpdatePending.getAndSet(true)) {
             mSingleThreadedExecutor.execute(() -> {
-                try {
-                    doDeltaUpdate();
-                } catch (Throwable t) {
-                    Log.e(TAG, "Error during doDeltaUpdate", t);
-                }
+                ContactsUpdateStats updateStats = new ContactsUpdateStats();
+                doDeltaUpdateAsync(updateStats);
             });
         }
-    }
-
-    /**
-     * Performs delta update bypassing any constraints in {@link #handleDeltaUpdate()}
-     *
-     * <p>The operation is performed on the {@link #mSingleThreadedExecutor} to ensure
-     * thread safety.
-     */
-    @WorkerThread
-    @VisibleForTesting
-    /*package*/ void doDeltaUpdateForTest() throws InterruptedException, ExecutionException {
-        mSingleThreadedExecutor.submit(this::doDeltaUpdate).get();
     }
 
     /**
      * Does the delta update. It also resets {@link ContactsIndexerUserInstance#mDeltaUpdatePending}
      * to false.
      */
-    private void doDeltaUpdate() {
+    @VisibleForTesting
+    /*package*/ CompletableFuture<Void> doDeltaUpdateAsync(
+            @NonNull ContactsUpdateStats updateStats) {
         // Reset the delta update pending flag at the top of this method. This allows the next
         // ContentObserver.onChange() notification to schedule another delta-update task on the
-        // executor. Note that additional change notifications will not schedule more delta-update
+        // executor. Note that additional change notifications will not schedule more
+        // delta-update
         // tasks.
         // Resetting the delta update pending flag after calling ContentResolver.query() to get
         // the updated contact IDs and deleted contact IDs runs the risk of a race condition
         // where a change notification is sent and handled after the query() ends but before the
         // flag is reset.
         mDeltaUpdatePending.set(false);
+        updateStats.mUpdateType = ContactsUpdateStats.DELTA_UPDATE;
+        updateStats.mUpdateStartTimeMillis = System.currentTimeMillis();
+        long lastDeltaUpdateTimestampMillis = mSettings.getLastDeltaUpdateTimestampMillis();
+        long lastDeltaDeleteTimestampMillis = mSettings.getLastDeltaDeleteTimestampMillis();
+        Log.d(TAG, "previous timestamps --"
+                + " lastDeltaUpdateTimestampMillis: " + lastDeltaUpdateTimestampMillis
+                + " lastDeltaDeleteTimestampMillis: " + lastDeltaDeleteTimestampMillis);
 
-        Log.d(TAG, "previous timestamps -- lastDeltaUpdateTimestampMillis: "
-                + mPersistedData.mLastDeltaUpdateTimestampMillis
-                + " lastDeltaDeleteTimestampMillis: "
-                + mPersistedData.mLastDeltaDeleteTimestampMillis);
-        Set<String> wantedIds = new ArraySet<>();
-        Set<String> unWantedIds = new ArraySet<>();
-        mPersistedData.mLastDeltaUpdateTimestampMillis =
-                ContactsProviderUtil.getUpdatedContactIds(mContext,
-                        mPersistedData.mLastDeltaUpdateTimestampMillis, wantedIds);
-        mPersistedData.mLastDeltaDeleteTimestampMillis =
-                ContactsProviderUtil.getDeletedContactIds(mContext,
-                        mPersistedData.mLastDeltaDeleteTimestampMillis, unWantedIds);
-        Log.d(TAG, "updated timestamps -- lastDeltaUpdateTimestampMillis: "
-                + mPersistedData.mLastDeltaUpdateTimestampMillis
-                + " lastDeltaDeleteTimestampMillis: "
-                + mPersistedData.mLastDeltaDeleteTimestampMillis);
+        List<String> wantedIds = new ArrayList<>();
+        List<String> unWantedIds = new ArrayList<>();
+        long mostRecentContactLastUpdateTimestampMillis =
+                ContactsProviderUtil.getUpdatedContactIds(mContext, lastDeltaUpdateTimestampMillis,
+                        wantedIds, updateStats);
+        long mostRecentContactDeletedTimestampMillis =
+                ContactsProviderUtil.getDeletedContactIds(mContext, lastDeltaDeleteTimestampMillis,
+                        unWantedIds, updateStats);
 
         // Update the person corpus in AppSearch based on the changed contact
         // information we get from CP2. At this point mUpdateScheduled has been
         // reset, so a new task is allowed to catch any new changes in CP2.
-        // TODO(b/203605504) report errors here so we can choose not to update the
-        //  timestamps.
-        mContactsIndexerImpl.updatePersonCorpusAsync(wantedIds, unWantedIds);
+        // TODO(b/203605504) for future improvement. Report errors here and persist the right
+        //  timestamps for last successful deletion and update. This requires the ids from CP2
+        //  are sorted in last_update_timestamp ascending order, and the code would become a
+        //  little complicated.
+        return mContactsIndexerImpl.updatePersonCorpusAsync(wantedIds, unWantedIds, updateStats)
+                .handle((x, t) -> {
+                    if (t != null) {
+                        Log.w(TAG, "Failed to perform delta update", t);
+                        if (updateStats.mUpdateStatuses.isEmpty()
+                                && updateStats.mDeleteStatuses.isEmpty()) {
+                            // Somehow this error is not reflected in the stats, and
+                            // unfortunately we don't know which part is wrong. Just add an error
+                            // code for the update.
+                            updateStats.mUpdateStatuses.add(
+                                    AppSearchResult.RESULT_UNKNOWN_ERROR);
+                        }
+                    }
+                    // Persisting timestamping and logging, no matter if update succeeds or not.
+                    Log.d(TAG, "updated timestamps --"
+                            + " lastDeltaUpdateTimestampMillis: "
+                            + mostRecentContactLastUpdateTimestampMillis
+                            + " lastDeltaDeleeteTimestampMillis: "
+                            + mostRecentContactDeletedTimestampMillis);
+                    mSettings.setLastDeltaUpdateTimestampMillis(
+                            mostRecentContactLastUpdateTimestampMillis);
+                    mSettings.setLastDeltaDeleteTimestampMillis(
+                            mostRecentContactDeletedTimestampMillis);
+                    persistSettings();
+                    logStats(updateStats);
+                    return null;
+                });
+    }
 
-        // Persist the timestamps.
-        // TODO(b/221892152): persist timestamps after the documents are flush to AppSearch
-        persistTimestamps(mPersistedData.mLastDeltaUpdateTimestampMillis,
-                mPersistedData.mLastDeltaDeleteTimestampMillis,
-                mPersistedData.mLastFullUpdateTimestampMillis);
+    // Logs the stats to Westworld.
+    private void logStats(@NonNull ContactsUpdateStats updateStats) {
+        int totalUpdateLatency =
+                (int) (System.currentTimeMillis()
+                        - updateStats.mUpdateStartTimeMillis);
+        // Finalize status code for update and delete.
+        if (updateStats.mUpdateStatuses.isEmpty()) {
+            // SUCCESS if no error found.
+            updateStats.mUpdateStatuses.add(AppSearchResult.RESULT_OK);
+        }
+        if (updateStats.mDeleteStatuses.isEmpty()) {
+            // SUCCESS if no error found.
+            updateStats.mDeleteStatuses.add(AppSearchResult.RESULT_OK);
+        }
+        int[] updateStatusArr = new int[updateStats.mUpdateStatuses.size()];
+        int[] deleteStatusArr = new int[updateStats.mDeleteStatuses.size()];
+        int updateIdx = 0;
+        int deleteIdx = 0;
+        for (int updateStatus : updateStats.mUpdateStatuses) {
+            updateStatusArr[updateIdx] = updateStatus;
+            ++updateIdx;
+        }
+        for (int deleteStatus : updateStats.mUpdateStatuses) {
+            deleteStatusArr[deleteIdx] = deleteStatus;
+            ++deleteIdx;
+        }
+        AppSearchStatsLog.write(
+                AppSearchStatsLog.CONTACTS_INDEXER_UPDATE_STATS_REPORTED,
+                updateStats.mUpdateType,
+                totalUpdateLatency,
+                updateStatusArr,
+                deleteStatusArr,
+                updateStats.mContactsInsertedCount,
+                updateStats.mContactsUpdateCount,
+                updateStats.mContactsDeleteCount,
+                updateStats.mContactsSkippedCount,
+                updateStats.mContactsUpdateFailedCount,
+                updateStats.mContactsDeleteFailedCount);
+
     }
 
     /**
@@ -396,84 +395,22 @@ public final class ContactsIndexerUserInstance {
      * <p>It doesn't throw here. If it fails to load file, ContactsIndexer would always use the
      * timestamps persisted in the memory.
      */
-    @NonNull
-    private void loadPersistedDataAsync() {
+    private void loadSettingsAsync() {
         mSingleThreadedExecutor.execute(() -> {
             boolean unused = mDataDir.mkdirs();
-            Path path = new File(mDataDir, CONTACTS_INDEXER_STATE).toPath();
-
-            boolean isLoadingDataFailed = false;
-            try (
-                    BufferedReader reader = Files.newBufferedReader(
-                            path,
-                            StandardCharsets.UTF_8);
-            ) {
-                // right now we store everything in one line.
-                // So we just need to read the first line.
-                String content = reader.readLine();
-                mPersistedData.fromString(content);
-            } catch (NoSuchFileException e) {
-                // ignore bootstrap errors
+            try {
+                mSettings.load();
             } catch (IOException e) {
-                Log.e(TAG, "Failed to load persisted data from disk.", e);
-                isLoadingDataFailed = true;
-            } catch (IllegalArgumentException e) {
-                Log.e(TAG, "Failed to parse the loaded data.", e);
-                isLoadingDataFailed = true;
-            } finally {
-                if (isLoadingDataFailed) {
-                    // Resets all the values in case there are some values set from corrupted data.
-                    mPersistedData.reset();
-                }
+                Log.w(TAG, "Failed to load settings from disk", e);
             }
-
-            Log.d(TAG, "Load timestamps from disk: "
-                    + "delta-update: " + mPersistedData.mLastDeltaUpdateTimestampMillis
-                    + ", delta-delete: " + mPersistedData.mLastDeltaDeleteTimestampMillis
-                    + ", full-update: " + mPersistedData.mLastFullUpdateTimestampMillis);
         });
     }
 
-    /** Persists the timestamps to disk. */
-    private void persistTimestamps(long lastDeltaUpdateTimestampMillis,
-            long lastDeltaDeleteTimestampMillis, long lastFullUpdateTimestampMillis) {
-        Objects.requireNonNull(mPersistedData);
-
-        mPersistedData.mLastDeltaUpdateTimestampMillis = lastDeltaUpdateTimestampMillis;
-        mPersistedData.mLastDeltaDeleteTimestampMillis = lastDeltaDeleteTimestampMillis;
-        mPersistedData.mLastFullUpdateTimestampMillis = lastFullUpdateTimestampMillis;
-
-        Path path = new File(mDataDir, CONTACTS_INDEXER_STATE).toPath();
-        try (
-                BufferedWriter writer = Files.newBufferedWriter(
-                        path,
-                        StandardCharsets.UTF_8);
-        ) {
-            // This would override the previous line. Since we won't delete deprecated fields, we
-            // don't need to clear the old content before doing this.
-            writer.write(mPersistedData.toString());
-            writer.flush();
+    private void persistSettings() {
+        try {
+            mSettings.persist();
         } catch (IOException e) {
-            Log.e(TAG, "Failed to persist timestamps for Delta Update on the disk.", e);
+            Log.w(TAG, "Failed to save settings to disk", e);
         }
-    }
-
-    /**
-     * Returns a copy of the current {@link #mPersistedData}.
-     *
-     * <p>Performs the copy operation on the {@link #mSingleThreadedExecutor} to ensure
-     * thread safe access to the data.
-     */
-    @WorkerThread
-    @VisibleForTesting
-    @NonNull
-    PersistedData getPersistedStateForTest() throws ExecutionException, InterruptedException {
-        return mSingleThreadedExecutor.submit(() -> {
-            PersistedData data = new PersistedData();
-            data.mLastDeltaUpdateTimestampMillis = mPersistedData.mLastDeltaUpdateTimestampMillis;
-            data.mLastDeltaDeleteTimestampMillis = mPersistedData.mLastDeltaDeleteTimestampMillis;
-            data.mLastFullUpdateTimestampMillis = mPersistedData.mLastFullUpdateTimestampMillis;
-            return data;
-        }).get();
     }
 }

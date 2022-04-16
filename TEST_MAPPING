@@ -1,6 +1,9 @@
 {
   "presubmit": [
     {
+      "name": "ContactsIndexerTests"
+    },
+    {
       "name": "CtsAppSearchTestCases"
     },
     {

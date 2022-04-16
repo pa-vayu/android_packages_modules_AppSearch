@@ -101,6 +101,7 @@ public class GenericDocument {
      *     #getBundle}.
      * @hide
      */
+    @SuppressWarnings("deprecation")
     public GenericDocument(@NonNull Bundle bundle) {
         Objects.requireNonNull(bundle);
         mBundle = bundle;
@@ -326,6 +327,7 @@ public class GenericDocument {
      * (String[], long[], double[], boolean[], ArrayList&lt;Bundle&gt;, Parcelable[]).
      */
     @Nullable
+    @SuppressWarnings("deprecation")
     private static Object getRawPropertyFromRawDocument(
             @NonNull String path, @NonNull Bundle documentBundle) {
         Objects.requireNonNull(path);

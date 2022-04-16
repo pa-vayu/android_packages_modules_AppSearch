@@ -21,9 +21,9 @@ import android.app.appsearch.AppSearchBatchResult;
 import android.app.appsearch.AppSearchManager;
 import android.app.appsearch.AppSearchResult;
 import android.app.appsearch.Features;
-import android.app.appsearch.GetSchemaResponse;
 import android.app.appsearch.GenericDocument;
 import android.app.appsearch.GetByDocumentIdRequest;
+import android.app.appsearch.GetSchemaResponse;
 import android.app.appsearch.GlobalSearchSession;
 import android.app.appsearch.GlobalSearchSessionShim;
 import android.app.appsearch.ReportSystemUsageRequest;
@@ -31,7 +31,7 @@ import android.app.appsearch.SearchResults;
 import android.app.appsearch.SearchResultsShim;
 import android.app.appsearch.SearchSpec;
 import android.app.appsearch.exceptions.AppSearchException;
-import android.app.appsearch.observer.AppSearchObserverCallback;
+import android.app.appsearch.observer.ObserverCallback;
 import android.app.appsearch.observer.ObserverSpec;
 import android.content.Context;
 
@@ -59,13 +59,13 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
     private final ExecutorService mExecutor;
 
     @NonNull
-    public static ListenableFuture<GlobalSearchSessionShim> createGlobalSearchSession() {
-        return createGlobalSearchSession(ApplicationProvider.getApplicationContext());
+    public static ListenableFuture<GlobalSearchSessionShim> createGlobalSearchSessionAsync() {
+        return createGlobalSearchSessionAsync(ApplicationProvider.getApplicationContext());
     }
 
     /** Only for use when called from a non-instrumented context. */
     @NonNull
-    public static ListenableFuture<GlobalSearchSessionShim> createGlobalSearchSession(
+    public static ListenableFuture<GlobalSearchSessionShim> createGlobalSearchSessionAsync(
             @NonNull Context context) {
         AppSearchManager appSearchManager = context.getSystemService(AppSearchManager.class);
         SettableFuture<AppSearchResult<GlobalSearchSession>> future = SettableFuture.create();
@@ -107,7 +107,8 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
 
     @NonNull
     @Override
-    public ListenableFuture<Void> reportSystemUsage(@NonNull ReportSystemUsageRequest request) {
+    public ListenableFuture<Void> reportSystemUsageAsync(
+            @NonNull ReportSystemUsageRequest request) {
         SettableFuture<AppSearchResult<Void>> future = SettableFuture.create();
         mGlobalSearchSession.reportSystemUsage(request, mExecutor, future::set);
         return Futures.transformAsync(future, this::transformResult, mExecutor);
@@ -115,7 +116,7 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
 
     @NonNull
     @Override
-    public ListenableFuture<GetSchemaResponse> getSchema(
+    public ListenableFuture<GetSchemaResponse> getSchemaAsync(
         @NonNull String packageName, @NonNull String databaseName) {
       SettableFuture<AppSearchResult<GetSchemaResponse>> future = SettableFuture.create();
       mGlobalSearchSession.getSchema(packageName, databaseName, mExecutor, future::set);
@@ -123,19 +124,19 @@ public class GlobalSearchSessionShimImpl implements GlobalSearchSessionShim {
     }
 
     @Override
-    public void addObserver(
-            @NonNull String observedPackage,
+    public void registerObserverCallback(
+            @NonNull String targetPackageName,
             @NonNull ObserverSpec spec,
             @NonNull Executor executor,
-            @NonNull AppSearchObserverCallback observer) throws AppSearchException {
-        mGlobalSearchSession.addObserver(observedPackage, spec, mExecutor, observer);
+            @NonNull ObserverCallback observer) throws AppSearchException {
+        mGlobalSearchSession.registerObserverCallback(targetPackageName, spec, mExecutor, observer);
     }
 
     @Override
-    public void removeObserver(
-            @NonNull String observedPackage, @NonNull AppSearchObserverCallback observer)
+    public void unregisterObserverCallback(
+            @NonNull String targetPackageName, @NonNull ObserverCallback observer)
             throws AppSearchException {
-        mGlobalSearchSession.removeObserver(observedPackage, observer);
+        mGlobalSearchSession.unregisterObserverCallback(targetPackageName, observer);
     }
 
     @NonNull

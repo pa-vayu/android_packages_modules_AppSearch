@@ -35,6 +35,7 @@ java_library {
         "framework-statsd.stubs.module_lib",
     ],
     sdk_version: "system_server_current",
+    min_sdk_version: "Tiramisu",
     apex_available: ["com.android.appsearch"],
 }
 
@@ -42,6 +43,7 @@ java_library {
     name: "service-appsearch",
     srcs: ["java/**/*.java"],
     sdk_version: "system_server_current",
+    min_sdk_version: "Tiramisu",
     static_libs: [
         "icing-java-proto-lite",
         "libicing-java",

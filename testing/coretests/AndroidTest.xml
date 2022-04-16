@@ -23,7 +23,6 @@
     <test class="com.android.tradefed.testtype.AndroidJUnitTest">
         <option name="package" value="com.android.appsearch.coretests"/>
         <option name="runner" value="androidx.test.runner.AndroidJUnitRunner" />
-        <option name="restart" value="false" />
     </test>
 
     <object type="module_controller"

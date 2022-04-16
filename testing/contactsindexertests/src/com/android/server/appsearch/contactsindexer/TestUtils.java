@@ -155,6 +155,7 @@ class TestUtils {
         assertThat(actual.getImageUri()).isEqualTo(expected.getImageUri());
         assertThat(actual.isImportant()).isEqualTo(expected.isImportant());
         assertThat(actual.isBot()).isEqualTo(expected.isBot());
+        assertThat(actual.getNote()).isEqualTo(expected.getNote());
         assertThat(actual.getAdditionalNames()).isEqualTo(expected.getAdditionalNames());
         assertThat(actual.getAffiliations()).isEqualTo(expected.getAffiliations());
         assertThat(actual.getRelations()).isEqualTo(expected.getRelations());

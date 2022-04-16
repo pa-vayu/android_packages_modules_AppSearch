@@ -56,6 +56,8 @@ java_sdk_library {
     name: "framework-appsearch",
     srcs: [":framework-appsearch-sources"],
     sdk_version: "module_current",
+    min_sdk_version: "Tiramisu",
+    libs: ["unsupportedappusage"],
     static_libs: [
         // This list must be kept in sync with jarjar.txt
         "modules-utils-preconditions",
@@ -69,5 +71,4 @@ java_sdk_library {
         "//packages/modules/AppSearch/service:__subpackages__",
         "//packages/modules/AppSearch/testing:__subpackages__",
     ],
-    unsafe_ignore_missing_latest_api: true, // TODO(b/146218515) should be removed
 }
