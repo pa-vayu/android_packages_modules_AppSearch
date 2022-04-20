@@ -392,8 +392,10 @@ public class AppSearchLoggerTest {
                 /* setSchemaStatsBuilder= */ null);
         GenericDocument doc1 = new GenericDocument.Builder<>("namespace", "id1", "Type1").build();
         GenericDocument doc2 = new GenericDocument.Builder<>("namespace", "id2", "Type1").build();
-        appSearchImpl.putDocument(testPackageName, testDatabase, doc1, mLogger);
-        appSearchImpl.putDocument(testPackageName, testDatabase, doc2, mLogger);
+        appSearchImpl.putDocument(
+                testPackageName, testDatabase, doc1, /*sendChangeNotifications=*/ false, mLogger);
+        appSearchImpl.putDocument(
+                testPackageName, testDatabase, doc2, /*sendChangeNotifications=*/ false, mLogger);
         appSearchImpl.close();
 
         // Create another appsearchImpl on the same folder
@@ -452,7 +454,8 @@ public class AppSearchLoggerTest {
 
         // Insert a valid doc
         GenericDocument doc1 = new GenericDocument.Builder<>("namespace", "id1", "Type1").build();
-        appSearchImpl.putDocument(testPackageName, testDatabase, doc1, mLogger);
+        appSearchImpl.putDocument(
+                testPackageName, testDatabase, doc1, /*sendChangeNotifications=*/ false, mLogger);
 
         // Insert the invalid doc with an invalid namespace right into icing
         DocumentProto invalidDoc =
@@ -517,7 +520,12 @@ public class AppSearchLoggerTest {
                         .setPropertyString("subject", "testPut example1")
                         .build();
 
-        mAppSearchImpl.putDocument(testPackageName, testDatabase, document, mLogger);
+        mAppSearchImpl.putDocument(
+                testPackageName,
+                testDatabase,
+                document,
+                /*sendChangeNotifications=*/ false,
+                mLogger);
 
         PutDocumentStats pStats = mLogger.mPutDocumentStats;
         assertThat(pStats).isNotNull();
@@ -568,7 +576,11 @@ public class AppSearchLoggerTest {
                         AppSearchException.class,
                         () ->
                                 mAppSearchImpl.putDocument(
-                                        testPackageName, testDatabase, document, mLogger));
+                                        testPackageName,
+                                        testDatabase,
+                                        document,
+                                        /*sendChangeNotifications=*/ false,
+                                        mLogger));
         assertThat(exception.getResultCode()).isEqualTo(AppSearchResult.RESULT_NOT_FOUND);
 
         PutDocumentStats pStats = mLogger.mPutDocumentStats;
@@ -618,9 +630,24 @@ public class AppSearchLoggerTest {
                 new GenericDocument.Builder<>("namespace", "id3", "type")
                         .setPropertyString("subject", "testPut 3")
                         .build();
-        mAppSearchImpl.putDocument(testPackageName, testDatabase, document1, mLogger);
-        mAppSearchImpl.putDocument(testPackageName, testDatabase, document2, mLogger);
-        mAppSearchImpl.putDocument(testPackageName, testDatabase, document3, mLogger);
+        mAppSearchImpl.putDocument(
+                testPackageName,
+                testDatabase,
+                document1,
+                /*sendChangeNotifications=*/ false,
+                mLogger);
+        mAppSearchImpl.putDocument(
+                testPackageName,
+                testDatabase,
+                document2,
+                /*sendChangeNotifications=*/ false,
+                mLogger);
+        mAppSearchImpl.putDocument(
+                testPackageName,
+                testDatabase,
+                document3,
+                /*sendChangeNotifications=*/ false,
+                mLogger);
 
         // No query filters specified. package2 should only get its own documents back.
         SearchSpec searchSpec =
@@ -716,7 +743,12 @@ public class AppSearchLoggerTest {
                 /* setSchemaStatsBuilder= */ null);
         GenericDocument document =
                 new GenericDocument.Builder<>(testNamespace, testId, "type").build();
-        mAppSearchImpl.putDocument(testPackageName, testDatabase, document, /*logger=*/ null);
+        mAppSearchImpl.putDocument(
+                testPackageName,
+                testDatabase,
+                document,
+                /*sendChangeNotifications=*/ false,
+                /*logger=*/ null);
 
         RemoveStats.Builder rStatsBuilder = new RemoveStats.Builder(testPackageName, testDatabase);
         mAppSearchImpl.remove(testPackageName, testDatabase, testNamespace, testId, rStatsBuilder);
@@ -750,7 +782,12 @@ public class AppSearchLoggerTest {
 
         GenericDocument document =
                 new GenericDocument.Builder<>(testNamespace, testId, "type").build();
-        mAppSearchImpl.putDocument(testPackageName, testDatabase, document, /*logger=*/ null);
+        mAppSearchImpl.putDocument(
+                testPackageName,
+                testDatabase,
+                document,
+                /*sendChangeNotifications=*/ false,
+                /*logger=*/ null);
 
         RemoveStats.Builder rStatsBuilder = new RemoveStats.Builder(testPackageName, testDatabase);
 
@@ -796,8 +833,18 @@ public class AppSearchLoggerTest {
                 new GenericDocument.Builder<>(testNamespace, "id1", "type").build();
         GenericDocument document2 =
                 new GenericDocument.Builder<>(testNamespace, "id2", "type").build();
-        mAppSearchImpl.putDocument(testPackageName, testDatabase, document1, mLogger);
-        mAppSearchImpl.putDocument(testPackageName, testDatabase, document2, mLogger);
+        mAppSearchImpl.putDocument(
+                testPackageName,
+                testDatabase,
+                document1,
+                /*sendChangeNotifications=*/ false,
+                mLogger);
+        mAppSearchImpl.putDocument(
+                testPackageName,
+                testDatabase,
+                document2,
+                /*sendChangeNotifications=*/ false,
+                mLogger);
         // No query filters specified. package2 should only get its own documents back.
         SearchSpec searchSpec =
                 new SearchSpec.Builder().setTermMatch(TermMatchType.Code.PREFIX_VALUE).build();
