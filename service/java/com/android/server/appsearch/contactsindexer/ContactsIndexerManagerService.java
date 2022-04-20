@@ -33,6 +33,7 @@ import android.provider.ContactsContract;
 import android.util.Log;
 import android.util.SparseArray;
 
+import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
 import com.android.server.appsearch.AppSearchModule;
@@ -199,7 +200,8 @@ public final class ContactsIndexerManagerService extends SystemService {
     }
 
     class LocalService {
-        void doFullUpdateForUser(@UserIdInt int userId, CancellationSignal signal) {
+        void doFullUpdateForUser(@UserIdInt int userId, @NonNull CancellationSignal signal) {
+            Objects.requireNonNull(signal);
             synchronized (mContactsIndexersLocked) {
                 ContactsIndexerUserInstance instance = mContactsIndexersLocked.get(userId);
                 if (instance != null) {

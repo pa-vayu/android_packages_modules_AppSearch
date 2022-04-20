@@ -17,6 +17,7 @@
 package com.android.server.appsearch.contactsindexer;
 
 import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.app.appsearch.AppSearchResult;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -63,6 +64,7 @@ public final class ContactsIndexerUserInstance {
     // Used for batching/throttling the contact change notification so we won't schedule too many
     // delta updates.
     private final AtomicBoolean mDeltaUpdatePending = new AtomicBoolean(/*initialValue=*/ false);
+
     private final AppSearchHelper mAppSearchHelper;
     private final ContactsIndexerImpl mContactsIndexerImpl;
 
@@ -92,7 +94,8 @@ public final class ContactsIndexerUserInstance {
     @VisibleForTesting
     @NonNull
     /*package*/ static ContactsIndexerUserInstance createInstance(@NonNull Context context,
-            @NonNull File contactsDir, @NonNull ExecutorService executorService) {
+            @NonNull File contactsDir,
+            @NonNull ExecutorService executorService) {
         Objects.requireNonNull(context);
         Objects.requireNonNull(contactsDir);
         Objects.requireNonNull(executorService);
@@ -109,11 +112,11 @@ public final class ContactsIndexerUserInstance {
     /**
      * Constructs a {@link ContactsIndexerUserInstance}.
      *
-     * @param context                 Context object passed from
-     *                                {@link ContactsIndexerManagerService}
-     * @param dataDir                 data directory for storing contacts indexer state.
-     * @param singleThreadedExecutor  an {@link ExecutorService} with at most one thread to ensure
-     *                                the thread safety of this class.
+     * @param context                Context object passed from
+     *                               {@link ContactsIndexerManagerService}
+     * @param dataDir                data directory for storing contacts indexer state.
+     * @param singleThreadedExecutor an {@link ExecutorService} with at most one thread to ensure
+     *                               the thread safety of this class.
      */
     private ContactsIndexerUserInstance(@NonNull Context context, @NonNull File dataDir,
             @NonNull AppSearchHelper appSearchHelper,
@@ -192,9 +195,7 @@ public final class ContactsIndexerUserInstance {
      *
      * @param signal Used to indicate if the full update task should be cancelled.
      */
-    public void doFullUpdateAsync(@NonNull CancellationSignal signal) {
-        Objects.requireNonNull(signal);
-        // TODO(b/222126568): log stats
+    public void doFullUpdateAsync(@Nullable CancellationSignal signal) {
         mSingleThreadedExecutor.execute(() -> {
             ContactsUpdateStats updateStats = new ContactsUpdateStats();
             doFullUpdateInternalAsync(signal, updateStats);
@@ -203,18 +204,19 @@ public final class ContactsIndexerUserInstance {
 
     @VisibleForTesting
     CompletableFuture<Void> doFullUpdateInternalAsync(
-            @NonNull CancellationSignal signal, @NonNull ContactsUpdateStats updateStats) {
+            @Nullable CancellationSignal signal, @NonNull ContactsUpdateStats updateStats) {
         // TODO(b/203605504): handle cancellation signal to abort the job.
         long currentTimeMillis = System.currentTimeMillis();
         updateStats.mUpdateType = ContactsUpdateStats.FULL_UPDATE;
-        updateStats.mUpdateStartTimeMillis = currentTimeMillis;
+        updateStats.mUpdateAndDeleteStartTimeMillis = currentTimeMillis;
 
         List<String> cp2ContactIds = new ArrayList<>();
         // Get a list of all contact IDs from CP2. Ignore the return value which denotes the
         // most recent updated timestamp.
         // TODO(b/203605504): reconsider whether the most recent
         //  updated and deleted timestamps are useful.
-        ContactsProviderUtil.getUpdatedContactIds(mContext, /*sinceFilter=*/ 0, cp2ContactIds,
+        ContactsProviderUtil.getUpdatedContactIds(mContext, /*sinceFilter=*/ 0,
+                ContactsIndexerConfig.getContactsFullUpdateLimit(), cp2ContactIds,
                 updateStats);
         return mAppSearchHelper.getAllContactIdsAsync()
                 .thenCompose(appsearchContactIds -> {
@@ -230,6 +232,8 @@ public final class ContactsIndexerUserInstance {
                 }).handle((x, t) -> {
                     if (t != null) {
                         Log.w(TAG, "Failed to perform full update", t);
+                        // Just clear all the remaining contacts in case of error.
+                        mContactsIndexerImpl.cancelUpdatePersonCorpus();
                         if (updateStats.mUpdateStatuses.isEmpty()
                                 && updateStats.mDeleteStatuses.isEmpty()) {
                             // Somehow this error is not reflected in the stats, and
@@ -282,9 +286,10 @@ public final class ContactsIndexerUserInstance {
                 ContactsUpdateStats updateStats = new ContactsUpdateStats();
                 // TODO(b/226489369): apply instant indexing limit on CP2 changes also?
                 // TODO(b/222126568): refactor doDeltaUpdateAsync() to return a future value of
-                // ContactsUpdateStats so that it can be checked and logged here, instead of the
-                // placeholder exceptionally() block that only logs to the console.
-                doDeltaUpdateAsync(/*indexingLimit=*/ -1, updateStats).exceptionally(t -> {
+                //  ContactsUpdateStats so that it can be checked and logged here, instead of the
+                //  placeholder exceptionally() block that only logs to the console.
+                doDeltaUpdateAsync(ContactsIndexerConfig.getContactsDeltaUpdateLimit(),
+                        updateStats).exceptionally(t -> {
                     Log.d(TAG, "Failed to index CP2 change", t);
                     return null;
                 });
@@ -310,7 +315,7 @@ public final class ContactsIndexerUserInstance {
         // flag is reset.
         mDeltaUpdatePending.set(false);
         updateStats.mUpdateType = ContactsUpdateStats.DELTA_UPDATE;
-        updateStats.mUpdateStartTimeMillis = System.currentTimeMillis();
+        updateStats.mUpdateAndDeleteStartTimeMillis = System.currentTimeMillis();
         long lastDeltaUpdateTimestampMillis = mSettings.getLastDeltaUpdateTimestampMillis();
         long lastDeltaDeleteTimestampMillis = mSettings.getLastDeltaDeleteTimestampMillis();
         Log.d(TAG, "previous timestamps --"
@@ -337,6 +342,8 @@ public final class ContactsIndexerUserInstance {
                 .handle((x, t) -> {
                     if (t != null) {
                         Log.w(TAG, "Failed to perform delta update", t);
+                        // Just clear all the remaining contacts in case of error.
+                        mContactsIndexerImpl.cancelUpdatePersonCorpus();
                         if (updateStats.mUpdateStatuses.isEmpty()
                                 && updateStats.mDeleteStatuses.isEmpty()) {
                             // Somehow this error is not reflected in the stats, and
@@ -350,7 +357,7 @@ public final class ContactsIndexerUserInstance {
                     Log.d(TAG, "updated timestamps --"
                             + " lastDeltaUpdateTimestampMillis: "
                             + mostRecentContactLastUpdateTimestampMillis
-                            + " lastDeltaDeleeteTimestampMillis: "
+                            + " lastDeltaDeleteTimestampMillis: "
                             + mostRecentContactDeletedTimestampMillis);
                     mSettings.setLastDeltaUpdateTimestampMillis(
                             mostRecentContactLastUpdateTimestampMillis);
@@ -358,6 +365,17 @@ public final class ContactsIndexerUserInstance {
                             mostRecentContactDeletedTimestampMillis);
                     persistSettings();
                     logStats(updateStats);
+                    if (updateStats.mUpdateStatuses.contains(AppSearchResult.RESULT_OUT_OF_SPACE)) {
+                        // Some indexing failed due to OUT_OF_SPACE from AppSearch. We can simply
+                        // schedule a full update so we can trim the Person corpus in AppSearch
+                        // to make some room for delta update. We need to monitor the failure
+                        // count and reasons for indexing during full update to see if that limit
+                        // (10,000) is too big right now, considering we are sharing this limit
+                        // with any AppSearch clients, e.g. ShortcutManager, in the system server.
+                        ContactsIndexerMaintenanceService.scheduleFullUpdateJob(mContext,
+                                mContext.getUser().getIdentifier());
+                    }
+
                     return null;
                 });
     }
@@ -366,7 +384,7 @@ public final class ContactsIndexerUserInstance {
     private void logStats(@NonNull ContactsUpdateStats updateStats) {
         int totalUpdateLatency =
                 (int) (System.currentTimeMillis()
-                        - updateStats.mUpdateStartTimeMillis);
+                        - updateStats.mUpdateAndDeleteStartTimeMillis);
         // Finalize status code for update and delete.
         if (updateStats.mUpdateStatuses.isEmpty()) {
             // SUCCESS if no error found.
@@ -376,6 +394,17 @@ public final class ContactsIndexerUserInstance {
             // SUCCESS if no error found.
             updateStats.mDeleteStatuses.add(AppSearchResult.RESULT_OK);
         }
+
+        // Get the accurate count for failed cases. The current failed count doesn't include
+        // the contacts skipped due to failures in previous batches. Once a batch fails, all the
+        // following batches will be skipped. The contacts in those batches should be counted as
+        // failure as well.
+        updateStats.mContactsUpdateFailedCount =
+                updateStats.mTotalContactsToBeUpdated - updateStats.mContactsUpdateSucceededCount
+                        - updateStats.mContactsUpdateSkippedCount;
+        updateStats.mContactsDeleteFailedCount =
+                updateStats.mTotalContactsToBeDeleted - updateStats.mContactsDeleteSucceededCount;
+
         int[] updateStatusArr = new int[updateStats.mUpdateStatuses.size()];
         int[] deleteStatusArr = new int[updateStats.mDeleteStatuses.size()];
         int updateIdx = 0;
@@ -394,13 +423,12 @@ public final class ContactsIndexerUserInstance {
                 totalUpdateLatency,
                 updateStatusArr,
                 deleteStatusArr,
-                updateStats.mContactsInsertedCount,
-                updateStats.mContactsUpdateCount,
-                updateStats.mContactsDeleteCount,
-                updateStats.mContactsSkippedCount,
+                updateStats.mNewContactsToBeUpdated,
+                updateStats.mContactsUpdateSucceededCount,
+                updateStats.mContactsDeleteSucceededCount,
+                updateStats.mContactsUpdateSkippedCount,
                 updateStats.mContactsUpdateFailedCount,
                 updateStats.mContactsDeleteFailedCount);
-
     }
 
     /**
