@@ -479,6 +479,7 @@ public class AppSearchManagerService extends SystemService {
                                     callerAttributionSource.getPackageName(),
                                     databaseName,
                                     document,
+                                    /*sendChangeNotifications=*/ true,
                                     instance.getLogger());
                             resultBuilder.setSuccess(document.getId(), /*value=*/ null);
                             ++operationSuccessCount;
@@ -921,10 +922,13 @@ public class AppSearchManagerService extends SystemService {
                                 break;
                             }
                             try {
+                                // Per this method's documentation, individual document change
+                                // notifications are not dispatched.
                                 instance.getAppSearchImpl().putDocument(
                                         callerAttributionSource.getPackageName(),
                                         databaseName,
                                         document,
+                                        /*sendChangeNotifications=*/ false,
                                         /*logger=*/ null);
                             } catch (Throwable t) {
                                 migrationFailureBundles.add(new SetSchemaResponse.MigrationFailure(
