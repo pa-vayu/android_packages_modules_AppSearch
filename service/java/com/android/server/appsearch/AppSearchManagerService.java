@@ -1271,6 +1271,18 @@ public class AppSearchManagerService extends SystemService {
                 try {
                     AppSearchUserInstance instance =
                             mAppSearchUserInstanceManager.getUserInstance(targetUser);
+
+                    // Prepare a new ObserverProxy linked to this binder.
+                    AppSearchObserverProxy observerProxy =
+                            new AppSearchObserverProxy(observerProxyStub);
+
+                    // Watch for client disconnection, unregistering the observer if it happens.
+                    observerProxyStub.asBinder().linkToDeath(
+                            () -> instance.getAppSearchImpl()
+                                    .unregisterObserverCallback(targetPackageName, observerProxy),
+                            /*flags=*/ 0);
+
+                    // Register the observer.
                     boolean callerHasSystemAccess = instance.getVisibilityChecker()
                             .doesCallerHaveSystemAccess(callerAttributionSource.getPackageName());
                     instance.getAppSearchImpl().registerObserverCallback(
@@ -1280,6 +1292,7 @@ public class AppSearchManagerService extends SystemService {
                             new ObserverSpec(observerSpecBundle),
                             mExecutorManager.getOrCreateUserExecutor(targetUser),
                             new AppSearchObserverProxy(observerProxyStub));
+
                     return new AppSearchResultParcel<>(AppSearchResult.newSuccessfulResult(null));
                 } finally {
                     Binder.restoreCallingIdentity(callingIdentity);
