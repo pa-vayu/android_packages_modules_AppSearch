@@ -177,7 +177,6 @@ public final class GetSchemaResponse {
      *     SetSchemaRequest#READ_HOME_APP_SEARCH_DATA} and {@link
      *     SetSchemaRequest#READ_ASSISTANT_APP_SEARCH_DATA}.
      */
-    @SetSchemaRequest.AppSearchSupportedPermission
     @NonNull
     @SuppressWarnings("deprecation")
     public Map<String, Set<Set<Integer>>> getRequiredPermissionsForSchemaTypeVisibility() {

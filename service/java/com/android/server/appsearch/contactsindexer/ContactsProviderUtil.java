@@ -40,6 +40,8 @@ import java.util.Objects;
 public final class ContactsProviderUtil {
     private static final String TAG = "ContactsProviderHelper";
 
+    public static final int UPDATE_LIMIT_NONE = -1;
+
     // static final string for querying CP2
     private static final String UPDATE_SINCE = Contacts.CONTACT_LAST_UPDATED_TIMESTAMP + ">?";
     private static final String UPDATE_ORDER_BY = Contacts.CONTACT_LAST_UPDATED_TIMESTAMP + " DESC";

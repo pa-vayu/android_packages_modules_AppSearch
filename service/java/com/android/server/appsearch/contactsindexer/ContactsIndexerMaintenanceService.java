@@ -25,6 +25,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.CancellationSignal;
+import android.os.PersistableBundle;
 import android.util.Log;
 
 import com.android.server.LocalManagerRegistry;
@@ -57,20 +58,30 @@ public class ContactsIndexerMaintenanceService extends JobService {
 
     /**
      * Schedules a full update job for the given device-user.
+     *
+     * @param userId Device user id for whom the full update job should be scheduled.
+     * @param periodic True to indicate that the job should be repeated.
+     * @param intervalMillis Millisecond interval for which this job should repeat.
      */
-    static void scheduleFullUpdateJob(Context context, @UserIdInt int userId) {
+    static void scheduleFullUpdateJob(Context context, @UserIdInt int userId,
+            boolean periodic, long intervalMillis) {
         int jobId = MIN_INDEXER_JOB_ID + userId;
         JobScheduler jobScheduler = context.getSystemService(JobScheduler.class);
         ComponentName component =
                 new ComponentName(context, ContactsIndexerMaintenanceService.class);
-        final Bundle extras = new Bundle();
+        final PersistableBundle extras = new PersistableBundle();
         extras.putInt(EXTRA_USER_ID, userId);
-        JobInfo jobInfo =
+        JobInfo.Builder jobInfoBuilder =
                 new JobInfo.Builder(jobId, component)
-                        .setTransientExtras(extras)
+                        .setExtras(extras)
                         .setRequiresBatteryNotLow(true)
                         .setRequiresDeviceIdle(true)
-                        .build();
+                        .setPersisted(true);
+
+        if (periodic) {
+            jobInfoBuilder.setPeriodic(intervalMillis);
+        }
+        JobInfo jobInfo = jobInfoBuilder.build();
         jobScheduler.schedule(jobInfo);
         Log.v(TAG, "Scheduled full update job " + jobId + " for user " + userId);
     }
@@ -84,7 +95,7 @@ public class ContactsIndexerMaintenanceService extends JobService {
 
     @Override
     public boolean onStartJob(JobParameters params) {
-        int userId = params.getTransientExtras().getInt(EXTRA_USER_ID, /*defaultValue=*/ -1);
+        int userId = params.getExtras().getInt(EXTRA_USER_ID, /*defaultValue=*/ -1);
         if (userId == -1) {
             return false;
         }

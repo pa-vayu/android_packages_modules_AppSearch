@@ -25,6 +25,7 @@ import android.util.Log;
 
 import com.android.server.SystemService;
 import com.android.server.appsearch.contactsindexer.ContactsIndexerConfig;
+import com.android.server.appsearch.contactsindexer.FrameworkContactsIndexerConfig;
 import com.android.server.appsearch.contactsindexer.ContactsIndexerManagerService;
 
 import java.io.File;
@@ -69,8 +70,10 @@ public class AppSearchModule {
 
             // It is safe to check DeviceConfig here, since SettingsProvider, which DeviceConfig
             // uses, starts before AppSearch.
-            if (ContactsIndexerConfig.isContactsIndexerEnabled()) {
-                mContactsIndexerManagerService = new ContactsIndexerManagerService(getContext());
+            ContactsIndexerConfig contactsIndexerConfig = new FrameworkContactsIndexerConfig();
+            if (contactsIndexerConfig.isContactsIndexerEnabled()) {
+                mContactsIndexerManagerService = new ContactsIndexerManagerService(getContext(),
+                        contactsIndexerConfig);
                 try {
                     mContactsIndexerManagerService.onStart();
                 } catch (Throwable t) {

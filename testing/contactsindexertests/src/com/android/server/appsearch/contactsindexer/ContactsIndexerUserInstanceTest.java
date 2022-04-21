@@ -16,6 +16,7 @@
 
 package com.android.server.appsearch.contactsindexer;
 
+import static android.Manifest.permission.READ_DEVICE_CONFIG;
 import static android.Manifest.permission.WRITE_DEVICE_CONFIG;
 
 import static com.google.common.truth.Truth.assertThat;
@@ -38,6 +39,7 @@ import android.app.appsearch.observer.ObserverSpec;
 import android.app.appsearch.observer.SchemaChangeInfo;
 import android.app.appsearch.testutil.AppSearchSessionShimImpl;
 import android.app.appsearch.testutil.GlobalSearchSessionShimImpl;
+import android.app.job.JobInfo;
 import android.app.job.JobScheduler;
 import android.content.ContentResolver;
 import android.content.ContentUris;
@@ -49,6 +51,7 @@ import android.provider.ContactsContract;
 import android.provider.DeviceConfig;
 import android.test.ProviderTestCase2;
 
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -62,6 +65,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 
 import java.io.File;
 import java.util.Arrays;
@@ -81,7 +85,6 @@ import javax.annotation.Nullable;
 //  stick to ProviderTestCase2 for now.
 @RunWith(AndroidJUnit4.class)
 public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeContactsProvider> {
-
     @Rule
     public TemporaryFolder mTemporaryFolder = new TemporaryFolder();
 
@@ -92,6 +95,7 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
     private SearchSpec mSpecForQueryAllContacts;
     private ContactsIndexerUserInstance mInstance;
     private ContactsUpdateStats mUpdateStats;
+    private ContactsIndexerConfig mConfigForTest = new TestContactsIndexerConfig();
 
     public ContactsIndexerUserInstanceTest() {
         super(FakeContactsProvider.class, FakeContactsProvider.AUTHORITY);
@@ -115,7 +119,7 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
                 .build();
 
         mInstance = ContactsIndexerUserInstance.createInstance(mContext, mContactsDir,
-                mSingleThreadedExecutor);
+                mConfigForTest, mSingleThreadedExecutor);
         mUpdateStats = new ContactsUpdateStats();
     }
 
@@ -138,7 +142,7 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         File dataDir = new File(mTemporaryFolder.newFolder(), "contacts");
         boolean isDataDirectoryCreatedSynchronously = mSingleThreadedExecutor.submit(() -> {
             ContactsIndexerUserInstance unused =
-                    ContactsIndexerUserInstance.createInstance(mContext, dataDir,
+                    ContactsIndexerUserInstance.createInstance(mContext, dataDir, mConfigForTest,
                             mSingleThreadedExecutor);
             // Data directory shouldn't have been created synchronously in createInstance()
             return dataDir.exists();
@@ -153,15 +157,23 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
     public void testStart_initialRun_schedulesFullUpdateJob() throws Exception {
         JobScheduler mockJobScheduler = mock(JobScheduler.class);
         mContextWrapper.setJobScheduler(mockJobScheduler);
-        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
-                mContactsDir, mSingleThreadedExecutor);
+        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(
+                mContext,
+                mContactsDir, mConfigForTest, mSingleThreadedExecutor);
 
         instance.startAsync();
 
         // Wait for all async tasks to complete
-        mSingleThreadedExecutor.submit(() -> {}).get();
+        mSingleThreadedExecutor.submit(() -> {
+        }).get();
 
-        verify(mockJobScheduler).schedule(any());
+        ArgumentCaptor<JobInfo> jobInfoArgumentCaptor = ArgumentCaptor.forClass(JobInfo.class);
+        verify(mockJobScheduler).schedule(jobInfoArgumentCaptor.capture());
+        JobInfo fullUpdateJob = jobInfoArgumentCaptor.getValue();
+        assertThat(fullUpdateJob.isRequireBatteryNotLow()).isTrue();
+        assertThat(fullUpdateJob.isRequireDeviceIdle()).isTrue();
+        assertThat(fullUpdateJob.isPersisted()).isTrue();
+        assertThat(fullUpdateJob.isPeriodic()).isFalse();
     }
 
     @Test
@@ -172,15 +184,16 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
 
         JobScheduler mockJobScheduler = mock(JobScheduler.class);
         mContextWrapper.setJobScheduler(mockJobScheduler);
-        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(mContext,
-                mContactsDir, mSingleThreadedExecutor);
+        ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(
+                mContext, mContactsDir, mConfigForTest, mSingleThreadedExecutor);
 
         instance.startAsync();
 
         // Wait for all async tasks to complete
-        mSingleThreadedExecutor.submit(() -> {}).get();
+        mSingleThreadedExecutor.submit(() -> {
+            }).get();
 
-        verifyZeroInteractions(mockJobScheduler);
+            verifyZeroInteractions(mockJobScheduler);
     }
 
     @Test
@@ -429,10 +442,11 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
     @Test
     public void testDeltaUpdate_outOfSpaceError_fullUpdateScheduled() throws Exception {
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
-        int maxDocumentCountBeforeTest = FrameworkAppSearchConfig.getInstance(
-                mSingleThreadedExecutor).getCachedLimitConfigMaxDocumentCount();
+        int maxDocumentCountBeforeTest = -1;
         try {
-            uiAutomation.adoptShellPermissionIdentity(WRITE_DEVICE_CONFIG);
+            uiAutomation.adoptShellPermissionIdentity(READ_DEVICE_CONFIG, WRITE_DEVICE_CONFIG);
+            maxDocumentCountBeforeTest = FrameworkAppSearchConfig.getInstance(
+                    mSingleThreadedExecutor).getCachedLimitConfigMaxDocumentCount();
             int totalContactCount = 250;
             int maxDocumentCount = 100;
             // Override the configs in AppSearch. This is hard to be mocked since we are not testing
@@ -478,7 +492,7 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
             }
 
             executeAndWaitForCompletion(
-                    mInstance.doDeltaUpdateAsync(ContactsIndexerConfig.UPDATE_LIMIT_NONE,
+                    mInstance.doDeltaUpdateAsync(ContactsProviderUtil.UPDATE_LIMIT_NONE,
                             mUpdateStats),
                     mSingleThreadedExecutor);
             latch.await(30L, TimeUnit.SECONDS);
@@ -490,9 +504,11 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
                     settingsBundle.getLong(ContactsIndexerSettings.LAST_DELTA_UPDATE_TIMESTAMP_KEY))
                     .isAtLeast(timeBeforeDeltaChangeNotification);
         } finally {
-            DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                    FrameworkAppSearchConfig.KEY_LIMIT_CONFIG_MAX_DOCUMENT_COUNT,
-                    String.valueOf(maxDocumentCountBeforeTest), false);
+            if (maxDocumentCountBeforeTest > 0) {
+                DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
+                        FrameworkAppSearchConfig.KEY_LIMIT_CONFIG_MAX_DOCUMENT_COUNT,
+                        String.valueOf(maxDocumentCountBeforeTest), false);
+            }
             uiAutomation.dropShellPermissionIdentity();
         }
     }

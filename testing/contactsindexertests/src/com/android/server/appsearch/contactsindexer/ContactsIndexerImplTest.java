@@ -97,7 +97,7 @@ public class ContactsIndexerImplTest extends ProviderTestCase2<FakeContactsProvi
         List<String> unWantedContactIds = new ArrayList<>();
 
         lastUpdatedTimestamp = ContactsProviderUtil.getUpdatedContactIds(mContext,
-                lastUpdatedTimestamp, ContactsIndexerConfig.UPDATE_LIMIT_NONE,
+                lastUpdatedTimestamp, ContactsProviderUtil.UPDATE_LIMIT_NONE,
                 wantedContactIds, /*stats=*/ null);
         lastDeletedTimestamp = ContactsProviderUtil.getDeletedContactIds(mContext,
                 lastDeletedTimestamp, unWantedContactIds, /*stats=*/ null);
