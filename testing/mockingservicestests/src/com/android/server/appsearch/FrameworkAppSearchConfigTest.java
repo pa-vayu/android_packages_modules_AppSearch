@@ -28,19 +28,14 @@ import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
 
-/**
- * Tests for {@link AppSearchConfig}.
- *
- * <p>Build/Install/Run: atest FrameworksMockingServicesTests:AppSearchConfigTest
- */
-public class AppSearchConfigTest {
+public class FrameworkAppSearchConfigTest {
     @Rule
     public final TestableDeviceConfig.TestableDeviceConfigRule
             mDeviceConfigRule = new TestableDeviceConfig.TestableDeviceConfigRule();
 
     @Test
     public void testDefaultValues_allCachedValue() {
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = FrameworkAppSearchConfig.create(DIRECT_EXECUTOR);
 
         assertThat(appSearchConfig.getCachedMinTimeIntervalBetweenSamplesMillis()).isEqualTo(
                 AppSearchConfig.DEFAULT_MIN_TIME_INTERVAL_BETWEEN_SAMPLES_MILLIS);
@@ -74,11 +69,11 @@ public class AppSearchConfigTest {
     public void testCustomizedValue_minTimeIntervalBetweenSamplesMillis() {
         final long minTimeIntervalBetweenSamplesMillis = -1;
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_MIN_TIME_INTERVAL_BETWEEN_SAMPLES_MILLIS,
+                FrameworkAppSearchConfig.KEY_MIN_TIME_INTERVAL_BETWEEN_SAMPLES_MILLIS,
                 Long.toString(minTimeIntervalBetweenSamplesMillis),
                 false);
 
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = FrameworkAppSearchConfig.create(DIRECT_EXECUTOR);
 
         assertThat(appSearchConfig.getCachedMinTimeIntervalBetweenSamplesMillis()).isEqualTo(
                 minTimeIntervalBetweenSamplesMillis);
@@ -88,14 +83,14 @@ public class AppSearchConfigTest {
     public void testCustomizedValueOverride_minTimeIntervalBetweenSamplesMillis() {
         long minTimeIntervalBetweenSamplesMillis = -1;
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_MIN_TIME_INTERVAL_BETWEEN_SAMPLES_MILLIS,
+                FrameworkAppSearchConfig.KEY_MIN_TIME_INTERVAL_BETWEEN_SAMPLES_MILLIS,
                 Long.toString(minTimeIntervalBetweenSamplesMillis),
                 false);
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = FrameworkAppSearchConfig.create(DIRECT_EXECUTOR);
 
         minTimeIntervalBetweenSamplesMillis = -2;
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_MIN_TIME_INTERVAL_BETWEEN_SAMPLES_MILLIS,
+                FrameworkAppSearchConfig.KEY_MIN_TIME_INTERVAL_BETWEEN_SAMPLES_MILLIS,
                 Long.toString(minTimeIntervalBetweenSamplesMillis),
                 false);
 
@@ -114,35 +109,35 @@ public class AppSearchConfigTest {
         final int samplingIntervalOptimizeStats = -7;
 
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
                 Integer.toString(samplingIntervalDefault),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_PUT_DOCUMENT_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_PUT_DOCUMENT_STATS,
                 Integer.toString(samplingIntervalPutDocumentStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_BATCH_CALL_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_BATCH_CALL_STATS,
                 Integer.toString(samplingIntervalBatchCallStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_INITIALIZE_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_INITIALIZE_STATS,
                 Integer.toString(samplingIntervalInitializeStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_SEARCH_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_SEARCH_STATS,
                 Integer.toString(samplingIntervalSearchStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_GLOBAL_SEARCH_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_GLOBAL_SEARCH_STATS,
                 Integer.toString(samplingIntervalGlobalSearchStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_OPTIMIZE_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_OPTIMIZE_STATS,
                 Integer.toString(samplingIntervalOptimizeStats),
                 false);
 
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = FrameworkAppSearchConfig.create(DIRECT_EXECUTOR);
 
         assertThat(appSearchConfig.getCachedSamplingIntervalDefault()).isEqualTo(
                 samplingIntervalDefault);
@@ -170,34 +165,34 @@ public class AppSearchConfigTest {
         int samplingIntervalGlobalSearchStats = -6;
         int samplingIntervalOptimizeStats = -7;
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
                 Integer.toString(samplingIntervalDefault),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_PUT_DOCUMENT_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_PUT_DOCUMENT_STATS,
                 Integer.toString(samplingIntervalPutDocumentStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_BATCH_CALL_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_BATCH_CALL_STATS,
                 Integer.toString(samplingIntervalBatchCallStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_INITIALIZE_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_INITIALIZE_STATS,
                 Integer.toString(samplingIntervalInitializeStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_SEARCH_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_SEARCH_STATS,
                 Integer.toString(samplingIntervalSearchStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_GLOBAL_SEARCH_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_GLOBAL_SEARCH_STATS,
                 Integer.toString(samplingIntervalGlobalSearchStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_OPTIMIZE_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_OPTIMIZE_STATS,
                 Integer.toString(samplingIntervalOptimizeStats),
                 false);
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = FrameworkAppSearchConfig.create(DIRECT_EXECUTOR);
 
         // Overrides
         samplingIntervalDefault = -4;
@@ -208,31 +203,31 @@ public class AppSearchConfigTest {
         samplingIntervalGlobalSearchStats = -9;
         samplingIntervalOptimizeStats = -10;
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
                 Integer.toString(samplingIntervalDefault),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_PUT_DOCUMENT_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_PUT_DOCUMENT_STATS,
                 Integer.toString(samplingIntervalPutDocumentStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_BATCH_CALL_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_BATCH_CALL_STATS,
                 Integer.toString(samplingIntervalBatchCallStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_INITIALIZE_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_INITIALIZE_STATS,
                 Integer.toString(samplingIntervalInitializeStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_SEARCH_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_SEARCH_STATS,
                 Integer.toString(samplingIntervalSearchStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_GLOBAL_SEARCH_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_GLOBAL_SEARCH_STATS,
                 Integer.toString(samplingIntervalGlobalSearchStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_OPTIMIZE_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_OPTIMIZE_STATS,
                 Integer.toString(samplingIntervalOptimizeStats),
                 false);
 
@@ -261,11 +256,11 @@ public class AppSearchConfigTest {
     public void testFallbackToDefaultSamplingValue_useHardCodedDefault() {
         final int samplingIntervalPutDocumentStats = -1;
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_PUT_DOCUMENT_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_PUT_DOCUMENT_STATS,
                 Integer.toString(samplingIntervalPutDocumentStats),
                 false);
 
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = FrameworkAppSearchConfig.create(DIRECT_EXECUTOR);
 
         assertThat(appSearchConfig.getCachedSamplingIntervalForPutDocumentStats()).isEqualTo(
                 samplingIntervalPutDocumentStats);
@@ -280,15 +275,15 @@ public class AppSearchConfigTest {
         final int samplingIntervalPutDocumentStats = -1;
         final int samplingIntervalDefault = -2;
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_PUT_DOCUMENT_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_PUT_DOCUMENT_STATS,
                 Integer.toString(samplingIntervalPutDocumentStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
                 Integer.toString(samplingIntervalDefault),
                 false);
 
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = FrameworkAppSearchConfig.create(DIRECT_EXECUTOR);
 
         assertThat(appSearchConfig.getCachedSamplingIntervalForPutDocumentStats()).isEqualTo(
                 samplingIntervalPutDocumentStats);
@@ -302,25 +297,25 @@ public class AppSearchConfigTest {
         int samplingIntervalPutDocumentStats = -1;
         int samplingIntervalDefault = -2;
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_PUT_DOCUMENT_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_PUT_DOCUMENT_STATS,
                 Integer.toString(samplingIntervalPutDocumentStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
                 Integer.toString(samplingIntervalDefault),
                 false);
 
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = FrameworkAppSearchConfig.create(DIRECT_EXECUTOR);
 
         // Sampling values changed.
         samplingIntervalPutDocumentStats = -3;
         samplingIntervalDefault = -4;
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_PUT_DOCUMENT_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_PUT_DOCUMENT_STATS,
                 Integer.toString(samplingIntervalPutDocumentStats),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
                 Integer.toString(samplingIntervalDefault),
                 false);
 
@@ -336,20 +331,20 @@ public class AppSearchConfigTest {
         int samplingIntervalDefault = -1;
         int samplingIntervalBatchCallStats = -2;
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
                 Integer.toString(samplingIntervalDefault),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_BATCH_CALL_STATS,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_FOR_BATCH_CALL_STATS,
                 Integer.toString(samplingIntervalBatchCallStats),
                 false);
 
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = FrameworkAppSearchConfig.create(DIRECT_EXECUTOR);
 
         // Default sampling interval changed.
         samplingIntervalDefault = -3;
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
+                FrameworkAppSearchConfig.KEY_SAMPLING_INTERVAL_DEFAULT,
                 Integer.toString(samplingIntervalDefault),
                 false);
 
@@ -360,15 +355,15 @@ public class AppSearchConfigTest {
     @Test
     public void testCustomizedValue_maxDocument() {
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_LIMIT_CONFIG_MAX_DOCUMENT_SIZE_BYTES,
+                FrameworkAppSearchConfig.KEY_LIMIT_CONFIG_MAX_DOCUMENT_SIZE_BYTES,
                 Integer.toString(2001),
                 /*makeDefault=*/ false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_LIMIT_CONFIG_MAX_DOCUMENT_COUNT,
+                FrameworkAppSearchConfig.KEY_LIMIT_CONFIG_MAX_DOCUMENT_COUNT,
                 Integer.toString(2002),
                 /*makeDefault=*/ false);
 
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = FrameworkAppSearchConfig.create(DIRECT_EXECUTOR);
         assertThat(appSearchConfig.getCachedLimitConfigMaxDocumentSizeBytes()).isEqualTo(2001);
         assertThat(appSearchConfig.getCachedLimitConfigMaxDocumentCount()).isEqualTo(2002);
     }
@@ -376,19 +371,19 @@ public class AppSearchConfigTest {
     @Test
     public void testCustomizedValue_optimizeThreshold() {
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_BYTES_OPTIMIZE_THRESHOLD,
+                FrameworkAppSearchConfig.KEY_BYTES_OPTIMIZE_THRESHOLD,
                 Integer.toString(147147),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_TIME_OPTIMIZE_THRESHOLD_MILLIS,
+                FrameworkAppSearchConfig.KEY_TIME_OPTIMIZE_THRESHOLD_MILLIS,
                 Integer.toString(258258),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_DOC_COUNT_OPTIMIZE_THRESHOLD,
+                FrameworkAppSearchConfig.KEY_DOC_COUNT_OPTIMIZE_THRESHOLD,
                 Integer.toString(369369),
                 false);
 
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = FrameworkAppSearchConfig.create(DIRECT_EXECUTOR);
 
         assertThat(appSearchConfig.getCachedBytesOptimizeThreshold()).isEqualTo(147147);
         assertThat(appSearchConfig.getCachedTimeOptimizeThresholdMs()).isEqualTo(258258);
@@ -398,31 +393,31 @@ public class AppSearchConfigTest {
     @Test
     public void testCustomizedValueOverride_optimizeThreshold() {
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_BYTES_OPTIMIZE_THRESHOLD,
+                FrameworkAppSearchConfig.KEY_BYTES_OPTIMIZE_THRESHOLD,
                 Integer.toString(147147),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_TIME_OPTIMIZE_THRESHOLD_MILLIS,
+                FrameworkAppSearchConfig.KEY_TIME_OPTIMIZE_THRESHOLD_MILLIS,
                 Integer.toString(258258),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_DOC_COUNT_OPTIMIZE_THRESHOLD,
+                FrameworkAppSearchConfig.KEY_DOC_COUNT_OPTIMIZE_THRESHOLD,
                 Integer.toString(369369),
                 false);
 
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = FrameworkAppSearchConfig.create(DIRECT_EXECUTOR);
 
         // Override
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_BYTES_OPTIMIZE_THRESHOLD,
+                FrameworkAppSearchConfig.KEY_BYTES_OPTIMIZE_THRESHOLD,
                 Integer.toString(741741),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_TIME_OPTIMIZE_THRESHOLD_MILLIS,
+                FrameworkAppSearchConfig.KEY_TIME_OPTIMIZE_THRESHOLD_MILLIS,
                 Integer.toString(852852),
                 false);
         DeviceConfig.setProperty(DeviceConfig.NAMESPACE_APPSEARCH,
-                AppSearchConfig.KEY_DOC_COUNT_OPTIMIZE_THRESHOLD,
+                FrameworkAppSearchConfig.KEY_DOC_COUNT_OPTIMIZE_THRESHOLD,
                 Integer.toString(963963),
                 false);
 
@@ -433,7 +428,7 @@ public class AppSearchConfigTest {
 
     @Test
     public void testNotUsable_afterClose() {
-        AppSearchConfig appSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+        AppSearchConfig appSearchConfig = FrameworkAppSearchConfig.create(DIRECT_EXECUTOR);
 
         appSearchConfig.close();
 

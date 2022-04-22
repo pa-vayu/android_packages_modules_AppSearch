@@ -28,6 +28,7 @@ import android.provider.ContactsContract.Contacts;
 import android.provider.ContactsContract.DeletedContacts;
 import android.util.Log;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -41,6 +42,7 @@ public final class ContactsProviderUtil {
 
     // static final string for querying CP2
     private static final String UPDATE_SINCE = Contacts.CONTACT_LAST_UPDATED_TIMESTAMP + ">?";
+    private static final String UPDATE_ORDER_BY = Contacts.CONTACT_LAST_UPDATED_TIMESTAMP + " DESC";
     private static final String[] UPDATE_SELECTION = new String[]{
             Contacts._ID,
             Contacts.CONTACT_LAST_UPDATED_TIMESTAMP
@@ -131,7 +133,19 @@ public final class ContactsProviderUtil {
      * @param contactIds  the Set passed in to hold the recently updated contacts.
      * @return the timestamp for the contact most recently updated.
      */
-    static public long getUpdatedContactIds(@NonNull Context context, long sinceFilter,
+    public static long getUpdatedContactIds(@NonNull Context context, long sinceFilter,
+            @NonNull List<String> contactIds, @Nullable ContactsUpdateStats updateStats) {
+        // LIMIT of -1 means no upper bound (see https://www.sqlite.org/lang_select.html)
+        return getUpdatedContactIds(context, sinceFilter, /*limit=*/-1, contactIds,
+                updateStats);
+    }
+
+    /**
+     * Returns a list of IDs, within given limit, of contacts updated since given timestamp.
+     *
+     * <p>List of contact IDs are returned in the order of increasing contact last update timestamp.
+     */
+    public static long getUpdatedContactIds(@NonNull Context context, long sinceFilter, int limit,
             @NonNull List<String> contactIds, @Nullable ContactsUpdateStats updateStats) {
         Objects.requireNonNull(context);
         Objects.requireNonNull(contactIds);
@@ -139,44 +153,36 @@ public final class ContactsProviderUtil {
         long newTimestamp = sinceFilter;
         String[] selectionArgs = new String[]{Long.toString(sinceFilter)};
         // We only get the contacts from the default directory, e.g. the non-invisibles.
-        Uri contactsUri =
-                Contacts.CONTENT_URI
-                        .buildUpon()
-                        .appendQueryParameter(
-                                ContactsContract.DIRECTORY_PARAM_KEY,
-                                String.valueOf(ContactsContract.Directory.DEFAULT))
-                        .build();
-
-        Cursor cursor = null;
-        int rows = 0;
-        try {
-            // TODO(b/203605504) We could optimize the query by setting the sortOrder:
-            //  LAST_UPDATED_TIMESTAMP DESC. This way the 1st contact would have the last updated
-            //  timestamp.
-            cursor =
-                    context.getContentResolver().query(
-                            contactsUri,
-                            UPDATE_SELECTION,
-                            UPDATE_SINCE, selectionArgs,
-                            /*sortOrder=*/ null);
+        Uri.Builder contactsUriBuilder = Contacts.CONTENT_URI.buildUpon().appendQueryParameter(
+                ContactsContract.DIRECTORY_PARAM_KEY,
+                String.valueOf(ContactsContract.Directory.DEFAULT));
+        if (limit > 0) {
+            contactsUriBuilder.appendQueryParameter(ContactsContract.LIMIT_PARAM_KEY,
+                    String.valueOf(limit));
+        }
+        try (Cursor cursor = context.getContentResolver().query(
+                contactsUriBuilder.build(),
+                UPDATE_SELECTION,
+                UPDATE_SINCE, selectionArgs,
+                UPDATE_ORDER_BY)) {
             if (cursor == null) {
-                Log.e(TAG, "Could not fetch updated contacts");
+                Log.w(TAG, "Failed to get a list of contacts updated since " + sinceFilter);
                 return newTimestamp;
             }
 
             int contactIdIndex = cursor.getColumnIndex(Contacts._ID);
             int timestampIndex = cursor.getColumnIndex(Contacts.CONTACT_LAST_UPDATED_TIMESTAMP);
+            int numContacts = 0;
             while (cursor.moveToNext()) {
                 long contactId = cursor.getLong(contactIdIndex);
-                // We still get max value between those two here just in case cursor.getLong
-                // returns something unexpected(e.g. somehow it returns an invalid value like
-                // -1 or 0 due to an invalid index).
-                newTimestamp = Math.max(newTimestamp, cursor.getLong(timestampIndex));
                 contactIds.add(String.valueOf(contactId));
-                ++rows;
+                numContacts++;
+                newTimestamp = Math.max(newTimestamp, cursor.getLong(timestampIndex));
             }
+            // Reverse the IDs in the list to be in increasing contact last updated order.
+            Collections.reverse(contactIds);
 
-            Log.d(TAG, "Got " + rows + " updated contacts since " + sinceFilter);
+            Log.v(TAG, "Returning " + numContacts + " updated contacts since " + sinceFilter);
         } catch (SecurityException |
                 SQLiteException |
                 NullPointerException |
@@ -188,10 +194,6 @@ public final class ContactsProviderUtil {
             //  doing the update or not.
             if (updateStats != null) {
                 updateStats.mUpdateStatuses.add(AppSearchResult.RESULT_INTERNAL_ERROR);
-            }
-        } finally {
-            if (cursor != null) {
-                cursor.close();
             }
         }
 

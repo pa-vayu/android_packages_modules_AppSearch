@@ -15,9 +15,9 @@
  */
 package com.android.server.appsearch;
 
-import static com.android.internal.util.ConcurrentUtils.DIRECT_EXECUTOR;
-
 import static com.google.common.truth.Truth.assertThat;
+
+import android.app.appsearch.testutil.FakeAppSearchConfig;
 
 import com.android.server.appsearch.icing.proto.GetOptimizeInfoResultProto;
 import com.android.server.appsearch.icing.proto.StatusProto;
@@ -25,7 +25,7 @@ import com.android.server.appsearch.icing.proto.StatusProto;
 import org.junit.Test;
 
 public class FrameworkOptimizeStrategyTest {
-    AppSearchConfig mAppSearchConfig = AppSearchConfig.create(DIRECT_EXECUTOR);
+    AppSearchConfig mAppSearchConfig = new FakeAppSearchConfig();
     FrameworkOptimizeStrategy mFrameworkOptimizeStrategy =
             new FrameworkOptimizeStrategy(mAppSearchConfig);
 
