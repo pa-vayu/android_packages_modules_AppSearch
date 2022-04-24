@@ -30,6 +30,7 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.appsearch.stats.AppSearchStatsLog;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -134,21 +135,7 @@ public final class ContactsIndexerUserInstance {
                         /*notifyForDescendants=*/ true,
                         mContactsObserver);
 
-        mSingleThreadedExecutor.execute(() -> {
-            // If this contacts indexer instance hasn't synced any CP2 changes into AppSearch,
-            // or a configurable amount of time (default 30 days) has passed since the last
-            // full sync, schedule a task to do a full update. That is, sync all CP2 contacts into
-            // AppSearch.
-            long fullUpdateIntervalMillis =
-                    ContactsIndexerConfig.getContactsFullUpdateIntervalMillis();
-            long lastFullUpdateTimestampMillis = mSettings.getLastFullUpdateTimestampMillis();
-            if (lastFullUpdateTimestampMillis == 0
-                    || lastFullUpdateTimestampMillis + fullUpdateIntervalMillis
-                    <= System.currentTimeMillis()) {
-                ContactsIndexerMaintenanceService.scheduleFullUpdateJob(
-                        mContext, mContext.getUser().getIdentifier());
-            }
-        });
+        mSingleThreadedExecutor.execute(this::maybeUpdateContacts);
     }
 
     public void shutdown() throws InterruptedException {
@@ -158,7 +145,7 @@ public final class ContactsIndexerUserInstance {
         ContactsIndexerMaintenanceService.cancelFullUpdateJob(mContext,
                 mContext.getUser().getIdentifier());
         mSingleThreadedExecutor.shutdown();
-        mSingleThreadedExecutor.awaitTermination(30L, TimeUnit.SECONDS);
+        boolean unused = mSingleThreadedExecutor.awaitTermination(30L, TimeUnit.SECONDS);
     }
 
     private class ContactsObserver extends ContentObserver {
@@ -172,6 +159,31 @@ public final class ContactsIndexerUserInstance {
                 mSingleThreadedExecutor.execute(
                         ContactsIndexerUserInstance.this::handleDeltaUpdate);
             }
+        }
+    }
+
+    private void maybeUpdateContacts() {
+        // If no CP2 changes have been observed (bootstrap case), force a delta (or instant) update
+        // to sync a configurable number of CP2 contacts into AppSearch.
+        if (mSettings.getLastDeltaUpdateTimestampMillis() == 0) {
+            // TODO(b/222126568): refactor doDeltaUpdateAsync() to return a future value of
+            // ContactsUpdateStats so that it can be checked and logged here, instead of the
+            // placeholder exceptionally() block that only logs to the console.
+            doDeltaUpdateAsync(ContactsIndexerConfig.getContactsInstantIndexingLimit(),
+                    new ContactsUpdateStats()).exceptionally(t -> {
+                Log.d(TAG, "Failed to bootstrap Person corpus with CP2 contacts", t);
+                return null;
+            });
+        }
+
+        // If a configurable amount of time has passed since the last full sync, schedule a job
+        // to do a full update. That is, sync all CP2 contacts into AppSearch.
+        long fullUpdateIntervalMillis = ContactsIndexerConfig.getContactsFullUpdateIntervalMillis();
+        long lastFullUpdateTimestampMillis = mSettings.getLastFullUpdateTimestampMillis();
+        if (lastFullUpdateTimestampMillis + fullUpdateIntervalMillis
+                <= System.currentTimeMillis()) {
+            ContactsIndexerMaintenanceService.scheduleFullUpdateJob(
+                    mContext, mContext.getUser().getIdentifier());
         }
     }
 
@@ -255,12 +267,7 @@ public final class ContactsIndexerUserInstance {
      * running.
      */
     private void handleDeltaUpdate() {
-        // Schedule delta updates only if a full update has been performed at least once to sync
-        // all of CP2 contacts into AppSearch.
-        if (mSettings.getLastFullUpdateTimestampMillis() == 0) {
-            Log.v(TAG, "Deferring delta updates until the first full update is complete");
-            return;
-        } else if (!ContentResolver.getCurrentSyncs().isEmpty()) {
+        if (!ContentResolver.getCurrentSyncs().isEmpty()) {
             // TODO(b/221905367): make sure that the delta update is scheduled as soon
             //  as the current sync is completed.
             Log.v(TAG, "Deferring delta updates until the current sync is complete");
@@ -273,7 +280,14 @@ public final class ContactsIndexerUserInstance {
         if (!mDeltaUpdatePending.getAndSet(true)) {
             mSingleThreadedExecutor.execute(() -> {
                 ContactsUpdateStats updateStats = new ContactsUpdateStats();
-                doDeltaUpdateAsync(updateStats);
+                // TODO(b/226489369): apply instant indexing limit on CP2 changes also?
+                // TODO(b/222126568): refactor doDeltaUpdateAsync() to return a future value of
+                // ContactsUpdateStats so that it can be checked and logged here, instead of the
+                // placeholder exceptionally() block that only logs to the console.
+                doDeltaUpdateAsync(/*indexingLimit=*/ -1, updateStats).exceptionally(t -> {
+                    Log.d(TAG, "Failed to index CP2 change", t);
+                    return null;
+                });
             });
         }
     }
@@ -284,7 +298,7 @@ public final class ContactsIndexerUserInstance {
      */
     @VisibleForTesting
     /*package*/ CompletableFuture<Void> doDeltaUpdateAsync(
-            @NonNull ContactsUpdateStats updateStats) {
+            int indexingLimit, @NonNull ContactsUpdateStats updateStats) {
         // Reset the delta update pending flag at the top of this method. This allows the next
         // ContentObserver.onChange() notification to schedule another delta-update task on the
         // executor. Note that additional change notifications will not schedule more
@@ -307,7 +321,7 @@ public final class ContactsIndexerUserInstance {
         List<String> unWantedIds = new ArrayList<>();
         long mostRecentContactLastUpdateTimestampMillis =
                 ContactsProviderUtil.getUpdatedContactIds(mContext, lastDeltaUpdateTimestampMillis,
-                        wantedIds, updateStats);
+                        indexingLimit, wantedIds, updateStats);
         long mostRecentContactDeletedTimestampMillis =
                 ContactsProviderUtil.getDeletedContactIds(mContext, lastDeltaDeleteTimestampMillis,
                         unWantedIds, updateStats);
@@ -401,7 +415,10 @@ public final class ContactsIndexerUserInstance {
             try {
                 mSettings.load();
             } catch (IOException e) {
-                Log.w(TAG, "Failed to load settings from disk", e);
+                // Ignore file not found errors (bootstrap case)
+                if (!(e instanceof FileNotFoundException)) {
+                    Log.w(TAG, "Failed to load settings from disk", e);
+                }
             }
         });
     }

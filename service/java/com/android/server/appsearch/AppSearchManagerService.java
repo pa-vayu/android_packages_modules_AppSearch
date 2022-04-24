@@ -219,7 +219,7 @@ public class AppSearchManagerService extends SystemService {
                         mAppSearchUserInstanceManager.getOrCreateUserInstance(
                                 userContext,
                                 userHandle,
-                                AppSearchConfig.getInstance(SHARED_EXECUTOR));
+                                FrameworkAppSearchConfig.getInstance(SHARED_EXECUTOR));
                 instance.getAppSearchImpl().clearPackageData(packageName);
                 dispatchChangeNotifications(instance);
                 instance.getLogger().removeCachedUidForPackage(packageName);
@@ -243,7 +243,7 @@ public class AppSearchManagerService extends SystemService {
                             mAppSearchUserInstanceManager.getOrCreateUserInstance(
                                     userContext,
                                     userHandle,
-                                    AppSearchConfig.getInstance(SHARED_EXECUTOR));
+                                    FrameworkAppSearchConfig.getInstance(SHARED_EXECUTOR));
                     List<PackageInfo> installedPackageInfos = userContext
                             .getPackageManager()
                             .getInstalledPackages(/*flags=*/0);
@@ -1344,7 +1344,7 @@ public class AppSearchManagerService extends SystemService {
                     instance = mAppSearchUserInstanceManager.getOrCreateUserInstance(
                             targetUserContext,
                             targetUser,
-                            AppSearchConfig.getInstance(SHARED_EXECUTOR));
+                            FrameworkAppSearchConfig.getInstance(SHARED_EXECUTOR));
                     ++operationSuccessCount;
                     invokeCallbackOnResult(callback, AppSearchResult.newSuccessfulResult(null));
                 } catch (Throwable t) {

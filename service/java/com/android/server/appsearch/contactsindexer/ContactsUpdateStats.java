@@ -77,11 +77,11 @@ public class ContactsUpdateStats {
     // # of contacts failed to be deleted.
     int mContactsDeleteFailedCount;
 
-    // # of new contacts inserted
+    // # of new contacts to be inserted
     int mContactsInsertedCount;
     // # of contacts skipped due to no significant change
     int mContactsSkippedCount;
-    // # of existing contacts updated
+    // # of contacts successfully inserted or updated.
     int mContactsUpdateCount;
 
     // # of contacts deleted.

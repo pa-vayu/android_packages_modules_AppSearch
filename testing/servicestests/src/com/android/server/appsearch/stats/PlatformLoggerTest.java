@@ -16,8 +16,6 @@
 
 package com.android.server.appsearch.stats;
 
-import static com.android.internal.util.ConcurrentUtils.DIRECT_EXECUTOR;
-
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.anyInt;
@@ -27,6 +25,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.annotation.NonNull;
+import android.app.appsearch.testutil.FakeAppSearchConfig;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.pm.PackageManager;
@@ -37,6 +36,8 @@ import androidx.test.core.app.ApplicationProvider;
 
 import com.android.server.appsearch.AppSearchConfig;
 import com.android.server.appsearch.external.localstorage.stats.CallStats;
+
+import com.google.common.util.concurrent.MoreExecutors;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -146,9 +147,7 @@ public class PlatformLoggerTest {
     public void testGetPackageUidAsUser() throws Exception {
         final String testPackageName = "packageName";
         final int testUid = 1234;
-        PlatformLogger logger = new PlatformLogger(
-                mContext,
-                AppSearchConfig.create(DIRECT_EXECUTOR));
+        PlatformLogger logger = new PlatformLogger(mContext, new FakeAppSearchConfig());
         PackageManager mockPackageManager = getMockPackageManager(mContext.getUser());
         when(mockPackageManager.getPackageUid(testPackageName, /*flags=*/0)).thenReturn(testUid);
 
