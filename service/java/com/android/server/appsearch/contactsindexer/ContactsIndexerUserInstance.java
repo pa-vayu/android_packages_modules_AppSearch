@@ -151,7 +151,21 @@ public final class ContactsIndexerUserInstance {
                         /*notifyForDescendants=*/ true,
                         mContactsObserver);
 
-        executeOnSingleThreadedExecutor(this::doCp2SyncFirstRun);
+        executeOnSingleThreadedExecutor(() -> {
+            mAppSearchHelper.isDataLikelyWipedDuringInitAsync().thenCompose(
+                    isDataLikelyWipedDuringInit -> {
+                        if (isDataLikelyWipedDuringInit) {
+                            mSettings.reset();
+                            // Persist the settings right away just in case there is a crash later.
+                            // In this case, the full update still need to be run during the next
+                            // boot to reindex the data.
+                            persistSettings();
+                        }
+                        doCp2SyncFirstRun();
+                        // This value won't be used anymore, so return null here.
+                        return CompletableFuture.completedFuture(null);
+                    }).exceptionally(e -> Log.w(TAG, "Got exception in startAsync", e));
+        });
     }
 
     public void shutdown() throws InterruptedException {
