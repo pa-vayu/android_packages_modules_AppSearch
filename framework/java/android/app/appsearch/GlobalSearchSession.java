@@ -16,6 +16,8 @@
 
 package android.app.appsearch;
 
+import static android.app.appsearch.SearchSessionUtil.safeExecute;
+
 import android.annotation.CallbackExecutor;
 import android.annotation.NonNull;
 import android.app.appsearch.aidl.AppSearchResultParcel;
@@ -28,6 +30,7 @@ import android.app.appsearch.observer.DocumentChangeInfo;
 import android.app.appsearch.observer.ObserverCallback;
 import android.app.appsearch.observer.ObserverSpec;
 import android.app.appsearch.observer.SchemaChangeInfo;
+import android.app.search.SearchSession;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.content.AttributionSource;
 import android.os.Bundle;
@@ -100,7 +103,7 @@ public class GlobalSearchSession implements Closeable {
                     new IAppSearchResultCallback.Stub() {
                         @Override
                         public void onResult(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> {
+                            safeExecute(executor, callback, () -> {
                                 AppSearchResult<Void> result = resultParcel.getResult();
                                 if (result.isSuccess()) {
                                     callback.accept(
@@ -243,7 +246,10 @@ public class GlobalSearchSession implements Closeable {
                     new IAppSearchResultCallback.Stub() {
                         @Override
                         public void onResult(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> callback.accept(resultParcel.getResult()));
+                            safeExecute(
+                                    executor,
+                                    callback,
+                                    () -> callback.accept(resultParcel.getResult()));
                         }
                     });
             mIsMutated = true;
@@ -286,7 +292,7 @@ public class GlobalSearchSession implements Closeable {
                     new IAppSearchResultCallback.Stub() {
                         @Override
                         public void onResult(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> {
+                            safeExecute(executor, callback, () -> {
                                 AppSearchResult<Bundle> result = resultParcel.getResult();
                                 if (result.isSuccess()) {
                                     GetSchemaResponse response =
@@ -352,7 +358,7 @@ public class GlobalSearchSession implements Closeable {
                             @NonNull String packageName,
                             @NonNull String databaseName,
                             @NonNull List<String> changedSchemaNames) {
-                        executor.execute(() -> {
+                        safeExecute(executor, this::suppressingErrorCallback, () -> {
                             SchemaChangeInfo changeInfo = new SchemaChangeInfo(
                                     packageName, databaseName, new ArraySet<>(changedSchemaNames));
                             observer.onSchemaChanged(changeInfo);
@@ -366,7 +372,7 @@ public class GlobalSearchSession implements Closeable {
                             @NonNull String namespace,
                             @NonNull String schemaName,
                             @NonNull List<String> changedDocumentIds) {
-                        executor.execute(() -> {
+                        safeExecute(executor, this::suppressingErrorCallback, () -> {
                             DocumentChangeInfo changeInfo = new DocumentChangeInfo(
                                     packageName,
                                     databaseName,
@@ -376,6 +382,16 @@ public class GlobalSearchSession implements Closeable {
                             observer.onDocumentChanged(changeInfo);
                         });
                     }
+
+                    /**
+                     * Error-handling callback that simply drops errors.
+                     *
+                     * <p>If we fail to deliver change notifications, there isn't much we can do.
+                     * The API doesn't allow the user to provide a callback to invoke on failure of
+                     * change notification delivery. {@link SearchSessionUtil#safeExecute} already
+                     * includes a log message. So we just do nothing.
+                     */
+                    private void suppressingErrorCallback(@NonNull AppSearchResult<?> unused) {}
                 };
             }
 
