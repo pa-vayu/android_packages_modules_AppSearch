@@ -40,6 +40,8 @@ import java.util.Objects;
 public final class ContactsProviderUtil {
     private static final String TAG = "ContactsProviderHelper";
 
+    public static final int UPDATE_LIMIT_NONE = -1;
+
     // static final string for querying CP2
     private static final String UPDATE_SINCE = Contacts.CONTACT_LAST_UPDATED_TIMESTAMP + ">?";
     private static final String UPDATE_ORDER_BY = Contacts.CONTACT_LAST_UPDATED_TIMESTAMP + " DESC";
@@ -126,24 +128,14 @@ public final class ContactsProviderUtil {
     }
 
     /**
-     * Gets the ids for updated contacts from certain timestamp.
+     * Returns a list of IDs, within given limit, of contacts updated since given timestamp.
      *
      * @param sinceFilter timestamp (milliseconds since epoch) from which ids of recently updated
      *                    contacts should be returned.
      * @param contactIds  the Set passed in to hold the recently updated contacts.
+     * @param limit       the maximum number of contacts fetched from CP2. No limit will be set if
+     *                    the value is {@link ContactsIndexerConfig#UPDATE_LIMIT_NONE}.
      * @return the timestamp for the contact most recently updated.
-     */
-    public static long getUpdatedContactIds(@NonNull Context context, long sinceFilter,
-            @NonNull List<String> contactIds, @Nullable ContactsUpdateStats updateStats) {
-        // LIMIT of -1 means no upper bound (see https://www.sqlite.org/lang_select.html)
-        return getUpdatedContactIds(context, sinceFilter, /*limit=*/-1, contactIds,
-                updateStats);
-    }
-
-    /**
-     * Returns a list of IDs, within given limit, of contacts updated since given timestamp.
-     *
-     * <p>List of contact IDs are returned in the order of increasing contact last update timestamp.
      */
     public static long getUpdatedContactIds(@NonNull Context context, long sinceFilter, int limit,
             @NonNull List<String> contactIds, @Nullable ContactsUpdateStats updateStats) {
@@ -156,31 +148,37 @@ public final class ContactsProviderUtil {
         Uri.Builder contactsUriBuilder = Contacts.CONTENT_URI.buildUpon().appendQueryParameter(
                 ContactsContract.DIRECTORY_PARAM_KEY,
                 String.valueOf(ContactsContract.Directory.DEFAULT));
-        if (limit > 0) {
+        String orderBy = null;
+        if (limit >= 0) {
             contactsUriBuilder.appendQueryParameter(ContactsContract.LIMIT_PARAM_KEY,
                     String.valueOf(limit));
+            orderBy = UPDATE_ORDER_BY;
         }
         try (Cursor cursor = context.getContentResolver().query(
                 contactsUriBuilder.build(),
                 UPDATE_SELECTION,
                 UPDATE_SINCE, selectionArgs,
-                UPDATE_ORDER_BY)) {
+                orderBy)) {
             if (cursor == null) {
                 Log.w(TAG, "Failed to get a list of contacts updated since " + sinceFilter);
                 return newTimestamp;
             }
 
             int contactIdIndex = cursor.getColumnIndex(Contacts._ID);
-            int timestampIndex = cursor.getColumnIndex(Contacts.CONTACT_LAST_UPDATED_TIMESTAMP);
+            int timestampIndex = cursor.getColumnIndex(
+                    Contacts.CONTACT_LAST_UPDATED_TIMESTAMP);
             int numContacts = 0;
             while (cursor.moveToNext()) {
+                // Just in case the LIMIT parameter doesn't work in the query to CP2.
+                if (limit >= 0 && numContacts >= limit) {
+                    break;
+                }
+
                 long contactId = cursor.getLong(contactIdIndex);
                 contactIds.add(String.valueOf(contactId));
                 numContacts++;
                 newTimestamp = Math.max(newTimestamp, cursor.getLong(timestampIndex));
             }
-            // Reverse the IDs in the list to be in increasing contact last updated order.
-            Collections.reverse(contactIds);
 
             Log.v(TAG, "Returning " + numContacts + " updated contacts since " + sinceFilter);
         } catch (SecurityException |

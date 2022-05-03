@@ -68,7 +68,7 @@ public class ContactsProviderUtilTest extends ProviderTestCase2<FakeContactsProv
 
         List<String> ids = new ArrayList<>();
         long lastUpdatedTime = ContactsProviderUtil.getUpdatedContactIds(mContext,
-                /*sinceFilter=*/ 0, ids, /*stats=*/ null);
+                /*sinceFilter=*/ 0, ContactsProviderUtil.UPDATE_LIMIT_NONE, ids, /*stats=*/ null);
 
         assertThat(lastUpdatedTime).isEqualTo(
                 getProvider().getMostRecentContactUpdateTimestampMillis());
@@ -86,7 +86,7 @@ public class ContactsProviderUtilTest extends ProviderTestCase2<FakeContactsProv
         List<String> ids = new ArrayList<>();
         long lastUpdatedTime = ContactsProviderUtil.getUpdatedContactIds(mContext,
                 /*sinceFilter=*/ getProvider().getMostRecentContactUpdateTimestampMillis(),
-                ids, /*stats=*/ null);
+                ContactsProviderUtil.UPDATE_LIMIT_NONE, ids, /*stats=*/ null);
 
         assertThat(lastUpdatedTime).isEqualTo(
                 getProvider().getMostRecentContactUpdateTimestampMillis());
@@ -108,7 +108,8 @@ public class ContactsProviderUtilTest extends ProviderTestCase2<FakeContactsProv
 
         List<String> ids = new ArrayList<>();
         long lastUpdatedTime = ContactsProviderUtil.getUpdatedContactIds(mContext,
-                /*sinceFilter=*/ firstUpdateTimestamp, ids, /*stats=*/ null);
+                /*sinceFilter=*/ firstUpdateTimestamp, ContactsProviderUtil.UPDATE_LIMIT_NONE,
+                ids, /*stats=*/ null);
 
         assertThat(lastUpdatedTime).isEqualTo(
                 getProvider().getMostRecentContactUpdateTimestampMillis());

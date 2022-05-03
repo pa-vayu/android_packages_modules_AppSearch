@@ -255,6 +255,10 @@ interface IAppSearchManager {
     /**
     * Inserts documents from the given file into the index.
     *
+    * <p>This method does not dispatch change notifications for the individual documents being
+    * inserted, so it is only appropriate to use for batch upload situations where a broader change
+    * notification will indicate what has changed, like schema migration.
+    *
     * @param callerAttributionSource The permission identity of the package that owns this
     *     document.
     * @param databaseName  The name of the database where this document lives.
