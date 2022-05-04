@@ -34,6 +34,7 @@ license {
 sdk {
     name: "appsearch-sdk",
     bootclasspath_fragments: ["com.android.appsearch-bootclasspath-fragment"],
+    systemserverclasspath_fragments: ["com.android.appsearch-systemserverclasspath-fragment"],
 }
 
 apex {

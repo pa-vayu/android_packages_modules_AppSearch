@@ -18,9 +18,12 @@ package com.android.server.appsearch.external.localstorage.visibilitystore;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import static org.junit.Assert.assertThrows;
+
 import android.app.appsearch.AppSearchSchema;
 import android.app.appsearch.PackageIdentifier;
 import android.app.appsearch.VisibilityDocument;
+import android.app.appsearch.exceptions.AppSearchException;
 
 import com.android.server.appsearch.external.localstorage.AppSearchImpl;
 import com.android.server.appsearch.external.localstorage.OptimizeStrategy;
@@ -102,6 +105,16 @@ public class VisibilityStoreTest {
         mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
 
         assertThat(mVisibilityStore.getVisibility(prefix + "Email")).isEqualTo(visibilityDocument);
+        // Verify the VisibilityDocument is saved to AppSearchImpl.
+        VisibilityDocument actualDocument =
+                new VisibilityDocument(
+                        mAppSearchImpl.getDocument(
+                                VisibilityStore.VISIBILITY_PACKAGE_NAME,
+                                VisibilityStore.VISIBILITY_DATABASE_NAME,
+                                VisibilityDocument.NAMESPACE,
+                                /*id=*/ prefix + "Email",
+                                /*typePropertyPaths=*/ Collections.emptyMap()));
+        assertThat(actualDocument).isEqualTo(visibilityDocument);
     }
 
     @Test
@@ -114,9 +127,31 @@ public class VisibilityStoreTest {
         mVisibilityStore.setVisibility(ImmutableList.of(visibilityDocument));
 
         assertThat(mVisibilityStore.getVisibility("Email")).isEqualTo(visibilityDocument);
+        // Verify the VisibilityDocument is saved to AppSearchImpl.
+        VisibilityDocument actualDocument =
+                new VisibilityDocument(
+                        mAppSearchImpl.getDocument(
+                                VisibilityStore.VISIBILITY_PACKAGE_NAME,
+                                VisibilityStore.VISIBILITY_DATABASE_NAME,
+                                VisibilityDocument.NAMESPACE,
+                                /*id=*/ "Email",
+                                /*typePropertyPaths=*/ Collections.emptyMap()));
+        assertThat(actualDocument).isEqualTo(visibilityDocument);
 
         mVisibilityStore.removeVisibility(ImmutableSet.of(visibilityDocument.getId()));
         assertThat(mVisibilityStore.getVisibility("Email")).isNull();
+        // Verify the VisibilityDocument is removed from AppSearchImpl.
+        AppSearchException e =
+                assertThrows(
+                        AppSearchException.class,
+                        () ->
+                                mAppSearchImpl.getDocument(
+                                        VisibilityStore.VISIBILITY_PACKAGE_NAME,
+                                        VisibilityStore.VISIBILITY_DATABASE_NAME,
+                                        VisibilityDocument.NAMESPACE,
+                                        /*id=*/ "Email",
+                                        /*typePropertyPaths=*/ Collections.emptyMap()));
+        assertThat(e).hasMessageThat().contains("Document (VS#Pkg$VS#Db/, Email) not found.");
     }
 
     @Test
