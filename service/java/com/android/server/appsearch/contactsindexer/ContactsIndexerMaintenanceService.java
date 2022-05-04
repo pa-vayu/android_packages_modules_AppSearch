@@ -79,9 +79,18 @@ public class ContactsIndexerMaintenanceService extends JobService {
                         .setPersisted(true);
 
         if (periodic) {
-            jobInfoBuilder.setPeriodic(intervalMillis);
+            // Specify a flex value of 1/2 the interval so that the job is scheduled to run
+            // in the [interval/2, interval) time window, assuming the other conditions are
+            // met. This avoids the scenario where the next full-update job is started within
+            // a short duration of the previous run.
+            jobInfoBuilder.setPeriodic(intervalMillis, /*flexMillis=*/ intervalMillis/2);
         }
         JobInfo jobInfo = jobInfoBuilder.build();
+        JobInfo pendingJobInfo = jobScheduler.getPendingJob(jobId);
+        // Don't reschedule a pending job if the parameters haven't changed.
+        if (jobInfo.equals(pendingJobInfo)) {
+            return;
+        }
         jobScheduler.schedule(jobInfo);
         Log.v(TAG, "Scheduled full update job " + jobId + " for user " + userId);
     }
