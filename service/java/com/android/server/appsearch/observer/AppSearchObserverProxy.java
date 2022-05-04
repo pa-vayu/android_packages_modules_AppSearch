@@ -18,9 +18,10 @@ package com.android.server.appsearch.observer;
 
 import android.annotation.NonNull;
 import android.app.appsearch.aidl.IAppSearchObserverProxy;
-import android.app.appsearch.observer.ObserverCallback;
 import android.app.appsearch.observer.DocumentChangeInfo;
+import android.app.appsearch.observer.ObserverCallback;
 import android.app.appsearch.observer.SchemaChangeInfo;
+import android.os.IBinder;
 import android.os.RemoteException;
 import android.util.Log;
 
@@ -30,6 +31,10 @@ import java.util.Objects;
 /**
  * A wrapper that adapts {@link android.app.appsearch.aidl.IAppSearchObserverProxy} to the
  * {@link android.app.appsearch.observer.ObserverCallback} interface.
+ *
+ * <p>When using this class, you must register for {@link android.os.IBinder#linkToDeath}
+ * notifications on the stub you provide to the constructor, to unregister this class from
+ * {@link com.android.server.appsearch.external.localstorage.AppSearchImpl} when binder dies.
  *
  * @hide
  */
@@ -68,10 +73,10 @@ public class AppSearchObserverProxy implements ObserverCallback {
         }
     }
 
-    private void onRemoteException(RemoteException e) {
+    private void onRemoteException(@NonNull RemoteException e) {
+        // The originating app has disconnected. The user of this class must watch for binder
+        // disconnections and unregister us, so we don't have to take any special action.
         Log.w(TAG, "AppSearchObserver failed to fire; stub disconnected", e);
-        // TODO(b/193494000): Since the originating app has disconnected, unregister this observer
-        //  from AppSearch.
     }
 
     @Override

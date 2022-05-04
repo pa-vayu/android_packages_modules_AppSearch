@@ -21,11 +21,11 @@ import android.annotation.Nullable;
 import android.content.Context;
 import android.os.Environment;
 import android.os.UserHandle;
-import android.provider.DeviceConfig;
 import android.util.Log;
 
 import com.android.server.SystemService;
 import com.android.server.appsearch.contactsindexer.ContactsIndexerConfig;
+import com.android.server.appsearch.contactsindexer.FrameworkContactsIndexerConfig;
 import com.android.server.appsearch.contactsindexer.ContactsIndexerManagerService;
 
 import java.io.File;
@@ -48,7 +48,8 @@ public class AppSearchModule {
 
     public static final class Lifecycle extends SystemService {
         private AppSearchManagerService mAppSearchManagerService;
-        @Nullable private ContactsIndexerManagerService mContactsIndexerManagerService;
+        @Nullable
+        private ContactsIndexerManagerService mContactsIndexerManagerService;
 
         public Lifecycle(Context context) {
             super(context);
@@ -69,8 +70,10 @@ public class AppSearchModule {
 
             // It is safe to check DeviceConfig here, since SettingsProvider, which DeviceConfig
             // uses, starts before AppSearch.
-            if (ContactsIndexerConfig.isContactsIndexerEnabled()) {
-                mContactsIndexerManagerService = new ContactsIndexerManagerService(getContext());
+            ContactsIndexerConfig contactsIndexerConfig = new FrameworkContactsIndexerConfig();
+            if (contactsIndexerConfig.isContactsIndexerEnabled()) {
+                mContactsIndexerManagerService = new ContactsIndexerManagerService(getContext(),
+                        contactsIndexerConfig);
                 try {
                     mContactsIndexerManagerService.onStart();
                 } catch (Throwable t) {

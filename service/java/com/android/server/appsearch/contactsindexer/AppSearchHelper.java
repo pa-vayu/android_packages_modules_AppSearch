@@ -218,7 +218,7 @@ public class AppSearchHelper {
                 public void onResult(AppSearchBatchResult<String, Void> result) {
                     int numDocsSucceeded = result.getSuccesses().size();
                     int numDocsFailed = result.getFailures().size();
-                    updateStats.mContactsUpdateCount += numDocsSucceeded;
+                    updateStats.mContactsUpdateSucceededCount += numDocsSucceeded;
                     updateStats.mContactsUpdateFailedCount += numDocsFailed;
                     if (result.isSuccess()) {
                         Log.v(TAG,
@@ -234,9 +234,6 @@ public class AppSearchHelper {
                             updateStats.mUpdateStatuses.add(failure.getResultCode());
                         }
                         Log.w(TAG, numDocsFailed + " documents failed to be added in AppSearch.");
-                        // TODO(b/222187514) we can only have 20,000(default) contacts stored.
-                        //  In order to save the latest contacts, we need to remove the oldest ones
-                        //  in this ELSE. RESULT_OUT_OF_SPACE is the error code for this case.
                         future.completeExceptionally(new AppSearchException(
                                 firstFailure.getResultCode(), firstFailure.getErrorMessage()));
                     }
@@ -290,7 +287,7 @@ public class AppSearchHelper {
                             }
                         }
                     }
-                    updateStats.mContactsDeleteCount += numSuccesses;
+                    updateStats.mContactsDeleteSucceededCount += numSuccesses;
                     updateStats.mContactsDeleteFailedCount += numFailures;
                     if (firstFailure != null) {
                         Log.w(TAG, "Failed to delete "

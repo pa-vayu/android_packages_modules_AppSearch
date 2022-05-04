@@ -159,6 +159,7 @@ public class VisibilityStore {
                     VISIBILITY_PACKAGE_NAME,
                     VISIBILITY_DATABASE_NAME,
                     prefixedVisibilityDocument,
+                    /*sendChangeNotifications=*/ false,
                     /*logger=*/ null);
             mVisibilityDocumentMap.put(
                     prefixedVisibilityDocument.getId(), prefixedVisibilityDocument);
@@ -265,6 +266,7 @@ public class VisibilityStore {
                     VISIBILITY_PACKAGE_NAME,
                     VISIBILITY_DATABASE_NAME,
                     migratedDocument,
+                    /*sendChangeNotifications=*/ false,
                     /*logger=*/ null);
         }
     }
