@@ -23,17 +23,20 @@ import android.app.appsearch.aidl.AppSearchResultParcel;
 import android.app.appsearch.aidl.IAppSearchBatchResultCallback;
 import android.app.appsearch.exceptions.AppSearchException;
 import android.os.Bundle;
+import android.util.Log;
 
 import com.android.internal.util.Preconditions;
 
 import java.util.Map;
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 
 /**
  * @hide
  * Contains util methods used in both {@link GlobalSearchSession} and {@link AppSearchSession}.
  */
 public class SearchSessionUtil {
+    private static final String TAG = "AppSearchSessionUtil";
 
     /**
      * Constructor for in case we create an instance
@@ -61,6 +64,60 @@ public class SearchSessionUtil {
     }
 
     /**
+     * Safely executes the given lambda on the given executor.
+     *
+     * <p>The {@link Executor#execute} call is wrapped in a try/catch. This prevents situations like
+     * the executor being shut down or the lambda throwing an exception on a direct executor from
+     * crashing the app.
+     *
+     * <p>If execution fails for the above reasons, a failure notification is delivered to
+     * errorCallback synchronously on the calling thread.
+     *
+     * @param executor The executor on which to safely execute the lambda
+     * @param errorCallback The callback to trigger with a failed {@link AppSearchResult} if
+     *                      the {@link Executor#execute} call fails.
+     * @param runnable The lambda to execute on the executor
+     */
+    public static <T> void safeExecute(
+            @NonNull Executor executor,
+            @NonNull Consumer<AppSearchResult<T>> errorCallback,
+            @NonNull Runnable runnable) {
+        try {
+            executor.execute(runnable);
+        } catch (Throwable t) {
+            Log.e(TAG, "Failed to schedule runnable", t);
+            errorCallback.accept(AppSearchResult.throwableToFailedResult(t));
+        }
+    }
+
+    /**
+     * Safely executes the given lambda on the given executor.
+     *
+     * <p>The {@link Executor#execute} call is wrapped in a try/catch. This prevents situations like
+     * the executor being shut down or the lambda throwing an exception on a direct executor from
+     * crashing the app.
+     *
+     * <p>If execution fails for the above reasons, a failure notification is delivered to
+     * errorCallback synchronously on the calling thread.
+     *
+     * @param executor The executor on which to safely execute the lambda
+     * @param errorCallback The callback to trigger with a failed {@link AppSearchResult} if
+     *                      the {@link Executor#execute} call fails.
+     * @param runnable The lambda to execute on the executor
+     */
+    public static void safeExecute(
+            @NonNull Executor executor,
+            @NonNull BatchResultCallback<?, ?> errorCallback,
+            @NonNull Runnable runnable) {
+        try {
+            executor.execute(runnable);
+        } catch (Throwable t) {
+            Log.e(TAG, "Failed to schedule runnable", t);
+            errorCallback.onSystemError(t);
+        }
+    }
+
+    /**
      * Handler for asynchronous getDocuments method
      *
      * @param executor executor to run the callback
@@ -73,7 +130,7 @@ public class SearchSessionUtil {
         return new IAppSearchBatchResultCallback.Stub() {
             @Override
             public void onResult(AppSearchBatchResultParcel resultParcel) {
-                executor.execute(() -> {
+                safeExecute(executor, callback, () -> {
                     AppSearchBatchResult<String, Bundle> result =
                             resultParcel.getResult();
                     AppSearchBatchResult.Builder<String, GenericDocument>
@@ -111,7 +168,8 @@ public class SearchSessionUtil {
 
             @Override
             public void onSystemError(AppSearchResultParcel result) {
-                executor.execute(
+                safeExecute(
+                        executor, callback,
                         () -> sendSystemErrorToCallback(result.getResult(), callback));
             }
         };
