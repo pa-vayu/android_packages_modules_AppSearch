@@ -41,6 +41,7 @@ apex {
     certificate: ":com.android.appsearch.certificate",
     defaults: ["t-launched-apex-module"],
     jni_libs: ["libicing"],
+    prebuilts: ["current_sdkinfo"],
 }
 
 apex_key {

@@ -26,9 +26,9 @@ import android.provider.ContactsContract.CommonDataKinds.Email;
 import android.provider.ContactsContract.CommonDataKinds.Nickname;
 import android.provider.ContactsContract.CommonDataKinds.Organization;
 import android.provider.ContactsContract.CommonDataKinds.Phone;
+import android.provider.ContactsContract.CommonDataKinds.Relation;
 import android.provider.ContactsContract.CommonDataKinds.StructuredName;
 import android.provider.ContactsContract.CommonDataKinds.StructuredPostal;
-import android.provider.ContactsContract.CommonDataKinds.Relation;
 import android.provider.ContactsContract.Data;
 import android.text.TextUtils;
 import android.util.ArrayMap;
@@ -349,7 +349,7 @@ public final class ContactDataHandler {
                 @NonNull String data) {
             Objects.requireNonNull(builder);
             Objects.requireNonNull(data);
-            builder.getPersonBuilder().addAdditionalName(data);
+            builder.getPersonBuilder().addAdditionalName(Person.TYPE_NICKNAME, data);
         }
     }
 
@@ -401,6 +401,7 @@ public final class ContactDataHandler {
     private static final class OrganizationDataHandler extends DataHandler {
         private static final String[] COLUMNS = {
                 Organization.TITLE,
+                Organization.DEPARTMENT,
                 Organization.COMPANY,
         };
 
@@ -478,7 +479,7 @@ public final class ContactDataHandler {
                 @NonNull String data) {
             Objects.requireNonNull(builder);
             Objects.requireNonNull(data);
-            builder.getPersonBuilder().setNote(data);
+            builder.getPersonBuilder().addNote(data);
         }
     }
 }
