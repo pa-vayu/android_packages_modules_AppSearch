@@ -1526,7 +1526,7 @@ public class AppSearchManagerService extends SystemService {
             OptimizeStats.Builder builder = new OptimizeStats.Builder();
             try {
                 instance.getAppSearchImpl().checkForOptimize(mutateBatchSize, builder);
-            } catch (AppSearchException e) {
+            } catch (Exception e) {
                 Log.w(TAG, "Error occurred when check for optimize", e);
             } finally {
                 OptimizeStats oStats = builder
@@ -1554,7 +1554,7 @@ public class AppSearchManagerService extends SystemService {
             OptimizeStats.Builder builder = new OptimizeStats.Builder();
             try {
                 instance.getAppSearchImpl().checkForOptimize(builder);
-            } catch (AppSearchException e) {
+            } catch (Exception e) {
                 Log.w(TAG, "Error occurred when check for optimize", e);
             } finally {
                 OptimizeStats oStats = builder
