@@ -19,6 +19,7 @@ package com.android.server.appsearch.contactsindexer;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.app.appsearch.AppSearchResult;
+import android.app.appsearch.util.LogUtil;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.database.ContentObserver;
@@ -55,7 +56,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class ContactsIndexerUserInstance {
 
-    private static final String TAG = "ContactsIndexerUserInstance";
+    private static final String TAG = "ContactsIndexerUserInst";
 
     private final Context mContext;
     private final File mDataDir;
@@ -144,7 +145,9 @@ public final class ContactsIndexerUserInstance {
     }
 
     public void startAsync() {
-        Log.d(TAG, "Registering ContactsObserver for " + mContext.getUser());
+        if (LogUtil.DEBUG) {
+            Log.d(TAG, "Registering ContactsObserver for " + mContext.getUser());
+        }
         mContext.getContentResolver()
                 .registerContentObserver(
                         ContactsContract.Contacts.CONTENT_URI,
@@ -169,7 +172,9 @@ public final class ContactsIndexerUserInstance {
     }
 
     public void shutdown() throws InterruptedException {
-        Log.d(TAG, "Unregistering ContactsObserver for " + mContext.getUser());
+        if (LogUtil.DEBUG) {
+            Log.d(TAG, "Unregistering ContactsObserver for " + mContext.getUser());
+        }
         mContext.getContentResolver().unregisterContentObserver(mContactsObserver);
 
         ContactsIndexerMaintenanceService.cancelFullUpdateJob(mContext,
@@ -219,7 +224,9 @@ public final class ContactsIndexerUserInstance {
         // placeholder exceptionally() block that only logs to the console.
         doDeltaUpdateAsync(mContactsIndexerConfig.getContactsFirstRunIndexingLimit(),
                 new ContactsUpdateStats()).exceptionally(t -> {
-            Log.d(TAG, "Failed to bootstrap Person corpus with CP2 contacts", t);
+            if (LogUtil.DEBUG) {
+                Log.d(TAG, "Failed to bootstrap Person corpus with CP2 contacts", t);
+            }
             return null;
         });
     }
@@ -260,9 +267,11 @@ public final class ContactsIndexerUserInstance {
                     // all_contacts_from_AppSearch - all_contacts_from_cp2 =
                     // contacts_needs_to_be_removed_from_AppSearch.
                     appsearchContactIds.removeAll(cp2ContactIds);
-                    Log.d(TAG, "Performing a full sync (updated:" + cp2ContactIds.size()
-                            + ", deleted:" + appsearchContactIds.size()
-                            + ") of CP2 contacts in AppSearch");
+                    if (LogUtil.DEBUG) {
+                        Log.d(TAG, "Performing a full sync (updated:" + cp2ContactIds.size()
+                                + ", deleted:" + appsearchContactIds.size()
+                                + ") of CP2 contacts in AppSearch");
+                    }
                     return mContactsIndexerImpl.updatePersonCorpusAsync(/*wantedContactIds=*/
                             cp2ContactIds, /*unwantedContactIds=*/ appsearchContactIds,
                             updateStats);
@@ -311,7 +320,9 @@ public final class ContactsIndexerUserInstance {
         if (!ContentResolver.getCurrentSyncs().isEmpty()) {
             // TODO(b/221905367): make sure that the delta update is scheduled as soon
             //  as the current sync is completed.
-            Log.v(TAG, "Deferring delta updates until the current sync is complete");
+            if (LogUtil.DEBUG) {
+                Log.v(TAG, "Deferring delta updates until the current sync is complete");
+            }
             return;
         }
 
@@ -327,7 +338,9 @@ public final class ContactsIndexerUserInstance {
                 //  placeholder exceptionally() block that only logs to the console.
                 doDeltaUpdateAsync(mContactsIndexerConfig.getContactsDeltaUpdateLimit(),
                         updateStats).exceptionally(t -> {
-                    Log.d(TAG, "Failed to index CP2 change", t);
+                    if (LogUtil.DEBUG) {
+                        Log.d(TAG, "Failed to index CP2 change", t);
+                    }
                     return null;
                 });
             });
@@ -355,9 +368,11 @@ public final class ContactsIndexerUserInstance {
         updateStats.mUpdateAndDeleteStartTimeMillis = System.currentTimeMillis();
         long lastDeltaUpdateTimestampMillis = mSettings.getLastDeltaUpdateTimestampMillis();
         long lastDeltaDeleteTimestampMillis = mSettings.getLastDeltaDeleteTimestampMillis();
-        Log.d(TAG, "previous timestamps --"
-                + " lastDeltaUpdateTimestampMillis: " + lastDeltaUpdateTimestampMillis
-                + " lastDeltaDeleteTimestampMillis: " + lastDeltaDeleteTimestampMillis);
+        if (LogUtil.DEBUG) {
+            Log.d(TAG, "previous timestamps --"
+                    + " lastDeltaUpdateTimestampMillis: " + lastDeltaUpdateTimestampMillis
+                    + " lastDeltaDeleteTimestampMillis: " + lastDeltaDeleteTimestampMillis);
+        }
 
         List<String> wantedIds = new ArrayList<>();
         List<String> unWantedIds = new ArrayList<>();
@@ -391,11 +406,13 @@ public final class ContactsIndexerUserInstance {
                         }
                     }
                     // Persisting timestamping and logging, no matter if update succeeds or not.
-                    Log.d(TAG, "updated timestamps --"
-                            + " lastDeltaUpdateTimestampMillis: "
-                            + mostRecentContactLastUpdateTimestampMillis
-                            + " lastDeltaDeleteTimestampMillis: "
-                            + mostRecentContactDeletedTimestampMillis);
+                    if (LogUtil.DEBUG) {
+                        Log.d(TAG, "updated timestamps --"
+                                + " lastDeltaUpdateTimestampMillis: "
+                                + mostRecentContactLastUpdateTimestampMillis
+                                + " lastDeltaDeleteTimestampMillis: "
+                                + mostRecentContactDeletedTimestampMillis);
+                    }
                     mSettings.setLastDeltaUpdateTimestampMillis(
                             mostRecentContactLastUpdateTimestampMillis);
                     mSettings.setLastDeltaDeleteTimestampMillis(

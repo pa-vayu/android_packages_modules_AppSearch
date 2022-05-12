@@ -20,6 +20,7 @@ import static android.os.Process.INVALID_UID;
 
 import android.annotation.NonNull;
 import android.annotation.UserIdInt;
+import android.app.appsearch.util.LogUtil;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -33,7 +34,6 @@ import android.provider.ContactsContract;
 import android.util.Log;
 import android.util.SparseArray;
 
-import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
 import com.android.server.appsearch.AppSearchModule;
@@ -50,7 +50,7 @@ import java.util.Objects;
  * @hide
  */
 public final class ContactsIndexerManagerService extends SystemService {
-    static final String TAG = "ContactsIndexerManagerService";
+    static final String TAG = "ContactsIndexerManagerS";
 
     private static final String DEFAULT_CONTACTS_PROVIDER_PACKAGE_NAME =
             "com.android.providers.contacts";
@@ -94,7 +94,9 @@ public final class ContactsIndexerManagerService extends SystemService {
                 try {
                     instance = ContactsIndexerUserInstance.createInstance(userContext, contactsDir,
                             mContactsIndexerConfig);
-                    Log.d(TAG, "Created Contacts Indexer instance for user " + userHandle);
+                    if (LogUtil.DEBUG) {
+                        Log.d(TAG, "Created Contacts Indexer instance for user " + userHandle);
+                    }
                 } catch (Throwable t) {
                     Log.e(TAG, "Failed to create Contacts Indexer instance for user "
                             + userHandle, t);
@@ -156,8 +158,10 @@ public final class ContactsIndexerManagerService extends SystemService {
                 contactsProviderChangedFilter,
                 /*broadcastPermission=*/ null,
                 /*scheduler=*/ null);
-        Log.v(TAG, "Registered receiver for CP2 (package: " + mContactsProviderPackageName + ")"
-                + " data cleared events");
+        if (LogUtil.DEBUG) {
+            Log.v(TAG, "Registered receiver for CP2 (package: " + mContactsProviderPackageName + ")"
+                    + " data cleared events");
+        }
     }
 
     /**
@@ -185,7 +189,9 @@ public final class ContactsIndexerManagerService extends SystemService {
                 case Intent.ACTION_PACKAGE_CHANGED:
                 case Intent.ACTION_PACKAGE_DATA_CLEARED:
                     String packageName = intent.getData().getSchemeSpecificPart();
-                    Log.v(TAG, "Received package data cleared event for " + packageName);
+                    if (LogUtil.DEBUG) {
+                        Log.v(TAG, "Received package data cleared event for " + packageName);
+                    }
                     if (!mContactsProviderPackageName.equals(packageName)) {
                         return;
                     }

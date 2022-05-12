@@ -17,13 +17,13 @@
 package com.android.server.appsearch.contactsindexer;
 
 import android.annotation.UserIdInt;
+import android.app.appsearch.util.LogUtil;
 import android.app.job.JobInfo;
 import android.app.job.JobParameters;
 import android.app.job.JobScheduler;
 import android.app.job.JobService;
 import android.content.ComponentName;
 import android.content.Context;
-import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.PersistableBundle;
 import android.util.Log;
@@ -38,14 +38,14 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 public class ContactsIndexerMaintenanceService extends JobService {
-    private static final String TAG = "ContactsIndexerMaintenanceService";
+    private static final String TAG = "ContactsIndexerMaintena";
 
     /**
      * Generate job ids in the range (MIN_INDEXER_JOB_ID, MAX_INDEXER_JOB_ID) to avoid conflicts
      * with other jobs scheduled by the system service. The range corresponds to 21475 job ids,
      * which is the maximum number of user ids in the system.
      *
-     * @see UserManagerService.MAX_USER_ID
+     * @see com.android.server.pm.UserManagerService#MAX_USER_ID
      */
     public static final int MIN_INDEXER_JOB_ID = 16942831; // corresponds to ag/16942831
     private static final int MAX_INDEXER_JOB_ID = 16964306; // 16942831 + 21475
@@ -101,14 +101,18 @@ public class ContactsIndexerMaintenanceService extends JobService {
             return;
         }
         jobScheduler.schedule(jobInfo);
-        Log.v(TAG, "Scheduled full update job " + jobId + " for user " + userId);
+        if (LogUtil.DEBUG) {
+            Log.v(TAG, "Scheduled full update job " + jobId + " for user " + userId);
+        }
     }
 
     static void cancelFullUpdateJob(Context context, @UserIdInt int userId) {
         int jobId = MIN_INDEXER_JOB_ID + userId;
         JobScheduler jobScheduler = context.getSystemService(JobScheduler.class);
         jobScheduler.cancel(jobId);
-        Log.v(TAG, "Canceled full update job " + jobId + " for user " + userId);
+        if (LogUtil.DEBUG) {
+            Log.v(TAG, "Canceled full update job " + jobId + " for user " + userId);
+        }
     }
 
     @Override
@@ -118,7 +122,9 @@ public class ContactsIndexerMaintenanceService extends JobService {
             return false;
         }
 
-        Log.v(TAG, "Full update job started for user " + userId);
+        if (LogUtil.DEBUG) {
+            Log.v(TAG, "Full update job started for user " + userId);
+        }
         final CancellationSignal oldSignal;
         synchronized (mSignals) {
             oldSignal = mSignals.get(userId);
@@ -155,7 +161,11 @@ public class ContactsIndexerMaintenanceService extends JobService {
             return false;
         }
         // This will only run on S+ builds, so no need to do a version check.
-        Log.d(TAG, "Stopping update job for user " + userId + " because " + params.getStopReason());
+        if (LogUtil.DEBUG) {
+            Log.d(TAG,
+                    "Stopping update job for user " + userId + " because "
+                            + params.getStopReason());
+        }
         synchronized (mSignals) {
             final CancellationSignal signal = mSignals.get(userId);
             if (signal != null) {

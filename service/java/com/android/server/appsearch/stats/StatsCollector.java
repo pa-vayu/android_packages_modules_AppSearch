@@ -20,6 +20,7 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.UserIdInt;
 import android.app.StatsManager;
+import android.app.appsearch.util.LogUtil;
 import android.content.Context;
 import android.os.UserHandle;
 import android.util.Log;
@@ -76,7 +77,9 @@ public final class StatsCollector implements StatsManager.StatsPullAtomCallback 
         mStatsManager = context.getSystemService(StatsManager.class);
         if (mStatsManager != null) {
             registerAtom(AppSearchStatsLog.APP_SEARCH_STORAGE_INFO, /*policy=*/ null, executor);
-            Log.d(TAG, "atoms registered");
+            if (LogUtil.DEBUG) {
+                Log.d(TAG, "atoms registered");
+            }
         } else {
             Log.e(TAG, "could not get StatsManager, atoms not registered");
         }
