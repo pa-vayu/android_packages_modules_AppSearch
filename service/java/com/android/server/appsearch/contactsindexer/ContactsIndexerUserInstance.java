@@ -418,7 +418,7 @@ public final class ContactsIndexerUserInstance {
                 });
     }
 
-    // Logs the stats to Westworld.
+    // Logs the stats to statsd.
     private void logStats(@NonNull ContactsUpdateStats updateStats) {
         int totalUpdateLatency =
                 (int) (System.currentTimeMillis()
