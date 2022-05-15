@@ -20,14 +20,9 @@ import static android.app.appsearch.SearchSpec.TERM_MATCH_PREFIX;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import static org.testng.Assert.expectThrows;
-
-import android.app.appsearch.exceptions.AppSearchException;
 import android.content.Context;
 
 import androidx.test.core.app.ApplicationProvider;
-
-import android.app.appsearch.testutil.AppSearchEmail;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -36,8 +31,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class AppSearchSessionUnitTest {
     private final Context mContext = ApplicationProvider.getApplicationContext();
@@ -185,5 +181,21 @@ public class AppSearchSessionUnitTest {
         searchResults.getNextPage(mExecutor, getNextPageFuture::complete);
         results = getNextPageFuture.get().getResultValue();
         assertThat(results).isEmpty();
+    }
+
+    @Test
+    public void testClosedCallbackExecutor() throws Exception {
+        CompletableFuture<AppSearchResult<SetSchemaResponse>> schemaFuture =
+                new CompletableFuture<>();
+        ExecutorService callbackExecutor = Executors.newSingleThreadExecutor();
+        callbackExecutor.shutdown();
+        mSearchSession.setSchema(
+                new SetSchemaRequest.Builder()
+                        .addSchemas(new AppSearchSchema.Builder("schema1").build())
+                        .setForceOverride(true).build(),
+                mExecutor, callbackExecutor, schemaFuture::complete);
+        AppSearchResult<SetSchemaResponse> result = schemaFuture.get();
+        assertThat(result.getResultCode()).isEqualTo(AppSearchResult.RESULT_UNKNOWN_ERROR);
+        assertThat(result.getErrorMessage()).startsWith("RejectedExecutionException: ");
     }
 }

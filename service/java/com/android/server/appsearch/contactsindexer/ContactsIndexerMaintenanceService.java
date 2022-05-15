@@ -27,7 +27,9 @@ import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.PersistableBundle;
 import android.util.Log;
+import android.util.SparseArray;
 
+import com.android.internal.annotations.GuardedBy;
 import com.android.server.LocalManagerRegistry;
 
 import java.util.concurrent.Executor;
@@ -54,7 +56,14 @@ public class ContactsIndexerMaintenanceService extends JobService {
             /*maximumPoolSize=*/ 1, /*keepAliveTime=*/ 60L, TimeUnit.SECONDS,
             new LinkedBlockingQueue<>());
 
-    private CancellationSignal mSignal;
+    /**
+     * A mapping of userId-to-CancellationSignal. Since we schedule a separate job for each user,
+     * this JobService might be executing simultaneously for the various users, so we need to keep
+     * track of the cancellation signal for each user update so we stop the appropriate update
+     * when necessary.
+     */
+    @GuardedBy("mSignals")
+    private final SparseArray<CancellationSignal> mSignals = new SparseArray<>();
 
     /**
      * Schedules a full update job for the given device-user.
@@ -79,9 +88,18 @@ public class ContactsIndexerMaintenanceService extends JobService {
                         .setPersisted(true);
 
         if (periodic) {
-            jobInfoBuilder.setPeriodic(intervalMillis);
+            // Specify a flex value of 1/2 the interval so that the job is scheduled to run
+            // in the [interval/2, interval) time window, assuming the other conditions are
+            // met. This avoids the scenario where the next full-update job is started within
+            // a short duration of the previous run.
+            jobInfoBuilder.setPeriodic(intervalMillis, /*flexMillis=*/ intervalMillis/2);
         }
         JobInfo jobInfo = jobInfoBuilder.build();
+        JobInfo pendingJobInfo = jobScheduler.getPendingJob(jobId);
+        // Don't reschedule a pending job if the parameters haven't changed.
+        if (jobInfo.equals(pendingJobInfo)) {
+            return;
+        }
         jobScheduler.schedule(jobInfo);
         Log.v(TAG, "Scheduled full update job " + jobId + " for user " + userId);
     }
@@ -101,22 +119,53 @@ public class ContactsIndexerMaintenanceService extends JobService {
         }
 
         Log.v(TAG, "Full update job started for user " + userId);
-        mSignal = new CancellationSignal();
+        final CancellationSignal oldSignal;
+        synchronized (mSignals) {
+            oldSignal = mSignals.get(userId);
+        }
+        if (oldSignal != null) {
+            // This could happen if we attempt to schedule a new job for the user while there's
+            // one already running.
+            Log.w(TAG, "Old update job still running for user " + userId);
+            oldSignal.cancel();
+        }
+        final CancellationSignal signal = new CancellationSignal();
+        synchronized (mSignals) {
+            mSignals.put(userId, signal);
+        }
         EXECUTOR.execute(() -> {
             ContactsIndexerManagerService.LocalService service =
                     LocalManagerRegistry.getManager(
                             ContactsIndexerManagerService.LocalService.class);
-            service.doFullUpdateForUser(userId, mSignal);
-            jobFinished(params, mSignal.isCanceled());
+            service.doFullUpdateForUser(userId, signal);
+            jobFinished(params, signal.isCanceled());
+            synchronized (mSignals) {
+                if (signal == mSignals.get(userId)) {
+                    mSignals.remove(userId);
+                }
+            }
         });
         return true;
     }
 
     @Override
     public boolean onStopJob(JobParameters params) {
-        if (mSignal != null) {
-            mSignal.cancel();
+        final int userId = params.getExtras().getInt(EXTRA_USER_ID, /* defaultValue */ -1);
+        if (userId == -1) {
+            return false;
         }
+        // This will only run on S+ builds, so no need to do a version check.
+        Log.d(TAG, "Stopping update job for user " + userId + " because " + params.getStopReason());
+        synchronized (mSignals) {
+            final CancellationSignal signal = mSignals.get(userId);
+            if (signal != null) {
+                signal.cancel();
+                mSignals.remove(userId);
+                // We had to stop the job early. Request reschedule.
+                return true;
+            }
+        }
+        Log.e(TAG, "JobScheduler stopped an update that wasn't happening...");
         return false;
     }
 }

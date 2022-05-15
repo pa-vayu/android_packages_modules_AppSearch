@@ -62,6 +62,12 @@ java_sdk_library {
         // This list must be kept in sync with jarjar.txt
         "modules-utils-preconditions",
     ],
+    optimize: {
+      enabled: true,
+      optimize: true,
+      shrink: true,
+      proguard_flags_files: ["proguard.flags"],
+    },
     defaults: ["framework-module-defaults"],
     permitted_packages: ["android.app.appsearch"],
     jarjar_rules: "jarjar-rules.txt",

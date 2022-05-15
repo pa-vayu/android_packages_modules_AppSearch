@@ -16,14 +16,16 @@
 
 package android.app.appsearch;
 
+import static android.app.appsearch.SearchSessionUtil.safeExecute;
+
 import android.annotation.CallbackExecutor;
 import android.annotation.NonNull;
 import android.app.appsearch.aidl.AppSearchBatchResultParcel;
 import android.app.appsearch.aidl.AppSearchResultParcel;
+import android.app.appsearch.aidl.DocumentsParcel;
 import android.app.appsearch.aidl.IAppSearchBatchResultCallback;
 import android.app.appsearch.aidl.IAppSearchManager;
 import android.app.appsearch.aidl.IAppSearchResultCallback;
-import android.app.appsearch.aidl.DocumentsParcel;
 import android.app.appsearch.util.SchemaMigrationUtil;
 import android.content.AttributionSource;
 import android.os.Bundle;
@@ -96,7 +98,7 @@ public final class AppSearchSession implements Closeable {
                     new IAppSearchResultCallback.Stub() {
                         @Override
                         public void onResult(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> {
+                            safeExecute(executor, callback, () -> {
                                 AppSearchResult<Void> result = resultParcel.getResult();
                                 if (result.isSuccess()) {
                                     callback.accept(
@@ -105,9 +107,9 @@ public final class AppSearchSession implements Closeable {
                                 } else {
                                     callback.accept(AppSearchResult.newFailedResult(result));
                                 }
+                            });
+                        }
                     });
-                }
-            });
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -202,7 +204,7 @@ public final class AppSearchSession implements Closeable {
                     new IAppSearchResultCallback.Stub() {
                         @Override
                         public void onResult(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> {
+                            safeExecute(executor, callback, () -> {
                                 AppSearchResult<Bundle> result = resultParcel.getResult();
                                 if (result.isSuccess()) {
                                     GetSchemaResponse response =
@@ -239,7 +241,7 @@ public final class AppSearchSession implements Closeable {
                     new IAppSearchResultCallback.Stub() {
                         @Override
                         public void onResult(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> {
+                            safeExecute(executor, callback, () -> {
                                 AppSearchResult<List<String>> result = resultParcel.getResult();
                                 if (result.isSuccess()) {
                                     Set<String> namespaces =
@@ -291,13 +293,19 @@ public final class AppSearchSession implements Closeable {
                     new IAppSearchBatchResultCallback.Stub() {
                         @Override
                         public void onResult(AppSearchBatchResultParcel resultParcel) {
-                            executor.execute(() -> callback.onResult(resultParcel.getResult()));
+                            safeExecute(
+                                    executor,
+                                    callback,
+                                    () -> callback.onResult(resultParcel.getResult()));
                         }
 
                         @Override
                         public void onSystemError(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> SearchSessionUtil.sendSystemErrorToCallback(
-                                    resultParcel.getResult(), callback));
+                            safeExecute(
+                                    executor,
+                                    callback,
+                                    () -> SearchSessionUtil.sendSystemErrorToCallback(
+                                            resultParcel.getResult(), callback));
                         }
                     });
             mIsMutated = true;
@@ -451,7 +459,10 @@ public final class AppSearchSession implements Closeable {
                     new IAppSearchResultCallback.Stub() {
                         @Override
                         public void onResult(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> callback.accept(resultParcel.getResult()));
+                            safeExecute(
+                                    executor,
+                                    callback,
+                                    () -> callback.accept(resultParcel.getResult()));
                         }
                     });
             mIsMutated = true;
@@ -501,13 +512,19 @@ public final class AppSearchSession implements Closeable {
                     new IAppSearchBatchResultCallback.Stub() {
                         @Override
                         public void onResult(AppSearchBatchResultParcel resultParcel) {
-                            executor.execute(() -> callback.onResult(resultParcel.getResult()));
+                            safeExecute(
+                                    executor,
+                                    callback,
+                                    () -> callback.onResult(resultParcel.getResult()));
                         }
 
                         @Override
                         public void onSystemError(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> SearchSessionUtil.sendSystemErrorToCallback(
-                                    resultParcel.getResult(), callback));
+                            safeExecute(
+                                    executor,
+                                    callback,
+                                    () -> SearchSessionUtil.sendSystemErrorToCallback(
+                                            resultParcel.getResult(), callback));
                         }
                     });
             mIsMutated = true;
@@ -556,7 +573,10 @@ public final class AppSearchSession implements Closeable {
                     new IAppSearchResultCallback.Stub() {
                         @Override
                         public void onResult(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> callback.accept(resultParcel.getResult()));
+                            safeExecute(
+                                    executor,
+                                    callback,
+                                    () -> callback.accept(resultParcel.getResult()));
                         }
                     });
             mIsMutated = true;
@@ -588,7 +608,7 @@ public final class AppSearchSession implements Closeable {
                     new IAppSearchResultCallback.Stub() {
                         @Override
                         public void onResult(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> {
+                            safeExecute(executor, callback, () -> {
                                 AppSearchResult<Bundle> result = resultParcel.getResult();
                                 if (result.isSuccess()) {
                                     StorageInfo response = new StorageInfo(result.getResultValue());
@@ -648,7 +668,7 @@ public final class AppSearchSession implements Closeable {
                     new IAppSearchResultCallback.Stub() {
                         @Override
                         public void onResult(AppSearchResultParcel resultParcel) {
-                            executor.execute(() -> {
+                            safeExecute(executor, callback, () -> {
                                 AppSearchResult<Bundle> result = resultParcel.getResult();
                                 if (result.isSuccess()) {
                                     try {
@@ -692,7 +712,7 @@ public final class AppSearchSession implements Closeable {
             @NonNull Executor workExecutor,
             @NonNull @CallbackExecutor Executor callbackExecutor,
             @NonNull Consumer<AppSearchResult<SetSchemaResponse>> callback) {
-        workExecutor.execute(() -> {
+        safeExecute(workExecutor, callback, () -> {
             try {
                 // Migration process
                 // 1. Validate and retrieve all active migrators.
@@ -701,8 +721,11 @@ public final class AppSearchSession implements Closeable {
                 getSchema(callbackExecutor, getSchemaFuture::complete);
                 AppSearchResult<GetSchemaResponse> getSchemaResult = getSchemaFuture.get();
                 if (!getSchemaResult.isSuccess()) {
-                    callbackExecutor.execute(() ->
-                            callback.accept(AppSearchResult.newFailedResult(getSchemaResult)));
+                    safeExecute(
+                            callbackExecutor,
+                            callback,
+                            () -> callback.accept(
+                                    AppSearchResult.newFailedResult(getSchemaResult)));
                     return;
                 }
                 GetSchemaResponse getSchemaResponse = getSchemaResult.getResultValue();
@@ -740,8 +763,11 @@ public final class AppSearchSession implements Closeable {
                         });
                 AppSearchResult<Bundle> setSchemaResult = setSchemaFuture.get();
                 if (!setSchemaResult.isSuccess()) {
-                    callbackExecutor.execute(() ->
-                            callback.accept(AppSearchResult.newFailedResult(setSchemaResult)));
+                    safeExecute(
+                            callbackExecutor,
+                            callback,
+                            () -> callback.accept(
+                                    AppSearchResult.newFailedResult(setSchemaResult)));
                     return;
                 }
                 SetSchemaResponse setSchemaResponse =
@@ -796,8 +822,11 @@ public final class AppSearchSession implements Closeable {
                             // which is an impossible case. Since we only swallow the incompatible
                             // error in the first setSchema call, all other errors will be thrown at
                             // the first time.
-                            callbackExecutor.execute(() -> callback.accept(
-                                    AppSearchResult.newFailedResult(setSchema2Result)));
+                            safeExecute(
+                                    callbackExecutor,
+                                    callback,
+                                    () -> callback.accept(
+                                            AppSearchResult.newFailedResult(setSchema2Result)));
                             return;
                         }
                     }
@@ -809,11 +838,13 @@ public final class AppSearchSession implements Closeable {
                     // set.
                     AppSearchResult<SetSchemaResponse> putResult =
                             migrationHelper.putMigratedDocuments(responseBuilder);
-                    callbackExecutor.execute(() -> callback.accept(putResult));
+                    safeExecute(callbackExecutor, callback, () -> callback.accept(putResult));
                 }
             } catch (Throwable t) {
-                callbackExecutor.execute(() -> callback.accept(
-                        AppSearchResult.throwableToFailedResult(t)));
+                safeExecute(
+                        callbackExecutor,
+                        callback,
+                        () -> callback.accept(AppSearchResult.throwableToFailedResult(t)));
             }
         });
     }
