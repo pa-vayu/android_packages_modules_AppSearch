@@ -56,6 +56,12 @@ java_library {
         "framework-appsearch.impl",
         "framework-statsd.stubs.module_lib",
     ],
+    optimize: {
+      enabled: true,
+      optimize: true,
+      shrink: true,
+      proguard_flags_files: ["proguard.flags"],
+    },
     defaults: ["framework-system-server-module-defaults"],
     permitted_packages: [
         "com.android.server.appsearch",

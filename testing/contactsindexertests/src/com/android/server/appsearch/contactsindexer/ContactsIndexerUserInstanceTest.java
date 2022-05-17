@@ -51,7 +51,6 @@ import android.provider.ContactsContract;
 import android.provider.DeviceConfig;
 import android.test.ProviderTestCase2;
 
-import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
