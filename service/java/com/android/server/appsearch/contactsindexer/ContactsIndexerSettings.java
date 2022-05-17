@@ -90,6 +90,13 @@ public class ContactsIndexerSettings {
         mBundle.putLong(LAST_DELTA_DELETE_TIMESTAMP_KEY, timestampMillis);
     }
 
+    /** Resets all the settings to default values. */
+    public void reset() {
+        setLastDeltaDeleteTimestampMillis(0);
+        setLastDeltaUpdateTimestampMillis(0);
+        setLastFullUpdateTimestampMillis(0);
+    }
+
     @VisibleForTesting
     @NonNull
     /*package*/ static PersistableBundle readBundle(@NonNull File src) throws
