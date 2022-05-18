@@ -18,10 +18,13 @@ package com.android.server.appsearch.contactsindexer;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import android.app.appsearch.AppSearchManager;
 import android.app.appsearch.AppSearchResult;
 import android.app.appsearch.AppSearchSession;
+import android.app.appsearch.AppSearchSessionShim;
 import android.app.appsearch.GetSchemaResponse;
 import android.app.appsearch.SetSchemaRequest;
+import android.app.appsearch.testutil.AppSearchSessionShimImpl;
 import android.content.Context;
 
 import androidx.test.core.app.ApplicationProvider;
@@ -47,25 +50,27 @@ public class AppSearchHelperTest {
 
     private final Executor mSingleThreadedExecutor = Executors.newSingleThreadExecutor();
 
+    private Context mContext;
     private AppSearchHelper mAppSearchHelper;
     private ContactsUpdateStats mUpdateStats;
 
     @Before
     public void setUp() throws Exception {
-        Context context = ApplicationProvider.getApplicationContext();
-        mAppSearchHelper = AppSearchHelper.createAppSearchHelper(context, mSingleThreadedExecutor);
+        mContext = ApplicationProvider.getApplicationContext();
+        mAppSearchHelper = AppSearchHelper.createAppSearchHelper(mContext, mSingleThreadedExecutor);
         mUpdateStats = new ContactsUpdateStats();
     }
 
     @After
     public void tearDown() throws Exception {
-        AppSearchSession session = mAppSearchHelper.getSession();
-        SetSchemaRequest request = new SetSchemaRequest.Builder().setForceOverride(true).build();
-        session.setSchema(request, mSingleThreadedExecutor, mSingleThreadedExecutor, result -> {
-            if (!result.isSuccess()) {
-                throw new RuntimeException("Failed to wipe the test data in AppSearch");
-            }
-        });
+        // Wipe the data in AppSearchHelper.DATABASE_NAME.
+        AppSearchManager.SearchContext searchContext =
+                new AppSearchManager.SearchContext.Builder(AppSearchHelper.DATABASE_NAME).build();
+        AppSearchSessionShim db = AppSearchSessionShimImpl.createSearchSessionAsync(
+                searchContext).get();
+        SetSchemaRequest setSchemaRequest = new SetSchemaRequest.Builder()
+                .setForceOverride(true).build();
+        db.setSchemaAsync(setSchemaRequest).get();
     }
 
     @Test
@@ -126,6 +131,53 @@ public class AppSearchHelperTest {
         assertThat(indexedIds.size()).isEqualTo(50);
         List<String> appsearchIds = mAppSearchHelper.getAllContactIdsAsync().get();
         assertThat(appsearchIds).containsNoneIn(deletedIds);
+    }
+
+    @Test
+    public void testCreateAppSearchHelper_compatibleSchemaChange() throws Exception {
+        AppSearchHelper appSearchHelper = AppSearchHelper.createAppSearchHelper(mContext,
+                mSingleThreadedExecutor);
+
+        assertThat(appSearchHelper).isNotNull();
+        assertThat(appSearchHelper.isDataLikelyWipedDuringInitAsync().get()).isFalse();
+    }
+
+    @Test
+    public void testCreateAppSearchHelper_compatibleSchemaChange2() throws Exception {
+        AppSearchManager.SearchContext searchContext =
+                new AppSearchManager.SearchContext.Builder(AppSearchHelper.DATABASE_NAME).build();
+        AppSearchSessionShim db = AppSearchSessionShimImpl.createSearchSessionAsync(
+                searchContext).get();
+        SetSchemaRequest setSchemaRequest = new SetSchemaRequest.Builder()
+                .addSchemas(TestUtils.CONTACT_POINT_SCHEMA_WITH_APP_IDS_OPTIONAL)
+                .setForceOverride(true).build();
+        db.setSchemaAsync(setSchemaRequest).get();
+
+        // APP_IDS changed from optional to repeated, which is a compatible change.
+        AppSearchHelper appSearchHelper =
+                AppSearchHelper.createAppSearchHelper(mContext, mSingleThreadedExecutor);
+
+        assertThat(appSearchHelper).isNotNull();
+        assertThat(appSearchHelper.isDataLikelyWipedDuringInitAsync().get()).isFalse();
+    }
+
+    @Test
+    public void testCreateAppSearchHelper_incompatibleSchemaChange() throws Exception {
+        AppSearchManager.SearchContext searchContext =
+                new AppSearchManager.SearchContext.Builder(AppSearchHelper.DATABASE_NAME).build();
+        AppSearchSessionShim db = AppSearchSessionShimImpl.createSearchSessionAsync(
+                searchContext).get();
+        SetSchemaRequest setSchemaRequest = new SetSchemaRequest.Builder()
+                .addSchemas(TestUtils.CONTACT_POINT_SCHEMA_WITH_LABEL_REPEATED)
+                .setForceOverride(true).build();
+        db.setSchemaAsync(setSchemaRequest).get();
+
+        // LABEL changed from repeated to optional, which is an incompatible change.
+        AppSearchHelper appSearchHelper =
+                AppSearchHelper.createAppSearchHelper(mContext, mSingleThreadedExecutor);
+
+        assertThat(appSearchHelper).isNotNull();
+        assertThat(appSearchHelper.isDataLikelyWipedDuringInitAsync().get()).isTrue();
     }
 
     @Test
