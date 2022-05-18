@@ -16,34 +16,50 @@
 
 package com.android.server.appsearch.contactsindexer;
 
-import android.provider.DeviceConfig;
-
 import java.util.concurrent.TimeUnit;
 
 /**
- * Contains all the keys for flags related to Contacts Indexer.
+ * An interface which exposes config flags to Contacts Indexer.
+ *
+ * <p>Implementations of this interface must be thread-safe.
  *
  * @hide
  */
-public class ContactsIndexerConfig {
-    private static final String CONTACTS_INDEXER_ENABLED = "contacts_indexer_enabled";
-    private static final String CONTACTS_INSTANT_INDEXING_LIMIT = "contacts_instant_indexing_limit";
-    private static final String CONTACTS_FULL_UPDATE_INTERVAL_MILLIS
-            = "contacts_full_update_interval_millis";
+public interface ContactsIndexerConfig {
+    boolean DEFAULT_CONTACTS_INDEXER_ENABLED = true;
+    int DEFAULT_CONTACTS_FIRST_RUN_INDEXING_LIMIT = 1000;
+    long DEFAULT_CONTACTS_FULL_UPDATE_INTERVAL_MILLIS = TimeUnit.DAYS.toMillis(30); // 30 days.
+    int DEFAULT_CONTACTS_FULL_UPDATE_INDEXING_LIMIT = 10_000;
+    int DEFAULT_CONTACTS_DELTA_UPDATE_INDEXING_LIMIT = 1000;
 
-    public static boolean isContactsIndexerEnabled() {
-        return DeviceConfig.getBoolean(DeviceConfig.NAMESPACE_APPSEARCH, CONTACTS_INDEXER_ENABLED,
-                /*defaultValue=*/ true);
-    }
+    /** Returns whether Contacts Indexer is enabled. */
+    boolean isContactsIndexerEnabled();
 
-    public static int getContactsInstantIndexingLimit() {
-        return DeviceConfig.getInt(DeviceConfig.NAMESPACE_APPSEARCH,
-                CONTACTS_INSTANT_INDEXING_LIMIT, /*defaultValue=*/ 1000);
-    }
+    /**
+     * Returns the maximum number of CP2 contacts indexed during first run.
+     *
+     * <p>This value will limit the amount of processing performed when the device upgrades from
+     * Android S to T with Contacts Indexer enabled.
+     */
+    int getContactsFirstRunIndexingLimit();
 
-    public static long getContactsFullUpdateIntervalMillis() {
-        return DeviceConfig.getLong(DeviceConfig.NAMESPACE_APPSEARCH,
-                CONTACTS_FULL_UPDATE_INTERVAL_MILLIS,
-                /*defaultValue=*/ TimeUnit.DAYS.toMillis(30));
-    }
+    /**
+     * Returns the minimum internal in millis for two consecutive full update. This is only checked
+     * once after reach boot.
+     */
+    long getContactsFullUpdateIntervalMillis();
+
+    /**
+     * Returns the maximum number of CP2 contacts indexed during a full update.
+     *
+     * <p>The value will be used as a LIMIT for querying CP2 during full update.
+     */
+    int getContactsFullUpdateLimit();
+
+    /**
+     * Returns the maximum number of CP2 contacts indexed during a delta update.
+     *
+     * <p>The value will be used as a LIMIT for querying CP2 during the delta update.
+     */
+    int getContactsDeltaUpdateLimit();
 }

@@ -32,6 +32,7 @@ public class PersonTest {
         long creationTimestamp = 12345L;
         String namespace = "namespace";
         String id = "id";
+        int score = 3;
         String name = "name";
         String givenName = "givenName";
         String middleName = "middleName";
@@ -57,6 +58,12 @@ public class PersonTest {
                 .addEmail("email2")
                 .addAppId("appId2")
                 .build();
+        ContactPoint contact3 = new ContactPoint.Builder(namespace, id + "3", "Other")
+                .addAddress("addr3")
+                .addPhone("phone3")
+                .addEmail("email3")
+                .addAppId("appId3")
+                .build();
         List<String> additionalNames = ImmutableList.of("nickname", "phoneticName");
         @Person.NameType
         List<Long> additionalNameTypes = ImmutableList.of((long) Person.TYPE_NICKNAME,
@@ -64,6 +71,7 @@ public class PersonTest {
 
         Person person = new Person.Builder(namespace, id, name)
                 .setCreationTimestampMillis(creationTimestamp)
+                .setScore(score)
                 .setGivenName(givenName)
                 .setMiddleName(middleName)
                 .setFamilyName(lastName)
@@ -83,9 +91,11 @@ public class PersonTest {
                 .setFingerprint(fingerprint)
                 .addContactPoint(contact1)
                 .addContactPoint(contact2)
+                .addContactPoint(contact3)
                 .build();
 
         assertThat(person.getCreationTimestampMillis()).isEqualTo(creationTimestamp);
+        assertThat(person.getScore()).isEqualTo(score);
         assertThat(person.getNamespace()).isEqualTo(namespace);
         assertThat(person.getId()).isEqualTo(id);
         assertThat(person.getName()).isEqualTo(name);
@@ -102,6 +112,7 @@ public class PersonTest {
         assertThat(person.getAdditionalNameTypes()).asList().isEqualTo(additionalNameTypes);
         assertThat(person.getAffiliations()).asList().isEqualTo(affiliations);
         assertThat(person.getRelations()).asList().isEqualTo(relations);
-        assertThat(person.getContactPoints()).asList().containsExactly(contact1, contact2);
+        assertThat(person.getContactPoints()).asList().containsExactly(contact1, contact2,
+                contact3);
     }
 }

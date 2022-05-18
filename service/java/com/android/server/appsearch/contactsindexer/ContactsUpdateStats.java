@@ -70,34 +70,53 @@ public class ContactsUpdateStats {
     @AppSearchResult.ResultCode
     Set<Integer> mDeleteStatuses = new ArraySet<>();
 
-    long mUpdateStartTimeMillis;
+    // Start time in millis for update and delete.
+    long mUpdateAndDeleteStartTimeMillis;
 
-    // # of contacts failed to be inserted or updated.
+
+    //
+    // Update for both old and new contacts(a.k.a insertion).
+    //
+    // # of old and new contacts failed to be updated.
     int mContactsUpdateFailedCount;
-    // # of contacts failed to be deleted.
+    // # of old and new contacts succeeds to be updated.
+    int mContactsUpdateSucceededCount;
+    // # of contacts update skipped due to NO significant change during the update.
+    int mContactsUpdateSkippedCount;
+    // Total # of old and new contacts to be updated.
+    // It should equal to
+    // mContactsUpdateFailedCount + mContactsUpdateSucceededCount + mContactsUpdateSkippedCount
+    int mTotalContactsToBeUpdated;
+    // Among the succeeded and failed contacts updates, how many of them are for the new contacts
+    // currently NOT available in AppSearch.
+    int mNewContactsToBeUpdated;
+
+    //
+    // Deletion for old documents.
+    //
+    // # of old contacts failed to be deleted.
     int mContactsDeleteFailedCount;
-
-    // # of new contacts to be inserted
-    int mContactsInsertedCount;
-    // # of contacts skipped due to no significant change
-    int mContactsSkippedCount;
-    // # of contacts successfully inserted or updated.
-    int mContactsUpdateCount;
-
-    // # of contacts deleted.
-    int mContactsDeleteCount;
+    // # of old contacts succeeds to be deleted.
+    int mContactsDeleteSucceededCount;
+    // Total # of old contacts to be deleted. It should equal to
+    // mContactsDeleteFailedCount + mContactsDeleteSucceededCount
+    int mTotalContactsToBeDeleted;
 
     public void clear() {
         mUpdateType = UNKNOWN_UPDATE_TYPE;
         mUpdateStatuses.clear();
         mDeleteStatuses.clear();
-        mUpdateStartTimeMillis = 0;
+        mUpdateAndDeleteStartTimeMillis = 0;
+        // Update for old and new contacts
         mContactsUpdateFailedCount = 0;
+        mContactsUpdateSucceededCount = 0;
+        mContactsUpdateSkippedCount = 0;
+        mNewContactsToBeUpdated = 0;
+        mTotalContactsToBeUpdated = 0;
+        // delete for old contacts
         mContactsDeleteFailedCount = 0;
-        mContactsInsertedCount = 0;
-        mContactsSkippedCount = 0;
-        mContactsUpdateCount = 0;
-        mContactsDeleteCount = 0;
+        mContactsDeleteSucceededCount = 0;
+        mTotalContactsToBeDeleted = 0;
     }
 
     @NonNull
@@ -105,12 +124,14 @@ public class ContactsUpdateStats {
         return "UpdateType: " + mUpdateType
                 + ", UpdateStatus: " + mUpdateStatuses.toString()
                 + ", DeleteStatus: " + mDeleteStatuses.toString()
-                + ", UpdateStartTimeMillis: " + mUpdateStartTimeMillis
-                + ", UpdateFailedCount: " + mContactsUpdateFailedCount
-                + ", deleteFailedCount: " + mContactsDeleteFailedCount
-                + ", ContactsInsertedCount: " + mContactsInsertedCount
-                + ", ContactsSkippedCount: " + mContactsSkippedCount
-                + ", ContactsUpdateCount: " + mContactsUpdateCount
-                + ", ContactsDeleteCount: " + mContactsDeleteCount;
+                + ", UpdateAndDeleteStartTimeMillis: " + mUpdateAndDeleteStartTimeMillis
+                + ", ContactsUpdateFailedCount: " + mContactsUpdateFailedCount
+                + ", ContactsUpdateSucceededCount: " + mContactsUpdateSucceededCount
+                + ", NewContactsToBeUpdated: " + mNewContactsToBeUpdated
+                + ", ContactsUpdateSkippedCount: " + mContactsUpdateSkippedCount
+                + ", TotalContactsToBeUpdated: " + mTotalContactsToBeUpdated
+                + ", ContactsDeleteFailedCount: " + mContactsDeleteFailedCount
+                + ", ContactsDeleteSucceededCount: " + mContactsDeleteSucceededCount
+                + ", TotalContactsToBeDeleted: " + mTotalContactsToBeDeleted;
     }
 }

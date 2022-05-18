@@ -557,6 +557,18 @@ public final class AppSearchImpl implements Closeable {
                         version,
                         setSchemaStatsBuilder);
 
+        // This check is needed wherever setSchema is called to detect soft errors which do not
+        // throw an exception but also prevent the schema from actually being applied.
+        // TODO(b/229874420): Improve the usability of doSetSchemaNoChangeNotificationLocked() by
+        //  adding documentation that the return value must be checked for these conditions, and by
+        //  making it easier to check for these conditions via one of the ways documented in the
+        //  bug.
+        if (!forceOverride
+                && (!setSchemaResponse.getDeletedTypes().isEmpty()
+                        || !setSchemaResponse.getIncompatibleTypes().isEmpty())) {
+            return setSchemaResponse;
+        }
+
         // Cache some lookup tables to help us work with the new schema
         Map<String, AppSearchSchema> newSchemaNameToType = new ArrayMap<>(schemas.size());
         // Maps unprefixed schema name to the set of listening packages that have visibility into
@@ -903,12 +915,15 @@ public final class AppSearchImpl implements Closeable {
      * @param packageName The package name that owns this document.
      * @param databaseName The databaseName this document resides in.
      * @param document The document to index.
+     * @param sendChangeNotifications Whether to dispatch {@link
+     *     android.app.appsearch.observer.DocumentChangeInfo} messages to observers for this change.
      * @throws AppSearchException on IcingSearchEngine error.
      */
     public void putDocument(
             @NonNull String packageName,
             @NonNull String databaseName,
             @NonNull GenericDocument document,
+            boolean sendChangeNotifications,
             @Nullable AppSearchLogger logger)
             throws AppSearchException {
         PutDocumentStats.Builder pStatsBuilder = null;
@@ -967,14 +982,16 @@ public final class AppSearchImpl implements Closeable {
             checkSuccess(putResultProto.getStatus());
 
             // Prepare notifications
-            mObserverManager.onDocumentChange(
-                    packageName,
-                    databaseName,
-                    document.getNamespace(),
-                    document.getSchemaType(),
-                    document.getId(),
-                    mVisibilityStoreLocked,
-                    mVisibilityCheckerLocked);
+            if (sendChangeNotifications) {
+                mObserverManager.onDocumentChange(
+                        packageName,
+                        databaseName,
+                        document.getNamespace(),
+                        document.getSchemaType(),
+                        document.getId(),
+                        mVisibilityStoreLocked,
+                        mVisibilityCheckerLocked);
+            }
         } finally {
             mReadWriteLock.writeLock().unlock();
 
