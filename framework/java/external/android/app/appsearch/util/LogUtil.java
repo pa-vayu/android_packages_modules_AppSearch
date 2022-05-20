@@ -18,9 +18,8 @@ package android.app.appsearch.util;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.Size;
 import android.util.Log;
-
-import java.util.Objects;
 
 /**
  * Utilities for logging to logcat.
@@ -28,6 +27,11 @@ import java.util.Objects;
  * @hide
  */
 public final class LogUtil {
+    /** Whether to log {@link Log#VERBOSE} and {@link Log#DEBUG} logs. */
+    // TODO(b/232285376): If it becomes possible to detect an eng build, turn this on by default
+    //  for eng builds.
+    public static final boolean DEBUG = false;
+
     /**
      * The {@link #piiTrace} logs are intended for sensitive data that can't be enabled in
      * production, so they are build-gated by this constant.
@@ -42,14 +46,10 @@ public final class LogUtil {
      */
     private static final int PII_TRACE_LEVEL = 0;
 
-    private final String mTag;
-
-    public LogUtil(@NonNull String tag) {
-        mTag = Objects.requireNonNull(tag);
-    }
+    private LogUtil() {}
 
     /** Returns whether piiTrace() is enabled (PII_TRACE_LEVEL > 0). */
-    public boolean isPiiTraceEnabled() {
+    public static boolean isPiiTraceEnabled() {
         return PII_TRACE_LEVEL > 0;
     }
 
@@ -59,8 +59,9 @@ public final class LogUtil {
      *
      * <p>If {@link #PII_TRACE_LEVEL} is 0, nothing is logged and this method returns immediately.
      */
-    public void piiTrace(@NonNull String message) {
-        piiTrace(message, /*fastTraceObj=*/ null, /*fullTraceObj=*/ null);
+    public static void piiTrace(
+            @Size(min = 0, max = 23) @NonNull String tag, @NonNull String message) {
+        piiTrace(tag, message, /*fastTraceObj=*/ null, /*fullTraceObj=*/ null);
     }
 
     /**
@@ -71,8 +72,11 @@ public final class LogUtil {
      *
      * <p>Otherwise, {@code traceObj} is logged if it is non-null.
      */
-    public void piiTrace(@NonNull String message, @Nullable Object traceObj) {
-        piiTrace(message, /*fastTraceObj=*/ traceObj, /*fullTraceObj=*/ null);
+    public static void piiTrace(
+            @Size(min = 0, max = 23) @NonNull String tag,
+            @NonNull String message,
+            @Nullable Object traceObj) {
+        piiTrace(tag, message, /*fastTraceObj=*/ traceObj, /*fullTraceObj=*/ null);
     }
 
     /**
@@ -86,8 +90,11 @@ public final class LogUtil {
      * <p>If {@link #PII_TRACE_LEVEL} is 2, {@code fullTraceObj} is logged if it is non-null, else
      * {@code fastTraceObj} is logged if it is non-null..
      */
-    public void piiTrace(
-            @NonNull String message, @Nullable Object fastTraceObj, @Nullable Object fullTraceObj) {
+    public static void piiTrace(
+            @Size(min = 0, max = 23) @NonNull String tag,
+            @NonNull String message,
+            @Nullable Object fastTraceObj,
+            @Nullable Object fullTraceObj) {
         if (PII_TRACE_LEVEL == 0) {
             return;
         }
@@ -99,6 +106,6 @@ public final class LogUtil {
         } else if (PII_TRACE_LEVEL == 2 && fastTraceObj != null) {
             builder.append(": ").append(fastTraceObj);
         }
-        Log.i(mTag, builder.toString());
+        Log.i(tag, builder.toString());
     }
 }

@@ -17,6 +17,7 @@
 package com.android.server.appsearch.contactsindexer;
 
 import android.annotation.NonNull;
+import android.app.appsearch.util.LogUtil;
 import android.util.ArrayMap;
 import android.util.Log;
 
@@ -127,9 +128,12 @@ public final class PersonBuilderHelper {
             mBuilder.setCreationTimestampMillis(mCreationTimestampMillis);
         } catch (NoSuchAlgorithmException e) {
             // debug logging here to avoid flooding the log.
-            Log.d(TAG,
-                    "Failed to generate fingerprint for contact " + contactForFingerPrint.getId(),
-                    e);
+            if (LogUtil.DEBUG) {
+                Log.d(TAG,
+                        "Failed to generate fingerprint for contact "
+                                + contactForFingerPrint.getId(),
+                        e);
+            }
         }
         // Build a final person with fingerprint set.
         return mBuilder.build();
