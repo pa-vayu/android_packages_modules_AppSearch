@@ -53,7 +53,7 @@ import java.util.List;
  * Fake Contacts Provider that provides basic insert, delete, and query functionality.
  */
 public class FakeContactsProvider extends ContentProvider {
-    private static final String TAG = "ContactsIndexerFakeContactsProvider";
+    private static final String TAG = "ContactsIndexerFakeCont";
     public static final String AUTHORITY = "com.android.contacts";
 
     private static final String DATABASE_NAME = "contacts.db";

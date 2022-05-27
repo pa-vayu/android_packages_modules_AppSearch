@@ -19,6 +19,7 @@ package com.android.server.appsearch.contactsindexer;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.app.appsearch.AppSearchResult;
+import android.app.appsearch.util.LogUtil;
 import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteException;
@@ -28,7 +29,6 @@ import android.provider.ContactsContract.Contacts;
 import android.provider.ContactsContract.DeletedContacts;
 import android.util.Log;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -109,7 +109,9 @@ public final class ContactsProviderUtil {
                 newTimestamp = Math.max(newTimestamp, cursor.getLong(timestampIndex));
                 ++rows;
             }
-            Log.d(TAG, "Got " + rows + " deleted contacts since " + sinceFilter);
+            if (LogUtil.DEBUG) {
+                Log.d(TAG, "Got " + rows + " deleted contacts since " + sinceFilter);
+            }
         } catch (SecurityException |
                 SQLiteException |
                 NullPointerException |
@@ -180,7 +182,9 @@ public final class ContactsProviderUtil {
                 newTimestamp = Math.max(newTimestamp, cursor.getLong(timestampIndex));
             }
 
-            Log.v(TAG, "Returning " + numContacts + " updated contacts since " + sinceFilter);
+            if (LogUtil.DEBUG) {
+                Log.v(TAG, "Returning " + numContacts + " updated contacts since " + sinceFilter);
+            }
         } catch (SecurityException |
                 SQLiteException |
                 NullPointerException |
