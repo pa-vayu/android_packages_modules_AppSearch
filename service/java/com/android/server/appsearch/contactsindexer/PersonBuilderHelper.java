@@ -17,7 +17,6 @@
 package com.android.server.appsearch.contactsindexer;
 
 import android.annotation.NonNull;
-import android.annotation.Nullable;
 import android.util.ArrayMap;
 import android.util.Log;
 
@@ -27,6 +26,8 @@ import com.android.server.appsearch.contactsindexer.appsearchtypes.Person;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -52,13 +53,43 @@ public final class PersonBuilderHelper {
     final private String mId;
     final private Person.Builder mBuilder;
     private long mCreationTimestampMillis = -1;
-    private Map<String, ContactPoint.Builder> mContactPointBuilders = new ArrayMap<>();
+    private Map<String, ContactPointBuilderHelper> mContactPointBuilderHelpers = new ArrayMap<>();
 
     public PersonBuilderHelper(@NonNull String id, @NonNull Person.Builder builder) {
         Objects.requireNonNull(id);
         Objects.requireNonNull(builder);
         mId = id;
         mBuilder = builder;
+    }
+
+    /**
+     * Helper class to construct a {@link ContactPoint}.
+     *
+     * <p>In this helper, besides a {@link ContactPoint.Builder}, it contains a list of phone number
+     * variants, so we can append those at the end of the final phone number list in {@link
+     * #buildContactPoint()}.
+     */
+    private static class ContactPointBuilderHelper {
+        final ContactPoint.Builder mBuilder;
+        List<String> mPhoneNumberVariants = new ArrayList<>();
+
+        ContactPointBuilderHelper(@NonNull ContactPoint.Builder builder) {
+            mBuilder = Objects.requireNonNull(builder);
+        }
+
+        ContactPointBuilderHelper addPhoneNumberVariant(@NonNull String phoneNumberVariant) {
+            mPhoneNumberVariants.add(Objects.requireNonNull(phoneNumberVariant));
+            return this;
+        }
+
+        ContactPoint buildContactPoint() {
+            // Append the phone number variants at the end of phone number list. So the original
+            // phone numbers can appear first in the list.
+            for (int i = 0; i < mPhoneNumberVariants.size(); ++i) {
+                mBuilder.addPhone(mPhoneNumberVariants.get(i));
+            }
+            return mBuilder.build();
+        }
     }
 
     /**
@@ -71,12 +102,12 @@ public final class PersonBuilderHelper {
         Preconditions.checkState(mCreationTimestampMillis >= 0,
                 "creationTimestamp must be explicitly set in the PersonBuilderHelper.");
 
-        for (ContactPoint.Builder builder : mContactPointBuilders.values()) {
+        for (ContactPointBuilderHelper builderHelper : mContactPointBuilderHelpers.values()) {
             // We don't need to reset it for generating fingerprint. But still set it 0 here to
             // avoid creationTimestamp automatically generated using current time. So our testing
             // could be easier.
-            builder.setCreationTimestampMillis(0);
-            mBuilder.addContactPoint(builder.build());
+            builderHelper.mBuilder.setCreationTimestampMillis(0);
+            mBuilder.addContactPoint(builderHelper.buildContactPoint());
         }
         // Set the fingerprint and creationTimestamp to 0 to calculate the actual fingerprint.
         mBuilder.setScore(0);
@@ -116,16 +147,18 @@ public final class PersonBuilderHelper {
     }
 
     @NonNull
-    private ContactPoint.Builder getOrCreateContactPointBuilder(@NonNull String label) {
-        ContactPoint.Builder builder = mContactPointBuilders.get(Objects.requireNonNull(label));
-        if (builder == null) {
-            builder = new ContactPoint.Builder(AppSearchHelper.NAMESPACE_NAME,
-                    /*id=*/"", // doesn't matter for this nested type.
-                    label);
-            mContactPointBuilders.put(label, builder);
+    private ContactPointBuilderHelper getOrCreateContactPointBuilderHelper(@NonNull String label) {
+        ContactPointBuilderHelper builderHelper = mContactPointBuilderHelpers.get(
+                Objects.requireNonNull(label));
+        if (builderHelper == null) {
+            builderHelper = new ContactPointBuilderHelper(
+                    new ContactPoint.Builder(AppSearchHelper.NAMESPACE_NAME,
+                            /*id=*/"", // doesn't matter for this nested type.
+                            label));
+            mContactPointBuilderHelpers.put(label, builderHelper);
         }
 
-        return builder;
+        return builderHelper;
     }
 
     @NonNull
@@ -136,28 +169,36 @@ public final class PersonBuilderHelper {
 
     @NonNull
     public PersonBuilderHelper addAppIdToPerson(@NonNull String label, @NonNull String appId) {
-        getOrCreateContactPointBuilder(Objects.requireNonNull(label))
+        getOrCreateContactPointBuilderHelper(Objects.requireNonNull(label)).mBuilder
                 .addAppId(Objects.requireNonNull(appId));
         return this;
     }
 
     public PersonBuilderHelper addEmailToPerson(@NonNull String label, @NonNull String email) {
-        getOrCreateContactPointBuilder(Objects.requireNonNull(label))
+        getOrCreateContactPointBuilderHelper(Objects.requireNonNull(label)).mBuilder
                 .addEmail(Objects.requireNonNull(email));
         return this;
     }
 
     @NonNull
     public PersonBuilderHelper addAddressToPerson(@NonNull String label, @NonNull String address) {
-        getOrCreateContactPointBuilder(Objects.requireNonNull(label))
+        getOrCreateContactPointBuilderHelper(Objects.requireNonNull(label)).mBuilder
                 .addAddress(Objects.requireNonNull(address));
         return this;
     }
 
     @NonNull
     public PersonBuilderHelper addPhoneToPerson(@NonNull String label, @NonNull String phone) {
-        getOrCreateContactPointBuilder(Objects.requireNonNull(label))
+        getOrCreateContactPointBuilderHelper(Objects.requireNonNull(label)).mBuilder
                 .addPhone(Objects.requireNonNull(phone));
+        return this;
+    }
+
+    @NonNull
+    public PersonBuilderHelper addPhoneVariantToPerson(@NonNull String label,
+            @NonNull String phoneVariant) {
+        getOrCreateContactPointBuilderHelper(Objects.requireNonNull(label))
+                .addPhoneNumberVariant(Objects.requireNonNull(phoneVariant));
         return this;
     }
 

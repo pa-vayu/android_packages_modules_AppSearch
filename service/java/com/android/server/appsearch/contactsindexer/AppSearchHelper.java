@@ -36,7 +36,6 @@ import android.app.appsearch.exceptions.AppSearchException;
 import android.content.Context;
 import android.util.AndroidRuntimeException;
 import android.util.Log;
-import android.util.Pair;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.appsearch.contactsindexer.appsearchtypes.ContactPoint;
@@ -80,6 +79,8 @@ public class AppSearchHelper {
     // Holds the result of an asynchronous operation to create an AppSearchSession
     // and set the builtin:Person schema in it.
     private volatile CompletableFuture<AppSearchSession> mAppSearchSessionFuture;
+    private final CompletableFuture<Boolean> mDataLikelyWipedDuringInitFuture =
+            new CompletableFuture<>();
 
     /**
      * Creates an initialized {@link AppSearchHelper}.
@@ -87,7 +88,8 @@ public class AppSearchHelper {
      * @param executor Executor used to handle result callbacks from AppSearch.
      */
     @NonNull
-    public static AppSearchHelper createAppSearchHelper(@NonNull Context context,
+    public static AppSearchHelper createAppSearchHelper(
+            @NonNull Context context,
             @NonNull Executor executor) {
         AppSearchHelper appSearchHelper = new AppSearchHelper(Objects.requireNonNull(context),
                 Objects.requireNonNull(executor));
@@ -101,7 +103,8 @@ public class AppSearchHelper {
         mExecutor = Objects.requireNonNull(executor);
     }
 
-    /** Initializes {@link AppSearchHelper} asynchronously.
+    /**
+     * Initializes {@link AppSearchHelper} asynchronously.
      *
      * <p>Chains {@link CompletableFuture}s to create an {@link AppSearchSession} and
      * set builtin:Person schema.
@@ -116,11 +119,28 @@ public class AppSearchHelper {
         CompletableFuture<AppSearchSession> createSessionFuture =
                 createAppSearchSessionAsync(appSearchManager);
         mAppSearchSessionFuture = createSessionFuture.thenCompose(appSearchSession -> {
-            // Always force set the schema. We are at the 1st version, so it should be fine for
-            // doing it.
-            // For future schema changes, we could also force set it, and rely on a full update
-            // to bring back wiped data.
-            return setPersonSchemaAsync(appSearchSession, /*forceOverride=*/ true);
+            // set the schema with forceOverride false first. And if it fails, we will set the
+            // schema with forceOverride true. This way, we know when the data is wiped due to an
+            // incompatible schema change, which is the main cause for the 1st setSchema to fail.
+            return setPersonSchemaAsync(appSearchSession, /*forceOverride=*/ false)
+                    .handle((x, e) -> {
+                        boolean firstSetSchemaFailed = false;
+                        if (e != null) {
+                            Log.w(TAG, "Error while setting schema with forceOverride false.", e);
+                            firstSetSchemaFailed = true;
+                        }
+                        return firstSetSchemaFailed;
+                    }).thenCompose(firstSetSchemaFailed -> {
+                        mDataLikelyWipedDuringInitFuture.complete(firstSetSchemaFailed);
+                        if (firstSetSchemaFailed) {
+                            // Try setSchema with forceOverride true.
+                            // If it succeeds, we know the data is likely to be wiped due to an
+                            // incompatible schema change.
+                            // If if fails, we don't know the state of that corpus in AppSearch.
+                            return setPersonSchemaAsync(appSearchSession, /*forceOverride=*/ true);
+                        }
+                        return CompletableFuture.completedFuture(appSearchSession);
+                    });
         });
     }
 
@@ -190,6 +210,24 @@ public class AppSearchHelper {
     @Nullable
     AppSearchSession getSession() throws ExecutionException, InterruptedException {
         return mAppSearchSessionFuture.get();
+    }
+
+    /**
+     * Returns if the data is likely being wiped during initialization of this {@link
+     * AppSearchHelper}.
+     *
+     * <p>The Person corpus in AppSearch can be wiped during setSchema, and this indicates if it
+     * happens:
+     * <li>If the value is {@code false}, we are sure there is NO data loss.
+     * <li>If the value is {@code true}, it is very likely the data loss happens, or the whole
+     * initialization fails and the data state is unknown. Callers need to query AppSearch to
+     * confirm.
+     */
+    @NonNull
+    public CompletableFuture<Boolean> isDataLikelyWipedDuringInitAsync() {
+        // Internally, it indicates whether the first setSchema with forceOverride false fails or
+        // not.
+        return mDataLikelyWipedDuringInitFuture;
     }
 
     /**

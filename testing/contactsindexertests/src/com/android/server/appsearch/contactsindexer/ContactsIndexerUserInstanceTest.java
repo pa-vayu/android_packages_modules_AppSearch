@@ -51,7 +51,6 @@ import android.provider.ContactsContract;
 import android.provider.DeviceConfig;
 import android.test.ProviderTestCase2;
 
-import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -161,11 +160,38 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
                 mContext,
                 mContactsDir, mConfigForTest, mSingleThreadedExecutor);
 
+        int docCount = 100;
+        CountDownLatch latch = new CountDownLatch(docCount);
+        GlobalSearchSessionShim shim =
+                GlobalSearchSessionShimImpl.createGlobalSearchSessionAsync(mContext).get();
+        ObserverCallback callback = new ObserverCallback() {
+            @Override
+            public void onSchemaChanged(SchemaChangeInfo changeInfo) {
+                // Do nothing
+            }
+
+            @Override
+            public void onDocumentChanged(DocumentChangeInfo changeInfo) {
+                for (int i = 0; i < changeInfo.getChangedDocumentIds().size(); i++) {
+                    latch.countDown();
+                }
+            }
+        };
+        shim.registerObserverCallback(mContext.getPackageName(),
+                new ObserverSpec.Builder().addFilterSchemas("builtin:Person").build(),
+                mSingleThreadedExecutor,
+                callback);
+        // Insert contacts to trigger delta update.
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues dummyValues = new ContentValues();
+        for (int i = 0; i < docCount; i++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+        }
+
         instance.startAsync();
 
         // Wait for all async tasks to complete
-        mSingleThreadedExecutor.submit(() -> {
-        }).get();
+        latch.await(30L, TimeUnit.SECONDS);
 
         ArgumentCaptor<JobInfo> jobInfoArgumentCaptor = ArgumentCaptor.forClass(JobInfo.class);
         verify(mockJobScheduler).schedule(jobInfoArgumentCaptor.capture());
@@ -187,13 +213,41 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
         ContactsIndexerUserInstance instance = ContactsIndexerUserInstance.createInstance(
                 mContext, mContactsDir, mConfigForTest, mSingleThreadedExecutor);
 
+        int docCount = 100;
+        CountDownLatch latch = new CountDownLatch(docCount);
+        GlobalSearchSessionShim shim =
+                GlobalSearchSessionShimImpl.createGlobalSearchSessionAsync(mContext).get();
+        ObserverCallback callback = new ObserverCallback() {
+            @Override
+            public void onSchemaChanged(SchemaChangeInfo changeInfo) {
+                // Do nothing
+            }
+
+            @Override
+            public void onDocumentChanged(DocumentChangeInfo changeInfo) {
+                for (int i = 0; i < changeInfo.getChangedDocumentIds().size(); i++) {
+                    latch.countDown();
+                }
+            }
+        };
+        shim.registerObserverCallback(mContext.getPackageName(),
+                new ObserverSpec.Builder().addFilterSchemas("builtin:Person").build(),
+                mSingleThreadedExecutor,
+                callback);
+        // Insert contacts to trigger delta update.
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues dummyValues = new ContentValues();
+        for (int i = 0; i < docCount; i++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+        }
+
         instance.startAsync();
 
         // Wait for all async tasks to complete
         mSingleThreadedExecutor.submit(() -> {
-            }).get();
+        }).get();
 
-            verifyZeroInteractions(mockJobScheduler);
+        verifyZeroInteractions(mockJobScheduler);
     }
 
     @Test
@@ -511,6 +565,107 @@ public class ContactsIndexerUserInstanceTest extends ProviderTestCase2<FakeConta
             }
             uiAutomation.dropShellPermissionIdentity();
         }
+    }
+
+    @Test
+    public void testDeltaUpdate_notTriggered_afterCompatibleSchemaChange() throws Exception {
+        long timeAtBeginning = System.currentTimeMillis();
+
+        // Configure the timestamps to non-zero on disk.
+        PersistableBundle settingsBundle = new PersistableBundle();
+        settingsBundle.putLong(ContactsIndexerSettings.LAST_FULL_UPDATE_TIMESTAMP_KEY,
+                timeAtBeginning);
+        settingsBundle.putLong(ContactsIndexerSettings.LAST_DELTA_UPDATE_TIMESTAMP_KEY,
+                timeAtBeginning);
+        settingsBundle.putLong(ContactsIndexerSettings.LAST_DELTA_DELETE_TIMESTAMP_KEY,
+                timeAtBeginning);
+        mSettingsFile.getParentFile().mkdirs();
+        mSettingsFile.createNewFile();
+        ContactsIndexerSettings.writeBundle(mSettingsFile, settingsBundle);
+        // Preset a compatible schema.
+        AppSearchManager.SearchContext searchContext =
+                new AppSearchManager.SearchContext.Builder(AppSearchHelper.DATABASE_NAME).build();
+        AppSearchSessionShim db = AppSearchSessionShimImpl.createSearchSessionAsync(
+                searchContext).get();
+        SetSchemaRequest setSchemaRequest = new SetSchemaRequest.Builder()
+                .addSchemas(TestUtils.CONTACT_POINT_SCHEMA_WITH_APP_IDS_OPTIONAL, Person.SCHEMA)
+                .setForceOverride(true).build();
+        db.setSchemaAsync(setSchemaRequest).get();
+
+        // Since the current schema is compatible, this won't trigger any delta update and
+        // schedule a full update job.
+        JobScheduler mockJobScheduler = mock(JobScheduler.class);
+        mContextWrapper.setJobScheduler(mockJobScheduler);
+        mInstance = ContactsIndexerUserInstance.createInstance(mContext, mContactsDir,
+                mConfigForTest, mSingleThreadedExecutor);
+        mInstance.startAsync();
+
+        verifyZeroInteractions(mockJobScheduler);
+    }
+
+    @Test
+    public void testDeltaUpdate_triggered_afterIncompatibleSchemaChange() throws Exception {
+        long timeBeforeDeltaChangeNotification = System.currentTimeMillis();
+
+        // Configure the timestamps to non-zero on disk.
+        PersistableBundle settingsBundle = new PersistableBundle();
+        settingsBundle.putLong(ContactsIndexerSettings.LAST_FULL_UPDATE_TIMESTAMP_KEY,
+                timeBeforeDeltaChangeNotification);
+        settingsBundle.putLong(ContactsIndexerSettings.LAST_DELTA_UPDATE_TIMESTAMP_KEY,
+                timeBeforeDeltaChangeNotification);
+        settingsBundle.putLong(ContactsIndexerSettings.LAST_DELTA_DELETE_TIMESTAMP_KEY,
+                timeBeforeDeltaChangeNotification);
+        mSettingsFile.getParentFile().mkdirs();
+        mSettingsFile.createNewFile();
+        ContactsIndexerSettings.writeBundle(mSettingsFile, settingsBundle);
+        // Insert contacts
+        int docCount = 250;
+        ContentResolver resolver = mContext.getContentResolver();
+        ContentValues dummyValues = new ContentValues();
+        for (int i = 0; i < docCount; i++) {
+            resolver.insert(ContactsContract.Contacts.CONTENT_URI, dummyValues);
+        }
+        // Preset an incompatible schema.
+        AppSearchManager.SearchContext searchContext =
+                new AppSearchManager.SearchContext.Builder(AppSearchHelper.DATABASE_NAME).build();
+        AppSearchSessionShim db = AppSearchSessionShimImpl.createSearchSessionAsync(
+                searchContext).get();
+        SetSchemaRequest setSchemaRequest = new SetSchemaRequest.Builder()
+                .addSchemas(TestUtils.CONTACT_POINT_SCHEMA_WITH_LABEL_REPEATED, Person.SCHEMA)
+                .setForceOverride(true).build();
+        db.setSchemaAsync(setSchemaRequest).get();
+        // Setup a latch
+        CountDownLatch latch = new CountDownLatch(docCount);
+        GlobalSearchSessionShim shim =
+                GlobalSearchSessionShimImpl.createGlobalSearchSessionAsync(mContext).get();
+        ObserverCallback callback = new ObserverCallback() {
+            @Override
+            public void onSchemaChanged(SchemaChangeInfo changeInfo) {
+                // Do nothing
+            }
+
+            @Override
+            public void onDocumentChanged(DocumentChangeInfo changeInfo) {
+                for (int i = 0; i < changeInfo.getChangedDocumentIds().size(); i++) {
+                    latch.countDown();
+                }
+            }
+        };
+        shim.registerObserverCallback(mContext.getPackageName(),
+                new ObserverSpec.Builder().addFilterSchemas("builtin:Person").build(),
+                mSingleThreadedExecutor,
+                callback);
+
+        // Since the current schema is incompatible, this will trigger two setSchemas, and run do
+        // doCp2SyncFirstRun again.
+        JobScheduler mockJobScheduler = mock(JobScheduler.class);
+        mContextWrapper.setJobScheduler(mockJobScheduler);
+        mInstance = ContactsIndexerUserInstance.createInstance(mContext, mContactsDir,
+                mConfigForTest, mSingleThreadedExecutor);
+        mInstance.startAsync();
+        latch.await(30L, TimeUnit.SECONDS);
+
+        verify(mockJobScheduler).schedule(any());
     }
 
     /**

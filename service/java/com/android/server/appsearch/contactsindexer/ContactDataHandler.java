@@ -20,10 +20,10 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.res.Resources;
 import android.database.Cursor;
-import android.provider.ContactsContract.CommonDataKinds.Note;
 import android.provider.ContactsContract;
 import android.provider.ContactsContract.CommonDataKinds.Email;
 import android.provider.ContactsContract.CommonDataKinds.Nickname;
+import android.provider.ContactsContract.CommonDataKinds.Note;
 import android.provider.ContactsContract.CommonDataKinds.Organization;
 import android.provider.ContactsContract.CommonDataKinds.Phone;
 import android.provider.ContactsContract.CommonDataKinds.Relation;
@@ -172,15 +172,15 @@ public final class ContactDataHandler {
 
     private abstract static class ContactPointDataHandler extends DataHandler {
         private final Resources mResources;
-        private final String mDataColumn;
+        private final String[] mDataColumns;
         private final String mTypeColumn;
         private final String mLabelColumn;
 
         public ContactPointDataHandler(
-                @NonNull Resources resources, @NonNull String dataColumn,
+                @NonNull Resources resources, @NonNull String[] dataColumns,
                 @NonNull String typeColumn, @NonNull String labelColumn) {
             mResources = Objects.requireNonNull(resources);
-            mDataColumn = Objects.requireNonNull(dataColumn);
+            mDataColumns = Objects.requireNonNull(dataColumns);
             mTypeColumn = Objects.requireNonNull(typeColumn);
             mLabelColumn = Objects.requireNonNull(labelColumn);
         }
@@ -192,7 +192,9 @@ public final class ContactDataHandler {
             columns.add(Data._ID);
             columns.add(Data.IS_PRIMARY);
             columns.add(Data.IS_SUPER_PRIMARY);
-            columns.add(mDataColumn);
+            for (int i = 0; i < mDataColumns.length; ++i) {
+                columns.add(mDataColumns[i]);
+            }
             columns.add(mTypeColumn);
             columns.add(mLabelColumn);
         }
@@ -207,8 +209,15 @@ public final class ContactDataHandler {
             Objects.requireNonNull(builderHelper);
             Objects.requireNonNull(cursor);
 
-            String data = getColumnString(cursor, mDataColumn);
-            if (!TextUtils.isEmpty(data)) {
+            Map<String, String> data = new ArrayMap<>(mDataColumns.length);
+            for (int i = 0; i < mDataColumns.length; ++i) {
+                String col = getColumnString(cursor, mDataColumns[i]);
+                if (!TextUtils.isEmpty(col)) {
+                    data.put(mDataColumns[i], col);
+                }
+            }
+
+            if (!data.isEmpty()) {
                 // get the corresponding label to the type.
                 int type = getColumnInt(cursor, mTypeColumn);
                 String label = getTypeLabel(mResources, type,
@@ -225,15 +234,19 @@ public final class ContactDataHandler {
          *
          * @param builderHelper a helper to build the {@link Person}.
          * @param label         the corresponding label to the {@code type} for the data.
-         * @param data          data read from the designed column in the row.
+         * @param data          data read from the designed columns in the row.
          */
         protected abstract void addContactPointData(
-                PersonBuilderHelper builderHelper, String label, String data);
+                PersonBuilderHelper builderHelper, String label, Map<String, String> data);
     }
 
     private static final class EmailDataHandler extends ContactPointDataHandler {
+        private static final String[] COLUMNS = {
+                Email.ADDRESS,
+        };
+
         public EmailDataHandler(@NonNull Resources resources) {
-            super(resources, Email.ADDRESS, Email.TYPE, Email.LABEL);
+            super(resources, COLUMNS, Email.TYPE, Email.LABEL);
         }
 
         /**
@@ -250,11 +263,14 @@ public final class ContactDataHandler {
         @Override
         protected void addContactPointData(
                 @NonNull PersonBuilderHelper builderHelper, @NonNull String label,
-                @NonNull String data) {
+                @NonNull Map<String, String> data) {
             Objects.requireNonNull(builderHelper);
             Objects.requireNonNull(data);
             Objects.requireNonNull(label);
-            builderHelper.addEmailToPerson(label, data);
+            String email = data.get(Email.ADDRESS);
+            if (!TextUtils.isEmpty(email)) {
+                builderHelper.addEmailToPerson(label, email);
+            }
         }
 
         @NonNull
@@ -267,8 +283,16 @@ public final class ContactDataHandler {
     }
 
     private static final class PhoneHandler extends ContactPointDataHandler {
+        private static final String[] COLUMNS = {
+                Phone.NUMBER,
+                Phone.NORMALIZED_NUMBER,
+        };
+
+        private final Resources mResources;
+
         public PhoneHandler(@NonNull Resources resources) {
-            super(resources, Phone.NUMBER, Phone.TYPE, Phone.LABEL);
+            super(resources, COLUMNS, Phone.TYPE, Phone.LABEL);
+            mResources = Objects.requireNonNull(resources);
         }
 
         /**
@@ -279,16 +303,41 @@ public final class ContactDataHandler {
          *                      com.android.internal.R.string#phoneTypeHome} to {@link
          *                      Phone#TYPE_HOME}, or custom label for the data if {@code type} is
          *                      {@link Phone#TYPE_CUSTOM}.
-         * @param data          data read from the designed column {@link Phone#NUMBER} in the row.
+         * @param data          data read from the designed columns {@link Phone#NUMBER} in the row.
          */
         @Override
         protected void addContactPointData(
                 @NonNull PersonBuilderHelper builderHelper, @NonNull String label,
-                @NonNull String data) {
+                @NonNull Map<String, String> data) {
             Objects.requireNonNull(builderHelper);
             Objects.requireNonNull(data);
             Objects.requireNonNull(label);
-            builderHelper.addPhoneToPerson(label, data);
+
+            // Add original phone number directly to the final phone number
+            // list. E.g. (202) 555-0111
+            String phoneNumberOriginal = data.get(Phone.NUMBER);
+            if (TextUtils.isEmpty(phoneNumberOriginal)) {
+                return;
+            }
+            builderHelper.addPhoneToPerson(label, phoneNumberOriginal);
+
+            // Try to get phone number in e164 from CP2.
+            String phoneNumberE164FromCP2 = data.get(Phone.NORMALIZED_NUMBER);
+
+            // Try to include different variants based on the national (e.g. (202) 555-0111), and
+            // the e164 format of the original number. The variants are generated with the best
+            // efforts, depending on the locales available in the current configuration on the
+            // system.
+            Set<String> phoneNumberVariants =
+                    ContactsIndexerPhoneNumberUtils.createPhoneNumberVariants(mResources,
+                            phoneNumberOriginal, phoneNumberE164FromCP2);
+
+            phoneNumberVariants.remove(phoneNumberOriginal);
+            for (String variant : phoneNumberVariants) {
+                // Append phone variants to a different list, which will be appended into
+                // the final one during buildPerson.
+                builderHelper.addPhoneVariantToPerson(label, variant);
+            }
         }
 
         @NonNull
@@ -301,10 +350,14 @@ public final class ContactDataHandler {
     }
 
     private static final class StructuredPostalHandler extends ContactPointDataHandler {
+        private static final String[] COLUMNS = {
+                StructuredPostal.FORMATTED_ADDRESS,
+        };
+
         public StructuredPostalHandler(@NonNull Resources resources) {
             super(
                     resources,
-                    StructuredPostal.FORMATTED_ADDRESS,
+                    COLUMNS,
                     StructuredPostal.TYPE,
                     StructuredPostal.LABEL);
         }
@@ -323,11 +376,14 @@ public final class ContactDataHandler {
         @Override
         protected void addContactPointData(
                 @NonNull PersonBuilderHelper builderHelper, @NonNull String label,
-                @NonNull String data) {
+                @NonNull Map<String, String> data) {
             Objects.requireNonNull(builderHelper);
             Objects.requireNonNull(data);
             Objects.requireNonNull(label);
-            builderHelper.addAddressToPerson(label, data);
+            String address = data.get(StructuredPostal.FORMATTED_ADDRESS);
+            if (!TextUtils.isEmpty(address)) {
+                builderHelper.addAddressToPerson(label, address);
+            }
         }
 
         @NonNull

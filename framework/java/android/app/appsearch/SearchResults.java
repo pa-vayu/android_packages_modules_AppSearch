@@ -16,6 +16,8 @@
 
 package android.app.appsearch;
 
+import static android.app.appsearch.SearchSessionUtil.safeExecute;
+
 import android.annotation.CallbackExecutor;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -150,7 +152,10 @@ public class SearchResults implements Closeable {
         return new IAppSearchResultCallback.Stub() {
             @Override
             public void onResult(AppSearchResultParcel resultParcel) {
-                executor.execute(() -> invokeCallback(resultParcel.getResult(), callback));
+                safeExecute(
+                        executor,
+                        callback,
+                        () -> invokeCallback(resultParcel.getResult(), callback));
             }
         };
     }
