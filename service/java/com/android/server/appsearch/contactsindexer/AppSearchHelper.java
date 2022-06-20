@@ -33,6 +33,7 @@ import android.app.appsearch.SearchResults;
 import android.app.appsearch.SearchSpec;
 import android.app.appsearch.SetSchemaRequest;
 import android.app.appsearch.exceptions.AppSearchException;
+import android.app.appsearch.util.LogUtil;
 import android.content.Context;
 import android.util.AndroidRuntimeException;
 import android.util.Log;
@@ -66,7 +67,7 @@ import java.util.concurrent.Executor;
  * @hide
  */
 public class AppSearchHelper {
-    static final String TAG = "ContactsIndexerAppSearchHelper";
+    static final String TAG = "ContactsIndexerAppSearc";
 
     public static final String DATABASE_NAME = "contacts";
     // Namespace needed to be used for ContactsIndexer to index the contacts
@@ -245,7 +246,9 @@ public class AppSearchHelper {
         Objects.requireNonNull(contacts);
         Objects.requireNonNull(updateStats);
 
-        Log.v(TAG, "Indexing " + contacts.size() + " contacts into AppSearch");
+        if (LogUtil.DEBUG) {
+            Log.v(TAG, "Indexing " + contacts.size() + " contacts into AppSearch");
+        }
         PutDocumentsRequest request = new PutDocumentsRequest.Builder()
                 .addGenericDocuments(contacts)
                 .build();
@@ -259,8 +262,11 @@ public class AppSearchHelper {
                     updateStats.mContactsUpdateSucceededCount += numDocsSucceeded;
                     updateStats.mContactsUpdateFailedCount += numDocsFailed;
                     if (result.isSuccess()) {
-                        Log.v(TAG,
-                                numDocsSucceeded + " documents successfully added in AppSearch.");
+                        if (LogUtil.DEBUG) {
+                            Log.v(TAG,
+                                    numDocsSucceeded
+                                            + " documents successfully added in AppSearch.");
+                        }
                         future.complete(null);
                     } else {
                         Map<String, AppSearchResult<Void>> failures = result.getFailures();
@@ -302,7 +308,9 @@ public class AppSearchHelper {
         Objects.requireNonNull(ids);
         Objects.requireNonNull(updateStats);
 
-        Log.v(TAG, "Removing " + ids.size() + " contacts from AppSearch");
+        if (LogUtil.DEBUG) {
+            Log.v(TAG, "Removing " + ids.size() + " contacts from AppSearch");
+        }
         RemoveByDocumentIdRequest request = new RemoveByDocumentIdRequest.Builder(NAMESPACE_NAME)
                 .addIds(ids)
                 .build();
@@ -334,7 +342,7 @@ public class AppSearchHelper {
                                 firstFailure.getResultCode(), firstFailure.getErrorMessage()));
                         return;
                     }
-                    if (numSuccesses > 0) {
+                    if (LogUtil.DEBUG && numSuccesses > 0) {
                         Log.v(TAG,
                                 numSuccesses + " documents successfully deleted from AppSearch.");
                     }
