@@ -28,7 +28,7 @@ java_library {
         "androidx.test.ext.junit",
         "framework-appsearch.impl",
         "guava",
-        "service-appsearch",
+        "service-appsearch-for-tests",
         "truth-prebuilt",
     ],
     visibility: [

@@ -39,8 +39,8 @@ java_library {
     apex_available: ["com.android.appsearch"],
 }
 
-java_library {
-    name: "service-appsearch",
+java_defaults {
+    name: "service-appsearch-defaults",
     srcs: ["java/**/*.java"],
     sdk_version: "system_server_current",
     min_sdk_version: "Tiramisu",
@@ -74,5 +74,20 @@ java_library {
         "//frameworks/base/services/tests/servicestests",
     ],
     apex_available: ["com.android.appsearch"],
+}
+
+// A special library created strictly for use by the tests as they need the implementation library
+// but that is not available when building from prebuilts. Using a library with a different name to
+// what is used by the prebuilts ensures that this will never depend on the prebuilt.
+// Switching service-appsearch to a java_sdk_library would also have worked as that has built in
+// support for managing this but that is too big a change at this point.
+java_library {
+    name: "service-appsearch-for-tests",
+    defaults: ["service-appsearch-defaults"],
+}
+
+java_library {
+    name: "service-appsearch",
+    defaults: ["service-appsearch-defaults"],
     installable: true,
 }

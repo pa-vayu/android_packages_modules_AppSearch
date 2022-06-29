@@ -25,7 +25,7 @@ android_test {
         "androidx.test.ext.junit",
         "androidx.test.rules",
         "mockito-target-minus-junit4",
-        "service-appsearch",
+        "service-appsearch-for-tests",
         "services.core",
         "services.usage",
         "truth-prebuilt",
